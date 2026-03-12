@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:starter_adaptation",
+  "display_name": { "translate": "ascension_offer.worldawakened.starter_adaptation" },
+  "description": { "translate": "ascension_offer.worldawakened.starter_adaptation.desc" },
+  "enabled": true,
+  "trigger_conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 0 }
+  ],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened:ember_blood",
+    "worldawakened:grave_stride",
+    "worldawakened:tempered_steel"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 10,
+  "allow_duplicates_across_players": true,
+  "allow_reward_reuse_across_offers": false
+}

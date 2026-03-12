@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:tempered_steel",
+  "display_name": { "translate": "ascension.worldawakened.tempered_steel" },
+  "description": { "translate": "ascension.worldawakened.tempered_steel.desc" },
+  "icon": { "item": "minecraft:iron_chestplate" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:armor_bonus", "parameters": { "amount": 3.0 } },
+    { "type": "worldawakened:armor_toughness_bonus", "parameters": { "amount": 1.5 } },
+    { "type": "worldawakened:knockback_resistance_bonus", "parameters": { "amount": 0.2 } },
+    { "type": "worldawakened:max_health_bonus", "parameters": { "amount": 4.0 } }
+  ],
+  "rarity": "rare",
+  "tags": ["ascension:tier1", "theme:defense", "archetype:tank"],
+  "offer_weight": 9,
+  "unique_group": "tank_major",
+  "exclusion_tags": [],
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "steel" },
+  "max_rank": 1
+}

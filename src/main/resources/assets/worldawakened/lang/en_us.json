@@ -1,0 +1,17 @@
+{
+  "worldawakened.configuration.title": "World Awakened Config",
+  "worldawakened.configuration.section.worldawakened-common.toml": "World Awakened Common",
+  "worldawakened.configuration.section.worldawakened-client.toml": "World Awakened Client",
+  "worldawakened.configuration.general.enable_mod": "Enable Mod",
+  "worldawakened.configuration.general.debug_logging": "Debug Logging",
+  "worldawakened.configuration.general.validation_logging": "Validation Logging",
+  "worldawakened.configuration.progression.mode": "Progression Mode",
+  "worldawakened.configuration.progression.announce_stage_unlocks": "Announce Stage Unlocks",
+  "worldawakened.configuration.progression.allow_stage_regression": "Allow Stage Regression",
+  "worldawakened.configuration.mutators.enable_mutators": "Enable Mutators",
+  "worldawakened.configuration.spawning.enable_spawn_scaling": "Enable Spawn Scaling",
+  "worldawakened.configuration.loot.enable_loot_evolution": "Enable Loot Evolution",
+  "worldawakened.configuration.invasions.enable_invasions": "Enable Invasions",
+  "worldawakened.configuration.compat.apotheosis.enabled": "Enable Apotheosis Integration",
+  "worldawakened.configuration.client.show_stage_toasts": "Show Stage Toasts"
+}

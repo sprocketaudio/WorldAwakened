@@ -1,0 +1,17 @@
+package net.sprocketgames.worldawakened.rules.runtime;
+
+public enum WorldAwakenedRuleActionKind {
+    UNLOCK_STAGE,
+    LOCK_STAGE,
+    GRANT_ASCENSION_OFFER,
+    APPLY_MUTATOR_POOL,
+    APPLY_STAT_PROFILE,
+    INJECT_LOOT_PROFILE,
+    TRIGGER_INVASION_PROFILE,
+    SEND_WARNING_MESSAGE,
+    DROP_REWARD_TABLE,
+    MARK_RULE_CONSUMED,
+    SET_WORLD_SCALAR,
+    SET_TEMP_INVASION_MODIFIER,
+    UNSUPPORTED
+}

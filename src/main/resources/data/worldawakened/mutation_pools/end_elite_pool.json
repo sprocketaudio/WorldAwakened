@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:end_elite_pool",
+  "enabled": true,
+  "weight": 8,
+  "conditions": [
+    { "type": "worldawakened:current_dimension", "dimension": "minecraft:the_end" },
+    { "type": "worldawakened:world_day_gte", "value": 20 }
+  ],
+  "eligible_dimensions": ["minecraft:the_end"],
+  "eligible_entities": ["minecraft:enderman", "minecraft:shulker"],
+  "mutators": [
+    { "id": "worldawakened:summoner_juggernaut", "weight": 4 },
+    { "id": "worldawakened:juggernaut_preset", "weight": 5 },
+    { "id": "worldawakened:unyielding_guard", "weight": 4 }
+  ],
+  "max_mutators_per_entity": 2,
+  "reroll_policy": "single_retry"
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:ascension/player_explorer_offer_cycle",
+  "enabled": true,
+  "priority": 26,
+  "execution_scope": "player",
+  "conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 12 },
+    { "type": "worldawakened:random_chance", "chance": 0.1 }
+  ],
+  "actions": [
+    { "type": "worldawakened:grant_ascension_offer", "offer": "worldawakened:explorer_path" }
+  ],
+  "weight": 1.0,
+  "chance": 1.0,
+  "cooldown": { "minutes": 35 },
+  "tags": ["example", "ascension", "exploration"]
+}

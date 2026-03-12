@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:battlefield_commander",
+  "display_name": { "translate": "ascension.worldawakened.battlefield_commander" },
+  "description": { "translate": "ascension.worldawakened.battlefield_commander.desc" },
+  "icon": { "item": "minecraft:goat_horn" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:hostile_wall_sense" },
+    { "type": "worldawakened:invasion_reward_bonus", "parameters": { "amount": 0.2 } },
+    { "type": "worldawakened:mutation_resistance_bonus", "parameters": { "amount": 0.2 } },
+    { "type": "worldawakened:debuff_resistance", "parameters": { "amount": 0.15 } }
+  ],
+  "rarity": "epic",
+  "tags": ["ascension:tier3", "theme:war", "archetype:battlefield"],
+  "offer_weight": 5,
+  "unique_group": "commander_major",
+  "exclusion_tags": [],
+  "requires_conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 18 }
+  ],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "gold" },
+  "max_rank": 1
+}

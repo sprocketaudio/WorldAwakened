@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:ember_blood",
+  "display_name": { "translate": "ascension.worldawakened.ember_blood" },
+  "description": { "translate": "ascension.worldawakened.ember_blood.desc" },
+  "icon": { "item": "minecraft:blaze_powder" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:fire_resistance_passive" },
+    { "type": "worldawakened:attack_damage_bonus", "parameters": { "amount": 1.0 } },
+    { "type": "worldawakened:debuff_resistance", "parameters": { "amount": 0.12 } },
+    { "type": "worldawakened:healing_efficiency_bonus", "parameters": { "amount": 0.1 } }
+  ],
+  "rarity": "rare",
+  "tags": ["ascension:tier1", "theme:fire", "archetype:retaliation"],
+  "offer_weight": 8,
+  "unique_group": "survivability_fire",
+  "exclusion_tags": ["theme:frost"],
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "amber" },
+  "max_rank": 1
+}

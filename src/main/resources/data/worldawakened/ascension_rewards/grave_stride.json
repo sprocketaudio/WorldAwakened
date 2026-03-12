@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:grave_stride",
+  "display_name": { "translate": "ascension.worldawakened.grave_stride" },
+  "description": { "translate": "ascension.worldawakened.grave_stride.desc" },
+  "icon": { "item": "minecraft:feather" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": 0.08 } },
+    { "type": "worldawakened:step_height_bonus", "parameters": { "amount": 0.5 } },
+    { "type": "worldawakened:fall_damage_reduction", "parameters": { "amount": 0.3 } },
+    { "type": "worldawakened:night_vision_passive" }
+  ],
+  "rarity": "uncommon",
+  "tags": ["ascension:tier1", "theme:exploration", "archetype:mobility"],
+  "offer_weight": 8,
+  "unique_group": "explorer_major",
+  "exclusion_tags": [],
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "slate" },
+  "max_rank": 1
+}

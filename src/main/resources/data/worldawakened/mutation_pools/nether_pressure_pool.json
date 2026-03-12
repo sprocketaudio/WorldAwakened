@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:nether_pressure_pool",
+  "enabled": true,
+  "weight": 10,
+  "conditions": [
+    { "type": "worldawakened:current_dimension", "dimension": "minecraft:the_nether" },
+    { "type": "worldawakened:world_day_gte", "value": 10 }
+  ],
+  "eligible_dimensions": ["minecraft:the_nether"],
+  "eligible_entities": ["minecraft:piglin", "minecraft:zombified_piglin", "minecraft:blaze", "minecraft:wither_skeleton"],
+  "mutators": [
+    { "id": "worldawakened:lightning_berserker", "weight": 5 },
+    { "id": "worldawakened:summoner_preset", "weight": 4 },
+    { "id": "worldawakened:volatile_abomination", "weight": 3 }
+  ],
+  "max_mutators_per_entity": 2,
+  "reroll_policy": "single_retry"
+}

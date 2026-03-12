@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:juggernaut_preset",
+  "display_name": { "translate": "mutator.worldawakened.juggernaut_preset" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 7,
+  "stacking_group": "defense",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:max_health_multiplier", "parameters": { "multiplier": 1.45 } },
+    { "type": "worldawakened:armor_bonus", "parameters": { "amount": 5.0 } },
+    { "type": "worldawakened:knockback_resistance_bonus", "parameters": { "amount": 0.45 } },
+    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": -0.08 } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:drowned"],
+  "eligible_entity_tags": ["#minecraft:raiders"],
+  "excluded_entities": ["minecraft:warden"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "component_budget": 5,
+  "reward_modifier": {
+    "xp_multiplier": 1.2,
+    "loot_bonus_chance": 0.04
+  },
+  "visuals": {
+    "glow": { "color": "dark_red" }
+  },
+  "sounds": {
+    "spawn": "minecraft:entity.zombie.ambient"
+  },
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

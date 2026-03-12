@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:blood_reaper",
+  "display_name": { "translate": "ascension.worldawakened.blood_reaper" },
+  "description": { "translate": "ascension.worldawakened.blood_reaper.desc" },
+  "icon": { "item": "minecraft:netherite_sword" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:attack_damage_bonus", "parameters": { "amount": 2.0 } },
+    { "type": "worldawakened:life_steal_minor", "parameters": { "amount": 0.07 } },
+    { "type": "worldawakened:crit_bonus", "parameters": { "amount": 0.08 } },
+    { "type": "worldawakened:healing_efficiency_bonus", "parameters": { "amount": 0.12 } }
+  ],
+  "rarity": "epic",
+  "tags": ["ascension:tier2", "theme:blood", "archetype:sustain_offense"],
+  "offer_weight": 6,
+  "unique_group": "reaper_major",
+  "exclusion_tags": [],
+  "requires_conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 10 }
+  ],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "scarlet" },
+  "max_rank": 1
+}

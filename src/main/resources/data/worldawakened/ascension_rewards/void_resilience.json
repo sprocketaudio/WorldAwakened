@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:void_resilience",
+  "display_name": { "translate": "ascension.worldawakened.void_resilience" },
+  "description": { "translate": "ascension.worldawakened.void_resilience.desc" },
+  "icon": { "item": "minecraft:obsidian" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:damage_type_resistance", "parameters": { "damage_type": "minecraft:out_of_world" } },
+    { "type": "worldawakened:debuff_resistance", "parameters": { "amount": 0.25 } },
+    { "type": "worldawakened:extra_revival_buffer", "parameters": { "amount": 2.0 } },
+    { "type": "worldawakened:max_health_bonus", "parameters": { "amount": 2.0 } }
+  ],
+  "rarity": "epic",
+  "tags": ["ascension:tier3", "theme:void", "archetype:survivability"],
+  "offer_weight": 5,
+  "unique_group": "void_major",
+  "exclusion_tags": [],
+  "requires_conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 20 }
+  ],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "indigo" },
+  "max_rank": 1
+}

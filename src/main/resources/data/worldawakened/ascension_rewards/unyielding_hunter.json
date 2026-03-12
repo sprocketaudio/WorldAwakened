@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:unyielding_hunter",
+  "display_name": { "translate": "ascension.worldawakened.unyielding_hunter" },
+  "description": { "translate": "ascension.worldawakened.unyielding_hunter.desc" },
+  "icon": { "item": "minecraft:spyglass" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:hostile_wall_sense" },
+    { "type": "worldawakened:attack_damage_bonus", "parameters": { "amount": 1.5 } },
+    { "type": "worldawakened:debuff_resistance", "parameters": { "amount": 0.2 } },
+    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": 0.05 } }
+  ],
+  "rarity": "rare",
+  "tags": ["ascension:tier1", "theme:hunter", "archetype:aggression"],
+  "offer_weight": 9,
+  "unique_group": "hunter_major",
+  "exclusion_tags": ["theme:arcane"],
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "emerald" },
+  "max_rank": 1
+}

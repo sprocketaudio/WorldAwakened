@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:predator_instinct",
+  "display_name": { "translate": "ascension.worldawakened.predator_instinct" },
+  "description": { "translate": "ascension.worldawakened.predator_instinct.desc" },
+  "icon": { "item": "minecraft:ender_eye" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:hostile_wall_sense" },
+    { "type": "worldawakened:attack_reach_bonus", "parameters": { "amount": 0.35 } },
+    { "type": "worldawakened:crit_bonus", "parameters": { "amount": 0.12 } },
+    { "type": "worldawakened:elite_detection" }
+  ],
+  "rarity": "epic",
+  "tags": ["ascension:tier2", "theme:predator", "archetype:boss_hunter"],
+  "offer_weight": 6,
+  "unique_group": "predator_major",
+  "exclusion_tags": [],
+  "requires_conditions": [
+    { "type": "worldawakened:world_day_gte", "value": 8 }
+  ],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "crimson" },
+  "max_rank": 1
+}

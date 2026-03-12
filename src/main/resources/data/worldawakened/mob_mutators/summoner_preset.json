@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:summoner_preset",
+  "display_name": { "translate": "mutator.worldawakened.summoner_preset" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 6,
+  "stacking_group": "summoner",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:reinforcement_summon", "parameters": { "entity_tag": "minecraft:skeletons" } },
+    { "type": "worldawakened:summon_cooldown", "parameters": { "seconds": 12.0 } },
+    { "type": "worldawakened:summon_cap", "parameters": { "max": 3 } },
+    { "type": "worldawakened:max_health_bonus", "parameters": { "amount": 8.0 } }
+  ],
+  "eligible_entities": ["minecraft:pillager", "minecraft:evoker", "minecraft:vindicator"],
+  "eligible_entity_tags": ["#minecraft:raiders"],
+  "excluded_entities": [],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "component_budget": 6,
+  "reward_modifier": {
+    "loot_bonus_chance": 0.06,
+    "xp_multiplier": 1.15
+  },
+  "visuals": {
+    "particles": { "mode": "smoke" }
+  },
+  "sounds": {
+    "spawn": "minecraft:entity.evoker.prepare_summon"
+  },
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}
