@@ -1,5 +1,7 @@
 package net.sprocketgames.worldawakened.progression.trigger;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.neoforge.common.NeoForge;
+import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
 import net.sprocketgames.worldawakened.data.definition.SourceScope;
 import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
@@ -41,18 +44,25 @@ import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedEntityCont
 
 public final class WorldAwakenedTriggerService {
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Comparator<CompiledTriggerAction> ACTION_PRIORITY_ORDER = Comparator
+            .comparingInt(CompiledTriggerAction::priority)
+            .reversed()
+            .thenComparingInt(CompiledTriggerAction::authoredIndex);
 
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedRuleService ruleService;
+    private final WorldAwakenedAscensionService ascensionService;
 
     public WorldAwakenedTriggerService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
-            WorldAwakenedRuleService ruleService) {
+            WorldAwakenedRuleService ruleService,
+            WorldAwakenedAscensionService ascensionService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.ruleService = ruleService;
+        this.ascensionService = ascensionService;
     }
 
     public WorldAwakenedTriggerRunResult onPlayerEnteredDimension(ServerPlayer player, ResourceLocation dimensionId) {
@@ -238,20 +248,10 @@ public final class WorldAwakenedTriggerService {
 
             executedRules++;
             ServerPlayer scopedPlayer = scope == SourceScope.PLAYER ? eventContext.player() : null;
-            for (JsonElement actionElement : rule.actions()) {
-                if (!actionElement.isJsonObject()) {
-                    continue;
-                }
-                JsonObject action = actionElement.getAsJsonObject();
-                Optional<ResourceLocation> actionTypeOpt = readResourceLocation(action, "type");
-                if (actionTypeOpt.isEmpty()) {
-                    continue;
-                }
-                String actionPath = actionTypeOpt.get().getPath().toLowerCase(Locale.ROOT);
-
-                switch (actionPath) {
+            for (CompiledTriggerAction action : compileActions(rule.actions())) {
+                switch (action.actionPath()) {
                     case "unlock_stage" -> {
-                        Optional<ResourceLocation> stageIdOpt = readResourceLocation(action, "stage", "stage_id", "id", "unlock_stage");
+                        Optional<ResourceLocation> stageIdOpt = readResourceLocation(action.parameters(), "stage");
                         if (stageIdOpt.isEmpty()) {
                             continue;
                         }
@@ -265,7 +265,7 @@ public final class WorldAwakenedTriggerService {
                         }
                     }
                     case "lock_stage" -> {
-                        Optional<ResourceLocation> stageIdOpt = readResourceLocation(action, "stage", "stage_id", "id", "lock_stage");
+                        Optional<ResourceLocation> stageIdOpt = readResourceLocation(action.parameters(), "stage");
                         if (stageIdOpt.isEmpty()) {
                             continue;
                         }
@@ -277,8 +277,8 @@ public final class WorldAwakenedTriggerService {
                             stageLocks++;
                         }
                     }
-                    case "emit_event", "emit_named_event" -> {
-                        Optional<ResourceLocation> eventIdOpt = readResourceLocation(action, "event", "event_id", "id", "name");
+                    case "emit_named_event" -> {
+                        Optional<ResourceLocation> eventIdOpt = readResourceLocation(action.parameters(), "event");
                         if (eventIdOpt.isEmpty()) {
                             continue;
                         }
@@ -290,10 +290,10 @@ public final class WorldAwakenedTriggerService {
                                 scope));
                         emittedEvents++;
                     }
-                    case "increment_counter", "increment_trigger_counter" -> {
-                        String counterKey = readString(action, "counter", "key", "name", "id")
+                    case "increment_counter" -> {
+                        String counterKey = readString(action.parameters(), "counter")
                                 .orElse(rule.id().toString());
-                        int amount = readInt(action, "amount", "value", "delta").orElse(1);
+                        int amount = readInt(action.parameters(), "amount").orElse(1);
                         liveTriggerState.triggerCounters().merge(counterKey, amount, Integer::sum);
                         liveTriggerState.markDirty();
                         counterUpdates++;
@@ -302,16 +302,30 @@ public final class WorldAwakenedTriggerService {
                         if (scopedPlayer == null) {
                             continue;
                         }
-                        String message = readMessageText(action);
+                        String message = readMessageText(action.parameters());
                         if (!message.isBlank()) {
                             scopedPlayer.sendSystemMessage(Component.literal(message));
                         }
+                    }
+                    case "grant_ascension_offer" -> {
+                        if (scopedPlayer == null) {
+                            continue;
+                        }
+                        Optional<ResourceLocation> offerId = readResourceLocation(action.parameters(), "offer");
+                        if (offerId.isEmpty()) {
+                            continue;
+                        }
+                        ascensionService.grantOfferFromRule(
+                                eventContext.level(),
+                                scopedPlayer,
+                                offerId.get(),
+                                "trigger:" + rule.id());
                     }
                     default -> WorldAwakenedLog.debug(
                             LOGGER,
                             WorldAwakenedLogCategory.PIPELINE,
                             "Skipping unsupported trigger action {} on {}",
-                            actionTypeOpt.get(),
+                            action.typeId(),
                             rule.id());
                 }
             }
@@ -468,6 +482,49 @@ public final class WorldAwakenedTriggerService {
         return null;
     }
 
+    private static List<CompiledTriggerAction> compileActions(List<JsonElement> rawActions) {
+        List<CompiledTriggerAction> compiled = new ArrayList<>(rawActions.size());
+        for (int index = 0; index < rawActions.size(); index++) {
+            JsonElement action = rawActions.get(index);
+            if (!action.isJsonObject()) {
+                continue;
+            }
+            JsonObject node = action.getAsJsonObject();
+            if (!isNodeEnabled(node)) {
+                continue;
+            }
+            Optional<ResourceLocation> typeOpt = readResourceLocation(node, "type");
+            if (typeOpt.isEmpty()) {
+                continue;
+            }
+            int priority = readInt(node, "priority").orElse(0);
+            compiled.add(new CompiledTriggerAction(
+                    typeOpt.get(),
+                    typeOpt.get().getPath().toLowerCase(Locale.ROOT),
+                    readParametersObject(node),
+                    priority,
+                    index));
+        }
+        compiled.sort(ACTION_PRIORITY_ORDER);
+        return List.copyOf(compiled);
+    }
+    private static JsonObject readParametersObject(JsonObject object) {
+        if (!object.has("parameters") || !object.get("parameters").isJsonObject()) {
+            return new JsonObject();
+        }
+        return object.getAsJsonObject("parameters");
+    }
+    private static boolean isNodeEnabled(JsonObject node) {
+        if (!node.has("enabled")) {
+            return true;
+        }
+        JsonElement enabled = node.get("enabled");
+        if (!enabled.isJsonPrimitive() || !enabled.getAsJsonPrimitive().isBoolean()) {
+            return true;
+        }
+        return enabled.getAsBoolean();
+    }
+
     private static WorldAwakenedTriggerRunResult sum(WorldAwakenedTriggerRunResult first, WorldAwakenedTriggerRunResult second) {
         String trace = "none".equals(first.traceId()) ? second.traceId()
                 : ("none".equals(second.traceId()) ? first.traceId() : first.traceId() + "," + second.traceId());
@@ -512,5 +569,13 @@ public final class WorldAwakenedTriggerService {
             ResourceLocation entityId,
             Set<ResourceLocation> entityTags,
             String mobCategory) implements WorldAwakenedEntityContextView {
+    }
+
+    private record CompiledTriggerAction(
+            ResourceLocation typeId,
+            String actionPath,
+            JsonObject parameters,
+            int priority,
+            int authoredIndex) {
     }
 }

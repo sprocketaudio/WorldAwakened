@@ -43,7 +43,14 @@ public final class WorldAwakenedWorldProgressionSavedData extends SavedData
     private final Map<String, Double> worldScalars = new LinkedHashMap<>();
 
     public static WorldAwakenedWorldProgressionSavedData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+        return canonicalStorageLevel(level).getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+    }
+
+    private static ServerLevel canonicalStorageLevel(ServerLevel level) {
+        if (level.getServer() != null && level.getServer().overworld() != null) {
+            return level.getServer().overworld();
+        }
+        return level;
     }
 
     private static WorldAwakenedWorldProgressionSavedData load(CompoundTag tag, HolderLookup.Provider provider) {

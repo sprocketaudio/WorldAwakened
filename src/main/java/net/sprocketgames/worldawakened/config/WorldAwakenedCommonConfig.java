@@ -10,11 +10,11 @@ public final class WorldAwakenedCommonConfig {
 
     public static final ModConfigSpec.BooleanValue ENABLE_MOD;
     public static final ModConfigSpec.BooleanValue DEBUG_LOGGING;
+    public static final ModConfigSpec.BooleanValue ENABLE_DEBUG_COMMANDS;
     public static final ModConfigSpec.BooleanValue VALIDATION_LOGGING;
 
     public static final ModConfigSpec.ConfigValue<String> PROGRESSION_MODE;
     public static final ModConfigSpec.BooleanValue ANNOUNCE_STAGE_UNLOCKS;
-    public static final ModConfigSpec.BooleanValue ALLOW_STAGE_REGRESSION;
     public static final ModConfigSpec.BooleanValue ALLOW_HIDDEN_STAGES_IN_DEBUG;
 
     public static final ModConfigSpec.BooleanValue ENABLE_MUTATORS;
@@ -36,6 +36,11 @@ public final class WorldAwakenedCommonConfig {
     public static final ModConfigSpec.IntValue WARNING_SECONDS;
     public static final ModConfigSpec.IntValue MAX_CONCURRENT_INVASIONS;
 
+    public static final ModConfigSpec.BooleanValue ENABLE_ASCENSION;
+    public static final ModConfigSpec.BooleanValue ONE_PENDING_OFFER_PER_PLAYER;
+    public static final ModConfigSpec.BooleanValue REMIND_PENDING_OFFERS;
+    public static final ModConfigSpec.BooleanValue SHOW_ASCENSION_NOTIFICATIONS;
+
     public static final ModConfigSpec.BooleanValue AUTO_DETECT;
     public static final ModConfigSpec.BooleanValue DEFAULT_ENABLE_DETECTED_INTEGRATIONS;
 
@@ -53,13 +58,13 @@ public final class WorldAwakenedCommonConfig {
         builder.push("general");
         ENABLE_MOD = builder.define("enable_mod", true);
         DEBUG_LOGGING = builder.define("debug_logging", false);
+        ENABLE_DEBUG_COMMANDS = builder.define("enable_debug_commands", true);
         VALIDATION_LOGGING = builder.define("validation_logging", true);
         builder.pop();
 
         builder.push("progression");
         PROGRESSION_MODE = builder.define("mode", "global");
         ANNOUNCE_STAGE_UNLOCKS = builder.define("announce_stage_unlocks", true);
-        ALLOW_STAGE_REGRESSION = builder.define("allow_stage_regression", false);
         ALLOW_HIDDEN_STAGES_IN_DEBUG = builder.define("allow_hidden_stages_in_debug", true);
         builder.pop();
 
@@ -88,6 +93,13 @@ public final class WorldAwakenedCommonConfig {
         GLOBAL_COOLDOWN_MINUTES = builder.defineInRange("global_cooldown_minutes", 90, 0, Integer.MAX_VALUE);
         WARNING_SECONDS = builder.defineInRange("warning_seconds", 20, 0, Integer.MAX_VALUE);
         MAX_CONCURRENT_INVASIONS = builder.defineInRange("max_concurrent_invasions", 1, 0, 16);
+        builder.pop();
+
+        builder.push("ascension");
+        ENABLE_ASCENSION = builder.define("enable_ascension", true);
+        ONE_PENDING_OFFER_PER_PLAYER = builder.define("one_pending_offer_per_player", true);
+        REMIND_PENDING_OFFERS = builder.define("remind_pending_offers", true);
+        SHOW_ASCENSION_NOTIFICATIONS = builder.define("show_ascension_notifications", true);
         builder.pop();
 
         builder.push("compat");

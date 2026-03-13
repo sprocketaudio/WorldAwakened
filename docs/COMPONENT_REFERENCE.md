@@ -1,37 +1,96 @@
-﻿# World Awakened Component Reference
+# World Awakened Component Reference
 
-This document is the canonical reference for supported component types.
-- Component behavior is defined by Java registries and runtime execution semantics.
-- Datapacks use these components to author named mob mutations and named ascension rewards.
-- Built-in presets are authored with the same component model available to pack authors.
-- Unknown/unsupported component types fail validation.
-- Datapack object path convention remains `data/<namespace>/<object_type>/*.json` (for example `data/worldawakened/mob_mutators/*.json` and `data/worldawakened/ascension_rewards/*.json`).
-- Update this document whenever a component is added, removed, renamed, or its schema changes.
+Canonical reference for mutation and ascension component IDs, schemas, statuses, and composition rules.
 
-For overall architecture, see `docs/SPECIFICATION.md`.
-For datapack object format, see `docs/DATAPACK_AUTHORING.md`.
+- Document status: Active shared-contract reference
+- Last updated: 2026-03-12
+- Scope: Runtime component contracts and authoring/tooling alignment
+
+---
+
+## 0. Governance and Maintenance
+
+This file is part of the shared framework reference set.
+
+Related contracts:
+- [SPECIFICATION.md](SPECIFICATION.md)
+- [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md)
+- [ACTION_REFERENCE.md](ACTION_REFERENCE.md)
+- [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md)
+- [SCOPE_MATRIX.md](SCOPE_MATRIX.md)
+- [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
+- [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
+- [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
+- [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [docs/README.md](README.md)
+- [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+
+Update rule:
+- Update this file in the same change whenever component IDs, schemas, status labels, composition rules, or runtime handler support change.
+- Keep this file aligned with the other shared reference docs and with validator/runtime behavior.
 
 ## 1. Overview
 - World Awakened has two component libraries: mutation components and ascension components.
 - Mutation components are authored inside named mutation definitions (`mob_mutators`).
 - Ascension components are authored inside named reward definitions (`ascension_rewards`).
 - Engine behavior is component-driven; named definitions are datapack-authored compositions.
+- Component status labels in this document use the shared taxonomy (`implemented`, `planned`, `reserved`, `deprecated`) and are canonical inputs for validation/tooling feature markers.
 
 Terminology:
 - `component type`: reusable behavior building block.
 - `authored definition`: named gameplay object that combines one or more components.
+
+Phase 4 runtime application note:
+- Ascension reward reconciliation now reapplies selected reward effects on login and respawn.
+- Current live player-effect handlers are wired for: `max_health_bonus`, `armor_bonus`, `armor_toughness_bonus`, `attack_damage_bonus`, `movement_speed_bonus`, `knockback_resistance_bonus`, `luck_bonus`, `fire_resistance_passive`, and `night_vision_passive`.
+- Other ascension component IDs listed as implemented remain valid/validated authored types, but may still be inert until their dedicated runtime handlers are added in later phases.
 
 ## 2. Shared Authoring Rules
 - Every authored definition must contain at least one component entry.
 - Component types are referenced by `ResourceLocation` (`namespace:path`).
 - Unknown component types fail validation for the authored object.
 - Parameters must match the component schema/validator expectations.
-- Duplicate incompatible components are invalid.
+- Duplicate behavior must be explicit per component type (`duplicate_policy` semantics).
 - Component execution order is deterministic (authored order + priority semantics).
 - Component behavior is server-authoritative.
 - Datapacks may combine supported components freely within validation/runtime safety rules.
 - New behavior categories require Java implementation and registry registration.
 - Built-in presets are examples, not privileged code-only gameplay identities.
+
+### 2A. Shared Status Taxonomy
+
+This reference follows the framework-wide status taxonomy from `docs/SPECIFICATION.md`:
+- `implemented`: runtime-supported now
+- `planned`: designed/documented but not fully runtime-supported
+- `reserved`: name/shape held, not valid for runtime authored content
+- `deprecated`: still recognized for compatibility, warning for new content
+
+Validation expectation:
+- `implemented` entries are allowed
+- `planned` entries are warning/error depending on validation mode
+- `reserved` entries are rejected
+- `deprecated` entries warn with migration guidance when available
+
+### 2B. Shared Composition Contracts
+
+Mutation and ascension components both use shared composition semantics:
+- explicit conflict metadata (`conflicts_with`, `exclusive_with`)
+- explicit duplicate metadata (`duplicate_policy`, `max_instances`)
+- explicit ordering metadata (`composition_priority`, authored order)
+- explicit dependency metadata (`requires_component_types`, `forbidden_component_types`)
+
+Authoritative semantics:
+- canonical duplicate/conflict/order/budget/no-op resolution algorithm is defined in [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
+- component entries in this file should reference that contract instead of redefining local variants
+
+Hard composition expectations:
+- additive/multiplicative ordering must be deterministic
+- incompatible compositions fail validation pre-runtime
+- helper components requiring a core component are invalid without that core
+- presentation-layer stacking is opt-in by component contract
+- diagnostics must call out duplicate/conflict/stacking/budget failures explicitly
 
 ## Component Entry Shape
 Common conceptual entry fields:
@@ -42,6 +101,11 @@ Common conceptual entry fields:
 - `required_conditions` (optional conceptual field)
 - `forbidden_conditions` (optional conceptual field)
 - `exclusive_with_component_types` (optional conceptual field)
+- `duplicate_policy` (optional conceptual field)
+- `max_instances` (optional conceptual field)
+- `composition_priority` (optional conceptual field)
+- `requires_component_types` (optional conceptual field)
+- `forbidden_component_types` (optional conceptual field)
 
 Current v1 codec note:
 - Mutation/ascension component entries currently encode gating/conflicts with `conditions`, `exclusions`, and `conflicts_with`.
@@ -69,7 +133,7 @@ Applies `max_health_bonus` behavior to a named mutation definition in `mob_mutat
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -96,7 +160,7 @@ Applies `max_health_multiplier` behavior to a named mutation definition in `mob_
 - `multiplier` (number, expected `> 0`).
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -124,7 +188,7 @@ Applies `attack_damage_bonus` behavior to a named mutation definition in `mob_mu
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -151,7 +215,7 @@ Applies `attack_damage_multiplier` behavior to a named mutation definition in `m
 - `multiplier` (number, expected `> 0`).
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -179,7 +243,7 @@ Applies `armor_bonus` behavior to a named mutation definition in `mob_mutators`.
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -206,7 +270,7 @@ Applies `armor_multiplier` behavior to a named mutation definition in `mob_mutat
 - `multiplier` (number, expected `> 0`).
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -234,7 +298,7 @@ Applies `armor_toughness_bonus` behavior to a named mutation definition in `mob_
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -262,7 +326,7 @@ Applies `movement_speed_bonus` behavior to a named mutation definition in `mob_m
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -290,12 +354,11 @@ Applies `movement_speed_multiplier` behavior to a named mutation definition in `
 - Initial design target: final lower/upper bounds may be tightened when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -318,7 +381,7 @@ Applies `follow_range_bonus` behavior to a named mutation definition in `mob_mut
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -346,7 +409,7 @@ Applies `knockback_resistance_bonus` behavior to a named mutation definition in 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -375,12 +438,11 @@ Applies `xp_bonus` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -404,12 +466,11 @@ Applies `loot_bonus` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -433,12 +494,11 @@ Applies `reinforcement_chance_bonus` behavior to a named mutation definition in 
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -462,7 +522,7 @@ Applies `wall_sense` behavior to a named mutation definition in `mob_mutators`.
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -490,7 +550,7 @@ Applies `target_range_bonus` behavior to a named mutation definition in `mob_mut
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -518,12 +578,11 @@ Applies `target_switching` behavior to a named mutation definition in `mob_mutat
 - Initial design target: may accept min/max or per-phase cooldown keys later.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -546,7 +605,7 @@ Applies `pursuit_speed_boost` behavior to a named mutation definition in `mob_mu
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -573,7 +632,7 @@ Applies `anti_kite_behavior` behavior to a named mutation definition in `mob_mut
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -601,12 +660,11 @@ Applies `aggro_lock_window` behavior to a named mutation definition in `mob_muta
 - Initial design target: may accept min/max or per-phase cooldown keys later.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -631,7 +689,7 @@ Applies `debuff_resistance` behavior to a named mutation definition in `mob_muta
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -659,7 +717,7 @@ Applies `damage_type_resistance` behavior to a named mutation definition in `mob
 - Optional amount/ratio keys are component-specific and must be validator-backed.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -687,7 +745,7 @@ Applies `temporary_shield` behavior to a named mutation definition in `mob_mutat
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -715,12 +773,11 @@ Applies `shield_regen` behavior to a named mutation definition in `mob_mutators`
 - **Schema status:** Initial design target; final key names are not locked yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -744,12 +801,11 @@ Applies `partial_cc_immunity` behavior to a named mutation definition in `mob_mu
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -772,7 +828,7 @@ Applies `projectile_resistance` behavior to a named mutation definition in `mob_
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -801,12 +857,11 @@ Applies `fall_resistance` behavior to a named mutation definition in `mob_mutato
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -830,12 +885,11 @@ Applies `fire_resistance` behavior to a named mutation definition in `mob_mutato
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -859,12 +913,11 @@ Applies `explosion_resistance` behavior to a named mutation definition in `mob_m
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -889,7 +942,7 @@ Applies `on_hit_effect` behavior to a named mutation definition in `mob_mutators
 - Optional duration/amplifier keys are component-specific.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -917,7 +970,7 @@ Applies `life_steal` behavior to a named mutation definition in `mob_mutators`.
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -946,12 +999,11 @@ Applies `bleed_on_hit` behavior to a named mutation definition in `mob_mutators`
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -975,12 +1027,11 @@ Applies `poison_on_hit` behavior to a named mutation definition in `mob_mutators
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1004,12 +1055,11 @@ Applies `slow_on_hit` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1033,12 +1083,11 @@ Applies `knockback_on_hit` behavior to a named mutation definition in `mob_mutat
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1062,12 +1111,11 @@ Applies `armor_break_on_hit` behavior to a named mutation definition in `mob_mut
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1091,12 +1139,11 @@ Applies `cooldown_burst_attack` behavior to a named mutation definition in `mob_
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1121,7 +1168,7 @@ Applies `reinforcement_summon` behavior to a named mutation definition in `mob_m
 - Additional spawn tuning keys are optional and component-specific.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1148,7 +1195,7 @@ Applies `summon_cooldown` behavior to a named mutation definition in `mob_mutato
 - `seconds` (number, expected `> 0`).
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1175,7 +1222,7 @@ Applies `summon_cap` behavior to a named mutation definition in `mob_mutators`.
 - `max` (integer, expected `>= 1`).
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1203,12 +1250,11 @@ Applies `summon_entity_table` behavior to a named mutation definition in `mob_mu
 - **Schema status:** Initial design target; final table schema is not implemented yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1231,7 +1277,7 @@ Applies `death_spawn` behavior to a named mutation definition in `mob_mutators`.
 - Additional spawn tuning keys are optional and component-specific.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1259,12 +1305,11 @@ Applies `phase_spawn` behavior to a named mutation definition in `mob_mutators`.
 - **Schema status:** Initial design target; not finalized in current implementation.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1289,7 +1334,7 @@ Applies `burst_movement` behavior to a named mutation definition in `mob_mutator
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1318,12 +1363,11 @@ Applies `short_dash` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1347,12 +1391,11 @@ Applies `teleport_step` behavior to a named mutation definition in `mob_mutators
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1376,12 +1419,11 @@ Applies `jump_boost_behavior` behavior to a named mutation definition in `mob_mu
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1405,12 +1447,11 @@ Applies `water_chase_behavior` behavior to a named mutation definition in `mob_m
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1435,7 +1476,7 @@ Applies `projectile_modifier` behavior to a named mutation definition in `mob_mu
 - Use explicit named keys in authored content and validate in future schema revisions.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1464,12 +1505,11 @@ Applies `projectile_split` behavior to a named mutation definition in `mob_mutat
 - Initial design target: exact spread schema is not finalized yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1493,12 +1533,11 @@ Applies `projectile_status_payload` behavior to a named mutation definition in `
 - Initial design target: duration/amplifier fields are not final yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1522,12 +1561,11 @@ Applies `projectile_velocity_bonus` behavior to a named mutation definition in `
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1551,12 +1589,11 @@ Applies `projectile_tracking_partial` behavior to a named mutation definition in
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1580,7 +1617,7 @@ Applies `fire_package` behavior to a named mutation definition in `mob_mutators`
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1607,7 +1644,7 @@ Applies `frost_package` behavior to a named mutation definition in `mob_mutators
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1634,7 +1671,7 @@ Applies `lightning_package` behavior to a named mutation definition in `mob_muta
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1661,7 +1698,7 @@ Applies `poison_package` behavior to a named mutation definition in `mob_mutator
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1689,12 +1726,11 @@ Applies `void_package` behavior to a named mutation definition in `mob_mutators`
 - Planned schema may add optional tuning keys; treat this as non-final.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1719,7 +1755,7 @@ Applies `damage_aura` behavior to a named mutation definition in `mob_mutators`.
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1748,12 +1784,11 @@ Applies `slow_aura` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1777,12 +1812,11 @@ Applies `fear_aura` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1806,12 +1840,11 @@ Applies `healing_suppression_aura` behavior to a named mutation definition in `m
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1835,12 +1868,11 @@ Applies `ally_buff_aura` behavior to a named mutation definition in `mob_mutator
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1863,7 +1895,7 @@ Applies `death_explosion` behavior to a named mutation definition in `mob_mutato
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1892,12 +1924,11 @@ Applies `death_cloud` behavior to a named mutation definition in `mob_mutators`.
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1920,7 +1951,7 @@ Applies `retaliation_thorns` behavior to a named mutation definition in `mob_mut
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -1949,12 +1980,11 @@ Applies `retaliation_burst` behavior to a named mutation definition in `mob_muta
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -1978,12 +2008,11 @@ Applies `revenge_enrage` behavior to a named mutation definition in `mob_mutator
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2008,12 +2037,11 @@ Applies `nameplate_style` behavior to a named mutation definition in `mob_mutato
 - **Schema status:** Initial design target; do not assume final key set yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2035,7 +2063,7 @@ Applies `glow_style` behavior to a named mutation definition in `mob_mutators`.
 - Intended style keys such as `style`, `color`, and presentation toggles.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2062,7 +2090,7 @@ Applies `ambient_particles` behavior to a named mutation definition in `mob_muta
 - Intended style keys such as `style`, `color`, and presentation toggles.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2090,12 +2118,11 @@ Applies `ambient_sound_loop` behavior to a named mutation definition in `mob_mut
 - **Schema status:** Initial design target.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2118,12 +2145,11 @@ Applies `spawn_announcement_style` behavior to a named mutation definition in `m
 - **Schema status:** Initial design target; do not assume final key set yet.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2153,7 +2179,7 @@ Applies `max_health_bonus` behavior to a named ascension reward definition in `a
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2181,7 +2207,7 @@ Applies `armor_bonus` behavior to a named ascension reward definition in `ascens
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2209,7 +2235,7 @@ Applies `armor_toughness_bonus` behavior to a named ascension reward definition 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2237,7 +2263,7 @@ Applies `attack_damage_bonus` behavior to a named ascension reward definition in
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2265,7 +2291,7 @@ Applies `movement_speed_bonus` behavior to a named ascension reward definition i
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2293,7 +2319,7 @@ Applies `knockback_resistance_bonus` behavior to a named ascension reward defini
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2321,7 +2347,7 @@ Applies `luck_bonus` behavior to a named ascension reward definition in `ascensi
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2350,7 +2376,7 @@ Applies `fire_resistance_passive` behavior to a named ascension reward definitio
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2378,7 +2404,7 @@ Applies `fall_damage_reduction` behavior to a named ascension reward definition 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2406,7 +2432,7 @@ Applies `debuff_resistance` behavior to a named ascension reward definition in `
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2434,7 +2460,7 @@ Applies `damage_type_resistance` behavior to a named ascension reward definition
 - Optional amount/ratio keys are component-specific and must be validator-backed.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2462,7 +2488,7 @@ Applies `healing_efficiency_bonus` behavior to a named ascension reward definiti
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2490,7 +2516,7 @@ Applies `extra_revival_buffer` behavior to a named ascension reward definition i
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2519,12 +2545,11 @@ Applies `environmental_resistance` behavior to a named ascension reward definiti
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2549,7 +2574,7 @@ Applies `step_height_bonus` behavior to a named ascension reward definition in `
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2577,7 +2602,7 @@ Applies `sprint_efficiency` behavior to a named ascension reward definition in `
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2605,7 +2630,7 @@ Applies `jump_bonus` behavior to a named ascension reward definition in `ascensi
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2633,7 +2658,7 @@ Applies `water_mobility_bonus` behavior to a named ascension reward definition i
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2660,7 +2685,7 @@ Applies `night_vision_passive` behavior to a named ascension reward definition i
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2687,7 +2712,7 @@ Applies `hostile_wall_sense` behavior to a named ascension reward definition in 
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2714,7 +2739,7 @@ Applies `loot_detection` behavior to a named ascension reward definition in `asc
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2743,12 +2768,11 @@ Applies `structure_detection_hint` behavior to a named ascension reward definiti
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2773,7 +2797,7 @@ Applies `crit_bonus` behavior to a named ascension reward definition in `ascensi
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2801,7 +2825,7 @@ Applies `attack_reach_bonus` behavior to a named ascension reward definition in 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2829,7 +2853,7 @@ Applies `on_hit_effect_passive` behavior to a named ascension reward definition 
 - Optional duration/amplifier keys are component-specific.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2857,7 +2881,7 @@ Applies `life_steal_minor` behavior to a named ascension reward definition in `a
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -2886,12 +2910,11 @@ Applies `execution_bonus` behavior to a named ascension reward definition in `as
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2915,12 +2938,11 @@ Applies `cooldown_reduction_minor` behavior to a named ascension reward definiti
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2944,12 +2966,11 @@ Applies `projectile_bonus` behavior to a named ascension reward definition in `a
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -2972,12 +2993,11 @@ Applies `elemental_affinity` behavior to a named ascension reward definition in 
 - **Schema status:** Initial design target.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3002,7 +3022,7 @@ Applies `xp_gain_bonus` behavior to a named ascension reward definition in `asce
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -3030,7 +3050,7 @@ Applies `loot_quality_bonus` behavior to a named ascension reward definition in 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -3058,7 +3078,7 @@ Applies `invasion_reward_bonus` behavior to a named ascension reward definition 
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -3086,7 +3106,7 @@ Applies `mutation_resistance_bonus` behavior to a named ascension reward definit
 - Flat additive scalar unless component-specific behavior states otherwise.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -3115,12 +3135,11 @@ Applies `boss_reward_bonus` behavior to a named ascension reward definition in `
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3146,12 +3165,11 @@ Applies `invasion_warning_bonus` behavior to a named ascension reward definition
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3173,7 +3191,7 @@ Applies `elite_detection` behavior to a named ascension reward definition in `as
 - No required parameters in current validators.
 
 **Defaults / Notes:**
-- **Status:** Implemented.
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -3201,12 +3219,11 @@ Applies `rare_drop_ping` behavior to a named ascension reward definition in `asc
 - Planned schema may add optional tuning keys; treat this as non-final.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3230,12 +3247,11 @@ Applies `exploration_reward_bonus` behavior to a named ascension reward definiti
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3261,12 +3277,11 @@ Applies `ally_minor_aura` behavior to a named ascension reward definition in `as
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3290,12 +3305,11 @@ Applies `shared_detection_aura` behavior to a named ascension reward definition 
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3319,12 +3333,11 @@ Applies `support_healing_aura` behavior to a named ascension reward definition i
 - Initial design target: may gain explicit bounds or extra keys when implemented.
 
 **Defaults / Notes:**
-- **Status:** Planned component (Initial design target).
+- **Status:** `planned` (initial design target).
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
 **Compatibility Notes:**
-- Planned component. Final conflict/stacking semantics will be locked with implementation.
 
 **Example Snippet:**
 ```json
@@ -3347,6 +3360,11 @@ Applies `support_healing_aura` behavior to a named ascension reward definition i
 - Invalid parameter type/value -> validation error.
 - Impossible parameter combination -> validation error.
 - Incompatible component combination -> validation error.
+- Missing required companion component -> validation error.
+- Forbidden companion component present -> validation error.
+- Forbidden duplicate policy violation -> validation error.
+- `max_instances` exceeded -> validation error.
+- Explicit conflict or stacking-group overflow -> validation error.
 - Empty components array -> validation error.
 - Invalid authored definition disables that object, not unrelated systems.
 
@@ -3362,27 +3380,30 @@ Recommended error code families:
 
 Current implementation note:
 - Runtime diagnostics currently use shared component codes such as `WA_COMPONENT_TYPE_UNKNOWN`, `WA_COMPONENT_PARAMETERS_INVALID`, `WA_COMPONENT_COMPOSITION_INVALID`, `WA_COMPONENT_ARRAY_EMPTY`, and `WA_COMPONENT_BUDGET_EXCEEDED`.
-- Keep this reference aligned with real codec/validator behavior and shipped preset content.
+- Keep this reference aligned with real codec/validator behavior and shipped external example-pack content.
 
 ## 7. Built-In Preset Examples
 Built-in presets are authored datapack compositions, not privileged code-only identities.
 
 Mutation preset examples:
-- `juggernaut_preset` -> `max_health_multiplier` + `armor_bonus` + `knockback_resistance_bonus` + `movement_speed_bonus` (shipped bundled datapack content).
-- `summoner_preset` -> `reinforcement_summon` + `summon_cooldown` + `summon_cap` + `max_health_bonus` (shipped bundled datapack content).
+- `juggernaut_preset` -> `max_health_multiplier` + `armor_bonus` + `knockback_resistance_bonus` + `movement_speed_bonus` (shipped external example-pack content).
+- `summoner_preset` -> `reinforcement_summon` + `summon_cooldown` + `summon_cap` + `max_health_bonus` (shipped external example-pack content).
 - `hunter_preset` -> `wall_sense` + `target_range_bonus` + `pursuit_speed_boost` (conceptual example).
 - `unyielding_hunter` -> `max_health_bonus` + `debuff_resistance` + `wall_sense` (conceptual mutation example).
 - `summoner_juggernaut` -> `reinforcement_summon` + `summon_cooldown` + `max_health_multiplier` + `armor_bonus` (conceptual hybrid example).
 
 Ascension preset examples:
-- `ember_blood` -> `max_health_bonus` + `fire_resistance_passive` + `healing_efficiency_bonus` (shipped bundled datapack content).
+- `ember_blood` -> `max_health_bonus` + `fire_resistance_passive` + `healing_efficiency_bonus` (shipped external example-pack content).
 - `grave_stride` -> `step_height_bonus` + `night_vision_passive` + `fall_damage_reduction` (conceptual example).
 - `predator_sense` -> `hostile_wall_sense` + `loot_detection` + `crit_bonus` (conceptual example).
 - `unyielding_will` -> `extra_revival_buffer` + `debuff_resistance` + `mutation_resistance_bonus` (conceptual example).
 
 ## 8. Contributor Update Rules
 - Update this document in the same change whenever component IDs or schemas change.
-- Keep implemented vs planned status explicit for every component entry.
-- Keep examples aligned with real codecs, validators, and bundled datapack content.
+- Keep status explicit for every component entry using shared taxonomy labels (`implemented`, `planned`, `reserved`, `deprecated`).
+- Keep status labels synchronized with `docs/WEB_AUTHORING_TOOL_SPEC.md` feature-marker expectations.
+- Keep composition semantics aligned with shared framework contracts in `docs/SPECIFICATION.md`.
+- Keep examples aligned with real codecs, validators, and external example-pack content.
 - Do not reintroduce hardcoded preset assumptions in this reference.
 - Keep this file as practical authoring documentation, not speculative wishlist text.
+

@@ -8,7 +8,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.SplittableRandom;
 import com.google.gson.JsonElement;
@@ -22,6 +21,10 @@ public final class WorldAwakenedRuleEngine {
             .comparingInt(CompiledRule::priority)
             .reversed()
             .thenComparing(rule -> rule.id().toString());
+    private static final Comparator<CompiledAction> ACTION_ORDER = Comparator
+            .comparingInt(CompiledAction::priority)
+            .reversed()
+            .thenComparingInt(CompiledAction::authoredIndex);
     private static final Set<String> SUPPORTED_CONDITION_PATHS = Set.of(
             "stage_unlocked",
             "stage_locked",
@@ -38,7 +41,6 @@ public final class WorldAwakenedRuleEngine {
             "entity_not_boss",
             "entity_is_mutated",
             "player_count_online",
-            "local_difficulty_range",
             "apotheosis_world_tier_compare",
             "random_chance",
             "moon_phase",
@@ -155,15 +157,25 @@ public final class WorldAwakenedRuleEngine {
             if (!condition.isJsonObject()) {
                 continue;
             }
-            compileCondition(condition.getAsJsonObject()).ifPresent(conditions::add);
+            JsonObject conditionNode = condition.getAsJsonObject();
+            if (!isNodeEnabled(conditionNode)) {
+                continue;
+            }
+            compileCondition(conditionNode).ifPresent(conditions::add);
         }
         List<CompiledAction> actions = new ArrayList<>(definition.actions().size());
-        for (JsonElement action : definition.actions()) {
+        for (int index = 0; index < definition.actions().size(); index++) {
+            JsonElement action = definition.actions().get(index);
             if (!action.isJsonObject()) {
                 continue;
             }
-            compileAction(action.getAsJsonObject()).ifPresent(actions::add);
+            JsonObject actionNode = action.getAsJsonObject();
+            if (!isNodeEnabled(actionNode)) {
+                continue;
+            }
+            compileAction(actionNode, index).ifPresent(actions::add);
         }
+        actions.sort(ACTION_ORDER);
         return new CompiledRule(
                 definition.id(),
                 definition.priority(),
@@ -179,6 +191,7 @@ public final class WorldAwakenedRuleEngine {
         if (typeOpt.isEmpty()) {
             return Optional.empty();
         }
+        JsonObject parameters = readParametersObject(node);
         String path = typeOpt.get().getPath().toLowerCase(Locale.ROOT);
         ConditionKind kind = switch (path) {
             case "stage_unlocked" -> ConditionKind.STAGE_UNLOCKED;
@@ -196,7 +209,6 @@ public final class WorldAwakenedRuleEngine {
             case "entity_not_boss" -> ConditionKind.ENTITY_NOT_BOSS;
             case "entity_is_mutated" -> ConditionKind.ENTITY_IS_MUTATED;
             case "player_count_online" -> ConditionKind.PLAYER_COUNT_ONLINE;
-            case "local_difficulty_range" -> ConditionKind.LOCAL_DIFFICULTY_RANGE;
             case "apotheosis_world_tier_compare" -> ConditionKind.APOTHEOSIS_WORLD_TIER_COMPARE;
             case "random_chance" -> ConditionKind.RANDOM_CHANCE;
             case "moon_phase" -> ConditionKind.MOON_PHASE;
@@ -205,37 +217,37 @@ public final class WorldAwakenedRuleEngine {
             default -> ConditionKind.UNSUPPORTED;
         };
         Optional<ResourceLocation> resourceRef = switch (kind) {
-            case STAGE_UNLOCKED, STAGE_LOCKED -> readResourceLocation(node, "stage", "stage_id", "id", "stage_ref");
-            case CURRENT_DIMENSION -> readResourceLocation(node, "dimension");
-            case CURRENT_BIOME -> readResourceLocation(node, "biome");
-            case ENTITY_TYPE -> readResourceLocation(node, "entity", "entity_type", "entity_id", "id");
-            case ENTITY_TAG -> readTag(node, "tag", "entity_tag", "id");
-            case ASCENSION_REWARD_OWNED -> readResourceLocation(node, "reward", "reward_id", "id");
-            case ASCENSION_OFFER_PENDING -> readResourceLocation(node, "offer", "offer_id", "id");
+            case STAGE_UNLOCKED, STAGE_LOCKED -> readResourceLocation(parameters, "stage");
+            case CURRENT_DIMENSION -> readResourceLocation(parameters, "dimension");
+            case CURRENT_BIOME -> readResourceLocation(parameters, "biome");
+            case ENTITY_TYPE -> readResourceLocation(parameters, "entity");
+            case ENTITY_TAG -> readTag(parameters, "tag");
+            case ASCENSION_REWARD_OWNED -> readResourceLocation(parameters, "reward");
+            case ASCENSION_OFFER_PENDING -> readResourceLocation(parameters, "offer");
             default -> Optional.empty();
         };
         Optional<String> text = switch (kind) {
-            case LOADED_MOD -> readString(node, "mod", "mod_id", "id");
-            case CONFIG_TOGGLE_ENABLED -> readString(node, "config_gate", "config", "key", "id");
-            case STRUCTURE_CONTEXT -> readString(node, "structure", "name", "id");
-            case APOTHEOSIS_WORLD_TIER_COMPARE -> readString(node, "op", "operator");
+            case LOADED_MOD -> readString(parameters, "mod");
+            case CONFIG_TOGGLE_ENABLED -> readString(parameters, "config_gate");
+            case STRUCTURE_CONTEXT -> readString(parameters, "structure");
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> readString(parameters, "op");
             default -> Optional.empty();
         };
         OptionalDouble value = switch (kind) {
-            case WORLD_DAY_GTE -> readDouble(node, "value", "day", "min_day");
-            case RANDOM_CHANCE -> readDouble(node, "chance", "value");
-            case APOTHEOSIS_WORLD_TIER_COMPARE -> readDouble(node, "value");
+            case WORLD_DAY_GTE -> readDouble(parameters, "value");
+            case RANDOM_CHANCE -> readDouble(parameters, "chance");
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> readDouble(parameters, "value");
             default -> OptionalDouble.empty();
         };
         OptionalDouble min = switch (kind) {
-            case PLAYER_DISTANCE_FROM_SPAWN, PLAYER_COUNT_ONLINE, LOCAL_DIFFICULTY_RANGE -> readDouble(node, "min", "min_distance");
+            case PLAYER_DISTANCE_FROM_SPAWN, PLAYER_COUNT_ONLINE -> readDouble(parameters, "min");
             default -> OptionalDouble.empty();
         };
         OptionalDouble max = switch (kind) {
-            case PLAYER_DISTANCE_FROM_SPAWN, PLAYER_COUNT_ONLINE, LOCAL_DIFFICULTY_RANGE -> readDouble(node, "max", "max_distance");
+            case PLAYER_DISTANCE_FROM_SPAWN, PLAYER_COUNT_ONLINE -> readDouble(parameters, "max");
             default -> OptionalDouble.empty();
         };
-        Set<Integer> ints = kind == ConditionKind.MOON_PHASE ? parseMoonPhases(node) : Set.of();
+        Set<Integer> ints = kind == ConditionKind.MOON_PHASE ? parseMoonPhases(parameters) : Set.of();
         return Optional.of(new CompiledCondition(
                 typeOpt.get(),
                 kind,
@@ -246,11 +258,12 @@ public final class WorldAwakenedRuleEngine {
                 max,
                 ints));
     }
-    private static Optional<CompiledAction> compileAction(JsonObject node) {
+    private static Optional<CompiledAction> compileAction(JsonObject node, int authoredIndex) {
         Optional<ResourceLocation> typeOpt = readResourceLocation(node, "type");
         if (typeOpt.isEmpty()) {
             return Optional.empty();
         }
+        JsonObject parameters = readParametersObject(node);
         String path = typeOpt.get().getPath().toLowerCase(Locale.ROOT);
         WorldAwakenedRuleActionKind kind = switch (path) {
             case "unlock_stage" -> WorldAwakenedRuleActionKind.UNLOCK_STAGE;
@@ -268,24 +281,25 @@ public final class WorldAwakenedRuleEngine {
             default -> WorldAwakenedRuleActionKind.UNSUPPORTED;
         };
         Optional<ResourceLocation> resourceRef = switch (kind) {
-            case UNLOCK_STAGE, LOCK_STAGE -> readResourceLocation(node, "stage", "stage_id", "id");
-            case GRANT_ASCENSION_OFFER -> readResourceLocation(node, "offer", "offer_id", "id");
+            case UNLOCK_STAGE, LOCK_STAGE -> readResourceLocation(parameters, "stage");
+            case GRANT_ASCENSION_OFFER -> readResourceLocation(parameters, "offer");
             case APPLY_MUTATOR_POOL, APPLY_STAT_PROFILE, INJECT_LOOT_PROFILE, TRIGGER_INVASION_PROFILE, DROP_REWARD_TABLE, SET_TEMP_INVASION_MODIFIER ->
-                readResourceLocation(node, "pool", "profile", "table", "id");
+                readResourceLocation(parameters, "pool", "profile", "table");
             default -> Optional.empty();
         };
         Optional<String> text = switch (kind) {
-            case SEND_WARNING_MESSAGE -> readMessageText(node);
-            case SET_WORLD_SCALAR -> readString(node, "key", "scalar", "id");
+            case SEND_WARNING_MESSAGE -> readMessageText(parameters);
+            case SET_WORLD_SCALAR -> readString(parameters, "key");
             default -> Optional.empty();
         };
         Optional<String> operator = kind == WorldAwakenedRuleActionKind.SET_WORLD_SCALAR
-                ? readString(node, "op", "operator")
+                ? readString(parameters, "op")
                 : Optional.empty();
         OptionalDouble value = kind == WorldAwakenedRuleActionKind.SET_WORLD_SCALAR
-                ? readDouble(node, "value")
+                ? readDouble(parameters, "value")
                 : OptionalDouble.empty();
-        return Optional.of(new CompiledAction(typeOpt.get(), kind, resourceRef, text, operator, value));
+        int priority = readInt(node, "priority").orElse(0);
+        return Optional.of(new CompiledAction(typeOpt.get(), kind, resourceRef, text, operator, value, priority, authoredIndex));
     }
     private static ScopeResolution resolveScope(CompiledRule rule, WorldAwakenedRuleMatchContext context) {
         ExecutionScope scope = rule.executionScope();
@@ -380,7 +394,7 @@ public final class WorldAwakenedRuleEngine {
                                     "stage_unlocked_failed:" + stage)))
                     .orElseGet(() -> Optional.of(new ConditionFailure(
                             WorldAwakenedRejectionReason.STAGE_CONDITION_FAILED,
-                            "stage_unlocked_missing_stage_ref")));
+                            "stage_unlocked_missing_stage")));
             case STAGE_LOCKED -> condition.resourceRef()
                     .map(stage -> hasStage(scopeResolution.stageSnapshot(), stageRegistry, stage)
                             ? Optional.of(new ConditionFailure(
@@ -389,7 +403,7 @@ public final class WorldAwakenedRuleEngine {
                             : Optional.<ConditionFailure>empty())
                     .orElseGet(() -> Optional.of(new ConditionFailure(
                             WorldAwakenedRejectionReason.STAGE_CONDITION_FAILED,
-                            "stage_locked_missing_stage_ref")));
+                            "stage_locked_missing_stage")));
             case ASCENSION_REWARD_OWNED -> condition.resourceRef()
                     .map(reward -> context.hasPlayerContext() && context.ownedAscensionRewards().contains(reward)
                             ? Optional.<ConditionFailure>empty()
@@ -536,25 +550,6 @@ public final class WorldAwakenedRuleEngine {
                     yield Optional.of(new ConditionFailure(
                             WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
                             "player_count_above_max:" + online));
-                }
-                yield Optional.empty();
-            }
-            case LOCAL_DIFFICULTY_RANGE -> {
-                if (context.localDifficulty().isEmpty()) {
-                    yield Optional.of(new ConditionFailure(
-                            WorldAwakenedRejectionReason.WORLD_CONTEXT_CONDITION_UNAVAILABLE,
-                            "local_difficulty_unavailable"));
-                }
-                double localDifficulty = context.localDifficulty().getAsDouble();
-                if (condition.min().isPresent() && localDifficulty < condition.min().getAsDouble()) {
-                    yield Optional.of(new ConditionFailure(
-                            WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
-                            "local_difficulty_below_min:" + localDifficulty));
-                }
-                if (condition.max().isPresent() && localDifficulty > condition.max().getAsDouble()) {
-                    yield Optional.of(new ConditionFailure(
-                            WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
-                            "local_difficulty_above_max:" + localDifficulty));
                 }
                 yield Optional.empty();
             }
@@ -809,6 +804,30 @@ public final class WorldAwakenedRuleEngine {
         }
         return null;
     }
+    private static JsonObject readParametersObject(JsonObject node) {
+        if (!node.has("parameters") || !node.get("parameters").isJsonObject()) {
+            return new JsonObject();
+        }
+        return node.getAsJsonObject("parameters");
+    }
+    private static boolean isNodeEnabled(JsonObject node) {
+        if (!node.has("enabled")) {
+            return true;
+        }
+        JsonElement enabled = node.get("enabled");
+        if (!enabled.isJsonPrimitive() || !enabled.getAsJsonPrimitive().isBoolean()) {
+            return true;
+        }
+        return enabled.getAsBoolean();
+    }
+    private static Optional<Integer> readInt(JsonObject object, String... keys) {
+        for (String key : keys) {
+            if (object.has(key) && object.get(key).isJsonPrimitive() && object.get(key).getAsJsonPrimitive().isNumber()) {
+                return Optional.of(object.get(key).getAsInt());
+            }
+        }
+        return Optional.empty();
+    }
     private enum ConditionKind {
         STAGE_UNLOCKED,
         STAGE_LOCKED,
@@ -825,7 +844,6 @@ public final class WorldAwakenedRuleEngine {
         ENTITY_NOT_BOSS,
         ENTITY_IS_MUTATED,
         PLAYER_COUNT_ONLINE,
-        LOCAL_DIFFICULTY_RANGE,
         APOTHEOSIS_WORLD_TIER_COMPARE,
         RANDOM_CHANCE,
         MOON_PHASE,
@@ -859,7 +877,9 @@ public final class WorldAwakenedRuleEngine {
             Optional<ResourceLocation> resourceRef,
             Optional<String> text,
             Optional<String> operator,
-            OptionalDouble value) {
+            OptionalDouble value,
+            int priority,
+            int authoredIndex) {
     }
     private record ConditionFailure(
             WorldAwakenedRejectionReason reason,

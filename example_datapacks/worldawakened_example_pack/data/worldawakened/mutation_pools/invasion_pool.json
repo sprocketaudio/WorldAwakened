@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:invasion_pool",
+  "enabled": true,
+  "weight": 9,
+  "conditions": [
+    {
+      "type": "worldawakened:invasion_active",
+      "parameters": {}
+    },
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 12
+      }
+    }
+  ],
+  "mutators": [
+    {
+      "id": "worldawakened:summoner_preset",
+      "weight": 5
+    },
+    {
+      "id": "worldawakened:hunter_preset",
+      "weight": 6
+    },
+    {
+      "id": "worldawakened:lightning_berserker",
+      "weight": 4
+    },
+    {
+      "id": "worldawakened:plague_walker",
+      "weight": 4
+    }
+  ],
+  "max_mutators_per_entity": 2,
+  "reroll_policy": "single_retry"
+}

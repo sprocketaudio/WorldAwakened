@@ -31,14 +31,14 @@ class WorldAwakenedRuleEngineTest {
                 100,
                 1.0D,
                 List.of(),
-                List.of(node("{\"type\":\"worldawakened:unlock_stage\",\"stage\":\"testpack:awakened\"}")),
+                List.of(node("{\"type\":\"worldawakened:unlock_stage\",\"parameters\":{\"stage\":\"testpack:awakened\"}}")),
                 Optional.empty());
         RuleDefinition gatedByUnlockedStage = rule(
                 "testpack:gated",
                 10,
                 1.0D,
-                List.of(node("{\"type\":\"worldawakened:stage_unlocked\",\"stage\":\"testpack:awakened\"}")),
-                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"message\":\"ready\"}")),
+                List.of(node("{\"type\":\"worldawakened:stage_unlocked\",\"parameters\":{\"stage\":\"testpack:awakened\"}}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"ready\"}}")),
                 Optional.empty());
 
         WorldAwakenedStageRegistry stageRegistry = WorldAwakenedStageRegistry.from(Map.of(
@@ -65,8 +65,8 @@ class WorldAwakenedRuleEngineTest {
                 "testpack:distance_gate",
                 0,
                 1.0D,
-                List.of(node("{\"type\":\"worldawakened:player_distance_from_spawn\",\"min\":128}")),
-                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"message\":\"far enough\"}")),
+                List.of(node("{\"type\":\"worldawakened:player_distance_from_spawn\",\"parameters\":{\"min\":128}}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"far enough\"}}")),
                 Optional.empty());
 
         var evaluation = WorldAwakenedRuleEngine.evaluate(
@@ -94,7 +94,7 @@ class WorldAwakenedRuleEngineTest {
                 0,
                 0.35D,
                 List.of(),
-                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"message\":\"chance\"}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"chance\"}}")),
                 Optional.empty());
 
         WorldAwakenedRuleMatchContext firstContext = context(
@@ -145,7 +145,7 @@ class WorldAwakenedRuleEngineTest {
                 0,
                 0.1D,
                 List.of(),
-                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"message\":\"x\"}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"x\"}}")),
                 Optional.of(node("{\"seconds\":30}")));
 
         WorldAwakenedRuleStateSnapshot cooldownSnapshot = new WorldAwakenedRuleStateSnapshot(

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:starter_elite_pool",
+  "enabled": true,
+  "weight": 10,
+  "conditions": [
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:overworld"
+      }
+    },
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 0
+      }
+    }
+  ],
+  "eligible_dimensions": [
+    "minecraft:overworld"
+  ],
+  "eligible_entities": [
+    "minecraft:zombie",
+    "minecraft:skeleton",
+    "minecraft:spider"
+  ],
+  "mutators": [
+    {
+      "id": "worldawakened:hunter_preset",
+      "weight": 8
+    },
+    {
+      "id": "worldawakened:unyielding_guard",
+      "weight": 6
+    },
+    {
+      "id": "worldawakened:vampiric_predator",
+      "weight": 5
+    }
+  ],
+  "max_mutators_per_entity": 1,
+  "reroll_policy": "single_retry"
+}

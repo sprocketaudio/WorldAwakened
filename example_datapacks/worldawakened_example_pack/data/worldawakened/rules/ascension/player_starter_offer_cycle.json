@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:ascension/player_starter_offer_cycle",
+  "enabled": true,
+  "priority": 20,
+  "execution_scope": "player",
+  "conditions": [
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 0
+      }
+    },
+    {
+      "type": "worldawakened:random_chance",
+      "parameters": {
+        "chance": 0.12
+      }
+    }
+  ],
+  "actions": [
+    {
+      "type": "worldawakened:grant_ascension_offer",
+      "parameters": {
+        "offer": "worldawakened:starter_adaptation"
+      }
+    }
+  ],
+  "weight": 1,
+  "chance": 1,
+  "cooldown": {
+    "minutes": 30
+  },
+  "tags": [
+    "example",
+    "ascension",
+    "starter"
+  ]
+}

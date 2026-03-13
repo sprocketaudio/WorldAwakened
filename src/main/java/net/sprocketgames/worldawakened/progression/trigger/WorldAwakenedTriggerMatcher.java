@@ -140,39 +140,39 @@ public final class WorldAwakenedTriggerMatcher {
                 return false;
             }
             JsonObject node = condition.getAsJsonObject();
+            if (!isNodeEnabled(node)) {
+                continue;
+            }
             Optional<ResourceLocation> typeOpt = readType(node);
             if (typeOpt.isEmpty()) {
                 return false;
             }
+            JsonObject parameters = readParametersObject(node);
 
             String path = typeOpt.get().getPath().toLowerCase(Locale.ROOT);
             boolean matched = switch (path) {
-                case "stage_unlocked" -> readResourceLocation(node, "stage", "stage_id", "id", "stage_ref")
+                case "stage_unlocked" -> readResourceLocation(parameters, "stage")
                         .map(stageId -> containsStage(activeStages, stageRegistry, stageId))
                         .orElse(false);
-                case "stage_locked" -> readResourceLocation(node, "stage", "stage_id", "id", "stage_ref")
+                case "stage_locked" -> readResourceLocation(parameters, "stage")
                         .map(stageId -> !containsStage(activeStages, stageRegistry, stageId))
                         .orElse(false);
-                case "current_dimension" -> readResourceLocation(node, "dimension")
+                case "current_dimension" -> readResourceLocation(parameters, "dimension")
                         .map(context.dimensionId()::equals)
                         .orElse(false);
-                case "advancement_completed" -> readResourceLocation(node, "advancement", "advancement_id", "id")
+                case "advancement_completed" -> readResourceLocation(parameters, "advancement")
                         .map(id -> context.advancementId().map(id::equals).orElse(false))
                         .orElse(false);
-                case "entity_type", "entity_killed", "killed_entity" -> readResourceLocation(node, "entity", "entity_id", "id")
+                case "entity_type" -> readResourceLocation(parameters, "entity")
                         .map(id -> context.entityId().map(id::equals).orElse(false))
                         .orElse(false);
-                case "entity_tag" -> readTagSelector(node, "tag", "entity_tag", "id")
+                case "entity_tag" -> readTagSelector(parameters, "tag")
                         .map(tag -> context.entityTags().contains(tag))
                         .orElse(false);
-                case "manual_trigger", "manual_debug", "debug_trigger" -> readResourceLocation(
-                        node,
-                        "trigger_id",
-                        "manual_trigger_id",
-                        "id")
+                case "manual_trigger" -> readResourceLocation(parameters, "trigger_id")
                         .map(id -> context.manualTriggerId().map(id::equals).orElse(false))
                         .orElse(false);
-                case "boss_killed", "entity_is_boss" -> context.bossFlagMapMatch();
+                case "boss_killed" -> context.bossFlagMapMatch();
                 default -> false;
             };
 
@@ -212,15 +212,18 @@ public final class WorldAwakenedTriggerMatcher {
                 continue;
             }
             JsonObject object = condition.getAsJsonObject();
+            if (!isNodeEnabled(object)) {
+                continue;
+            }
             Optional<ResourceLocation> typeOpt = readType(object);
             if (typeOpt.isEmpty()) {
                 continue;
             }
             String path = typeOpt.get().getPath().toLowerCase(Locale.ROOT);
-            if (!("entity_type".equals(path) || "entity_killed".equals(path) || "killed_entity".equals(path))) {
+            if (!"entity_type".equals(path)) {
                 continue;
             }
-            readResourceLocation(object, "entity", "entity_id", "id").ifPresent(ids::add);
+            readResourceLocation(readParametersObject(object), "entity").ifPresent(ids::add);
         }
         return ids;
     }
@@ -232,6 +235,9 @@ public final class WorldAwakenedTriggerMatcher {
                 continue;
             }
             JsonObject object = condition.getAsJsonObject();
+            if (!isNodeEnabled(object)) {
+                continue;
+            }
             Optional<ResourceLocation> typeOpt = readType(object);
             if (typeOpt.isEmpty()) {
                 continue;
@@ -239,13 +245,29 @@ public final class WorldAwakenedTriggerMatcher {
             if (!"entity_tag".equals(typeOpt.get().getPath().toLowerCase(Locale.ROOT))) {
                 continue;
             }
-            readTagSelector(object, "tag", "entity_tag", "id").ifPresent(tags::add);
+            readTagSelector(readParametersObject(object), "tag").ifPresent(tags::add);
         }
         return tags;
     }
 
     private static Optional<ResourceLocation> readType(JsonObject object) {
         return readResourceLocation(object, "type");
+    }
+    private static JsonObject readParametersObject(JsonObject object) {
+        if (!object.has("parameters") || !object.get("parameters").isJsonObject()) {
+            return new JsonObject();
+        }
+        return object.getAsJsonObject("parameters");
+    }
+    private static boolean isNodeEnabled(JsonObject node) {
+        if (!node.has("enabled")) {
+            return true;
+        }
+        JsonElement enabled = node.get("enabled");
+        if (!enabled.isJsonPrimitive() || !enabled.getAsJsonPrimitive().isBoolean()) {
+            return true;
+        }
+        return enabled.getAsBoolean();
     }
 
     private static Optional<ResourceLocation> readResourceLocation(JsonObject object, String... keys) {

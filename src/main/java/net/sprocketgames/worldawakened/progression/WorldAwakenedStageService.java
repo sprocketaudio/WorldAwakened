@@ -92,7 +92,7 @@ public final class WorldAwakenedStageService {
                 stageRegistry(),
                 selectedState.stageState(),
                 stageId,
-                WorldAwakenedCommonConfig.ALLOW_STAGE_REGRESSION.get());
+                true);
     }
 
     public Set<ResourceLocation> getUnlockedStages(ServerLevel level) {

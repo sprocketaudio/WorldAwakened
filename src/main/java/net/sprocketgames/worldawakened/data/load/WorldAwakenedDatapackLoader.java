@@ -77,22 +77,16 @@ public final class WorldAwakenedDatapackLoader {
             "current_dimension",
             "advancement_completed",
             "entity_type",
-            "entity_killed",
-            "killed_entity",
             "entity_tag",
             "manual_trigger",
-            "manual_debug",
-            "debug_trigger",
-            "boss_killed",
-            "entity_is_boss");
+            "boss_killed");
     private static final Set<String> SUPPORTED_TRIGGER_ACTION_PATHS = Set.of(
             "unlock_stage",
             "lock_stage",
-            "emit_event",
             "emit_named_event",
             "increment_counter",
-            "increment_trigger_counter",
-            "send_warning_message");
+            "send_warning_message",
+            "grant_ascension_offer");
 
     private static final WorldAwakenedObjectType<StageDefinition> STAGES = new WorldAwakenedObjectType<>(
             "stages",
@@ -126,8 +120,25 @@ public final class WorldAwakenedDatapackLoader {
                             "Trigger rule must include at least one action",
                             "disabled_object"));
                 }
-                validateTypedNodes("trigger_rules", definition.id(), sourcePath, "conditions", definition.conditions(), true, collector);
-                validateTypedNodes("trigger_rules", definition.id(), sourcePath, "actions", definition.actions(), false, collector);
+                String sourceScope = definition.sourceScope().name().toLowerCase(Locale.ROOT);
+                validateTypedNodes(
+                        "trigger_rules",
+                        definition.id(),
+                        sourcePath,
+                        "conditions",
+                        definition.conditions(),
+                        true,
+                        Optional.of(sourceScope),
+                        collector);
+                validateTypedNodes(
+                        "trigger_rules",
+                        definition.id(),
+                        sourcePath,
+                        "actions",
+                        definition.actions(),
+                        false,
+                        Optional.of(sourceScope),
+                        collector);
             });
 
     private static final WorldAwakenedObjectType<RuleDefinition> RULES = new WorldAwakenedObjectType<>(
@@ -165,8 +176,25 @@ public final class WorldAwakenedDatapackLoader {
                             "chance must be in range [0.0, 1.0]",
                             "disabled_object"));
                 }
-                validateTypedNodes("rules", definition.id(), sourcePath, "conditions", definition.conditions(), true, collector);
-                validateTypedNodes("rules", definition.id(), sourcePath, "actions", definition.actions(), false, collector);
+                String executionScope = definition.executionScope().name().toLowerCase(Locale.ROOT);
+                validateTypedNodes(
+                        "rules",
+                        definition.id(),
+                        sourcePath,
+                        "conditions",
+                        definition.conditions(),
+                        true,
+                        Optional.of(executionScope),
+                        collector);
+                validateTypedNodes(
+                        "rules",
+                        definition.id(),
+                        sourcePath,
+                        "actions",
+                        definition.actions(),
+                        false,
+                        Optional.of(executionScope),
+                        collector);
             });
 
     private static final WorldAwakenedObjectType<AscensionRewardDefinition> ASCENSION_REWARDS = new WorldAwakenedObjectType<>(
@@ -708,6 +736,26 @@ public final class WorldAwakenedDatapackLoader {
             List<JsonElement> nodes,
             boolean condition,
             WorldAwakenedValidationSummary.Builder collector) {
+        validateTypedNodes(
+                objectType,
+                objectId,
+                sourcePath,
+                fieldName,
+                nodes,
+                condition,
+                Optional.empty(),
+                collector);
+    }
+
+    private static void validateTypedNodes(
+            String objectType,
+            ResourceLocation objectId,
+            String sourcePath,
+            String fieldName,
+            List<JsonElement> nodes,
+            boolean condition,
+            Optional<String> declaredScope,
+            WorldAwakenedValidationSummary.Builder collector) {
         for (int index = 0; index < nodes.size(); index++) {
             JsonElement element = nodes.get(index);
             if (!element.isJsonObject()) {
@@ -723,6 +771,40 @@ public final class WorldAwakenedDatapackLoader {
             }
 
             JsonObject node = element.getAsJsonObject();
+            if (node.has("enabled")
+                    && (!node.get("enabled").isJsonPrimitive() || !node.getAsJsonPrimitive("enabled").isBoolean())) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        condition ? WorldAwakenedDiagnosticCodes.INVALID_CONDITION_TYPE : WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                        objectType,
+                        objectId,
+                        sourcePath,
+                        fieldName + "[" + index + "] enabled must be a boolean",
+                        "disabled_object"));
+            }
+            if (!condition && node.has("priority")
+                    && (!node.get("priority").isJsonPrimitive() || !node.getAsJsonPrimitive("priority").isNumber())) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                        objectType,
+                        objectId,
+                        sourcePath,
+                        fieldName + "[" + index + "] priority must be numeric",
+                        "disabled_object"));
+            }
+            if (node.has("debug_label")
+                    && (!node.get("debug_label").isJsonPrimitive() || !node.getAsJsonPrimitive("debug_label").isString())) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        condition ? WorldAwakenedDiagnosticCodes.INVALID_CONDITION_TYPE : WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                        objectType,
+                        objectId,
+                        sourcePath,
+                        fieldName + "[" + index + "] debug_label must be a string",
+                        "disabled_object"));
+            }
+
             JsonElement rawType = node.get("type");
             if (rawType == null || !rawType.isJsonPrimitive()) {
                 collector.addDiagnostic(new WorldAwakenedDiagnostic(
@@ -774,8 +856,34 @@ public final class WorldAwakenedDatapackLoader {
                 continue;
             }
 
+            if (declaredScope.isPresent() && !scopeAllowsType(objectType, condition, path, declaredScope.get())) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        condition ? WorldAwakenedDiagnosticCodes.INVALID_CONDITION_TYPE : WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                        objectType,
+                        objectId,
+                        sourcePath,
+                        fieldName + "[" + index + "] type " + typeId + " is invalid for scope " + declaredScope.get(),
+                        "disabled_object"));
+                continue;
+            }
+
+            JsonElement rawParameters = node.get("parameters");
+            if (rawParameters == null || !rawParameters.isJsonObject()) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        condition ? WorldAwakenedDiagnosticCodes.INVALID_CONDITION_TYPE : WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                        objectType,
+                        objectId,
+                        sourcePath,
+                        fieldName + "[" + index + "] parameters must be an object",
+                        "disabled_object"));
+                continue;
+            }
+            JsonObject parameters = rawParameters.getAsJsonObject();
+
             if (condition && "world_day_gte".equals(path)) {
-                OptionalDouble threshold = readAnyDouble(node, "value", "day", "min_day");
+                OptionalDouble threshold = readAnyDouble(parameters, "value");
                 if (threshold.isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
@@ -783,7 +891,7 @@ public final class WorldAwakenedDatapackLoader {
                             objectType,
                             objectId,
                             sourcePath,
-                            fieldName + "[" + index + "] world_day_gte requires numeric value/day/min_day",
+                            fieldName + "[" + index + "] world_day_gte requires numeric parameters.value",
                             "disabled_object"));
                 } else if (threshold.getAsDouble() < 0.0D) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
@@ -797,8 +905,8 @@ public final class WorldAwakenedDatapackLoader {
                 }
             }
             if (condition && "player_distance_from_spawn".equals(path)) {
-                OptionalDouble min = readAnyDouble(node, "min", "min_distance");
-                OptionalDouble max = readAnyDouble(node, "max", "max_distance", "distance");
+                OptionalDouble min = readAnyDouble(parameters, "min");
+                OptionalDouble max = readAnyDouble(parameters, "max");
                 if (min.isEmpty() && max.isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
@@ -819,8 +927,19 @@ public final class WorldAwakenedDatapackLoader {
                             "disabled_object"));
                 }
             }
-            if (node.has("config_gate") && node.get("config_gate").isJsonPrimitive()) {
-                validateConfigGate(objectType, objectId, sourcePath, node.get("config_gate").getAsString(), collector);
+            if (condition && "config_toggle_enabled".equals(path)) {
+                if (!parameters.has("config_gate") || !parameters.get("config_gate").isJsonPrimitive()) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.CONFIG_GATE_INVALID,
+                            objectType,
+                            objectId,
+                            sourcePath,
+                            fieldName + "[" + index + "] config_toggle_enabled requires parameters.config_gate",
+                            "disabled_object"));
+                } else {
+                    validateConfigGate(objectType, objectId, sourcePath, parameters.get("config_gate").getAsString(), collector);
+                }
             }
         }
     }
@@ -1184,6 +1303,90 @@ public final class WorldAwakenedDatapackLoader {
             return Optional.of(WorldAwakenedRuleEngine.supportedConditionPaths());
         }
         return Optional.empty();
+    }
+
+    private static boolean scopeAllowsType(String objectType, boolean condition, String path, String scope) {
+        String normalizedScope = scope.toLowerCase(Locale.ROOT);
+        if ("rules".equals(objectType)) {
+            return condition
+                    ? ruleConditionAllowsScope(path, normalizedScope)
+                    : ruleActionAllowsScope(path, normalizedScope);
+        }
+        if ("trigger_rules".equals(objectType)) {
+            return condition
+                    ? triggerConditionAllowsScope(path, normalizedScope)
+                    : triggerActionAllowsScope(path, normalizedScope);
+        }
+        return true;
+    }
+
+    private static boolean ruleConditionAllowsScope(String path, String scope) {
+        return switch (path) {
+            case "stage_unlocked",
+                    "stage_locked",
+                    "current_dimension",
+                    "world_day_gte",
+                    "moon_phase",
+                    "loaded_mod",
+                    "config_toggle_enabled",
+                    "apotheosis_world_tier_compare",
+                    "random_chance",
+                    "invasion_active" -> isOneOf(scope, "world", "player", "entity", "spawn_event");
+            case "current_biome" -> isOneOf(scope, "player", "entity", "spawn_event");
+            case "player_distance_from_spawn" -> isOneOf(scope, "player", "entity", "spawn_event");
+            case "player_count_online" -> "world".equals(scope);
+            case "ascension_reward_owned" -> isOneOf(scope, "player", "entity", "spawn_event");
+            case "ascension_offer_pending" -> "player".equals(scope);
+            case "entity_type", "entity_tag", "entity_not_boss", "entity_is_mutated" -> isOneOf(scope, "entity", "spawn_event");
+            case "structure_context" -> "spawn_event".equals(scope);
+            default -> true;
+        };
+    }
+
+    private static boolean ruleActionAllowsScope(String path, String scope) {
+        return switch (path) {
+            case "unlock_stage", "lock_stage" -> isOneOf(scope, "world", "player");
+            case "grant_ascension_offer" -> "player".equals(scope);
+            case "set_world_scalar" -> "world".equals(scope);
+            case "set_temp_invasion_modifier", "trigger_invasion_profile" -> "world".equals(scope);
+            case "apply_mutator_pool", "apply_stat_profile" -> isOneOf(scope, "entity", "spawn_event");
+            case "inject_loot_profile" -> "spawn_event".equals(scope);
+            case "drop_reward_table" -> isOneOf(scope, "entity", "spawn_event");
+            case "send_warning_message" -> isOneOf(scope, "world", "player");
+            case "mark_rule_consumed" -> isOneOf(scope, "world", "player", "entity");
+            default -> true;
+        };
+    }
+
+    private static boolean triggerConditionAllowsScope(String path, String scope) {
+        return switch (path) {
+            case "stage_unlocked",
+                    "stage_locked",
+                    "current_dimension",
+                    "advancement_completed",
+                    "entity_type",
+                    "entity_tag",
+                    "manual_trigger",
+                    "boss_killed" -> isOneOf(scope, "world", "player");
+            default -> true;
+        };
+    }
+
+    private static boolean triggerActionAllowsScope(String path, String scope) {
+        return switch (path) {
+            case "unlock_stage", "lock_stage", "increment_counter", "emit_named_event" -> isOneOf(scope, "world", "player");
+            case "send_warning_message", "grant_ascension_offer" -> "player".equals(scope);
+            default -> true;
+        };
+    }
+
+    private static boolean isOneOf(String value, String... allowed) {
+        for (String candidate : allowed) {
+            if (candidate.equals(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String joinResourceLocations(List<ResourceLocation> ids) {

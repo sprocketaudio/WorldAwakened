@@ -1,10 +1,23 @@
-# World Awakened Future Admin Authoring and Inspection UI
+# World Awakened Future In-Game/Admin Runtime Authoring and Inspection UI
 
-Deferred future design for an admin-facing inspection and authoring interface.
+Deferred future design for an in-game/admin runtime-facing inspection and authoring interface.
 
 - Document status: Non-normative future feature
 - Last updated: 2026-03-12
 - Scope: Post-v1 only
+
+---
+
+Related contracts:
+- [docs/README.md](README.md)
+- [SPECIFICATION.md](SPECIFICATION.md)
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+
+Update rule:
+- Update this file when deferred in-game/admin runtime UI scope is promoted, narrowed, or split.
+- Keep this file aligned with active-scope boundaries in `SPECIFICATION.md` and backlog handling rules in `AGENTS.md`.
 
 ---
 
@@ -14,6 +27,10 @@ This feature is:
 - deferred
 - post-v1
 - not required for MVP
+
+Scope boundary note:
+- browser-based datapack authoring/validation for v1 is now active scope and is defined in `docs/WEB_AUTHORING_TOOL_SPEC.md`
+- this file remains focused on deferred in-game/admin runtime inspection and advanced live-authoring concepts
 
 It should only be considered after the core data model, rule engine, validation flow, and debugging surface are proven stable.
 

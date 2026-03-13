@@ -8,6 +8,31 @@ Datapack format and content contract for user-created progression/content packs.
 
 ---
 
+## 0. Governance and Maintenance
+
+This file is the canonical datapack shape and field contract for World Awakened content.
+
+Related contracts:
+- [SPECIFICATION.md](SPECIFICATION.md)
+- [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md)
+- [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md)
+- [ACTION_REFERENCE.md](ACTION_REFERENCE.md)
+- [SCOPE_MATRIX.md](SCOPE_MATRIX.md)
+- [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
+- [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
+- [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
+- [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [docs/README.md](README.md)
+- [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+
+Update rule:
+- Update this file in the same change whenever datapack schemas, object fields, reference rules, validation outcomes, or authoring examples change.
+- Keep this file aligned with shared condition/action/scope/component contracts.
+
+---
+
 ## 1. Scope
 
 This document defines:
@@ -18,7 +43,9 @@ This document defines:
 - practical examples for pack authors
 
 This is a format/contract guide. It does not define Java internals.
-For the canonical mutation/ascension component catalog and per-component parameter/status details, see `docs/COMPONENT_REFERENCE.md`.
+For the canonical mutation/ascension component catalog and per-component parameter/status details, see [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md).
+For the web authoring companion behavior and UX contract, see [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md).
+Shared framework contracts for scopes, conditions, actions, component composition, and status taxonomy are defined in [SPECIFICATION.md](SPECIFICATION.md) Sections `3B`-`3F`.
 
 ---
 
@@ -44,6 +71,35 @@ Localization fallback behavior:
 Note on `pack.mcmeta`:
 - Use the data pack format value required by Minecraft `1.21.1`.
 - If the value is wrong, Minecraft will reject the pack before World Awakened data loads.
+
+---
+
+## 2A. Web Authoring Tool Interop Contract
+
+World Awakened v1 includes a browser-based authoring companion.
+
+Interop rules:
+- there is one shared datapack format across manual JSON authoring and web-tool authoring
+- tool exports must remain canonical World Awakened datapack JSON, not a proprietary intermediate format
+- deterministic export ordering is recommended to keep diffs stable
+- import workflows should preserve IDs and references unless intentionally edited
+- schema-version mismatches should surface as migration warnings or errors with actionable diagnostics
+
+Canonical export layout must remain:
+
+```text
+data/<namespace>/
+  stages/
+  trigger_rules/
+  rules/
+  mob_mutators/
+  mutation_pools/
+  ascension_rewards/
+  ascension_offers/
+  loot_profiles/
+  invasion_profiles/
+  integration_profiles/
+```
 
 ---
 
@@ -105,9 +161,9 @@ Path rule:
 ### 4.2 Cross-Object References
 
 Common reference fields:
-- stage refs: `stage`, `stage_id`, `stage_filters`, `required_stages`
-- ascension reward refs: `reward`, `reward_id`, `candidate_rewards`
-- ascension offer refs: `offer`, `offer_id`
+- stage refs: `stage`, `stage_filters`, `required_stages`
+- ascension reward refs: `reward`, `candidate_rewards`
+- ascension offer refs: `offer`
 - mutator refs: `mutators[]`
 - pool refs: `mutator_pool_refs[]`
 - loot refs: `reward_profile` or loot profile IDs
@@ -162,41 +218,68 @@ If `enabled` is false, object should load but remain inactive.
 
 ### 5.2 Condition Objects
 
-Condition arrays use objects with a `type` key:
+All condition arrays use the shared canonical condition node:
 
 ```json
 {
   "type": "worldawakened:stage_unlocked",
-  "stage": "my_pack:nether_opened"
+  "parameters": {
+    "stage": "my_pack:nether_opened"
+  },
+  "enabled": true,
+  "debug_label": "nether gate opened"
 }
 ```
 
-Other examples:
+Canonical rules:
+- use `type` + `parameters` for all leaf conditions
+- unknown `type` is a validation error
+- missing context evaluates `false` unless the condition entry explicitly documents another behavior
+- condition semantics come from the shared catalog in `docs/SPECIFICATION.md` Section `3C`
+- conditions must validate independently of owning object type (`rules`, `trigger_rules`, `mob_mutators`, `ascension_rewards`, etc.)
+- condition scope legality is enforced by the shared scope model (`docs/SPECIFICATION.md` Section `3B`)
+
+Logical wrappers are also condition nodes:
 
 ```json
 {
-  "type": "worldawakened:world_day_gte",
-  "value": 20
+  "type": "worldawakened:all_of",
+  "parameters": {
+    "conditions": [
+      {
+        "type": "worldawakened:stage_unlocked",
+        "parameters": { "stage": "my_pack:nether_opened" }
+      },
+      {
+        "type": "worldawakened:world_day_gte",
+        "parameters": { "value": 20 }
+      }
+    ]
+  }
 }
 ```
 
 ```json
 {
-  "type": "worldawakened:apotheosis_world_tier_compare",
-  "op": ">=",
-  "value": 3
+  "type": "worldawakened:not",
+  "parameters": {
+    "condition": {
+      "type": "worldawakened:entity_is_boss",
+      "parameters": {}
+    }
+  }
 }
 ```
 
 Validation notes:
-- `rules.conditions` and `trigger_rules.conditions` reject unsupported `type` values during reload
-- condition payload validation is strict for optional world-context conditions:
-  - `world_day_gte` requires a numeric threshold (`value`/`day`/`min_day`) and that threshold must be `>= 0`
-  - `player_distance_from_spawn` requires at least one of `min` or `max` (`distance` aliases allowed), and when both are present `min` must be `<= max`
+- unsupported condition `type`
+- invalid/missing `parameters` object
+- illegal use outside allowed scopes
+- invalid wrapper payload shape (`all_of`/`any_of`/`not`)
 
 ### 5.2A Optional World-Context Conditions
 
-World Awakened may expose world-context values as datapack rule conditions, but these are optional inputs only.
+World-context conditions are optional shared conditions, not primary progression systems.
 
 Design rules:
 - optional and datapack-driven
@@ -211,7 +294,9 @@ Supported optional world-context conditions:
 ```json
 {
   "type": "worldawakened:world_day_gte",
-  "value": 20
+  "parameters": {
+    "value": 20
+  }
 }
 ```
 
@@ -223,8 +308,10 @@ Supported optional world-context conditions:
 ```json
 {
   "type": "worldawakened:player_distance_from_spawn",
-  "min": 128,
-  "max": 1500
+  "parameters": {
+    "min": 128,
+    "max": 1500
+  }
 }
 ```
 
@@ -235,31 +322,60 @@ Supported optional world-context conditions:
 
 ### 5.3 Action Objects
 
-Actions also use a typed object:
+All action arrays use the shared canonical action node:
 
 ```json
 {
   "type": "worldawakened:unlock_stage",
-  "stage": "my_pack:end_reached"
+  "parameters": {
+    "stage": "my_pack:end_reached"
+  },
+  "enabled": true,
+  "priority": 100,
+  "debug_label": "unlock final stage"
 }
 ```
 
 ```json
 {
   "type": "worldawakened:apply_mutator_pool",
-  "pool": "my_pack:overworld_night_t2"
+  "parameters": {
+    "pool": "my_pack:overworld_night_t2"
+  }
 }
 ```
 
 ```json
 {
   "type": "worldawakened:grant_ascension_offer",
-  "offer": "my_pack:nether_ascension_1"
+  "parameters": {
+    "offer": "my_pack:nether_ascension_1"
+  }
 }
 ```
 
 Validation note:
-- `rules.actions` and `trigger_rules.actions` reject unsupported `type` values during reload
+- unknown action `type` is a validation error
+- missing/invalid `parameters` object is a validation error
+- action scope legality must match the shared scope model (`docs/SPECIFICATION.md` Section `3B`)
+- action status semantics use the shared taxonomy (`implemented`, `planned`, `reserved`, `deprecated`)
+
+### 5.3A Shared Scope and Status Contracts
+
+Scope fields in object schemas must use shared canonical scope IDs:
+- `world`
+- `player`
+- `entity`
+- `spawn_event`
+- `loot`
+- `invasion`
+- `event_context`
+
+Status semantics in documentation/tooling/validation must use shared labels:
+- `implemented` (allowed)
+- `planned` (warning or error by validation mode)
+- `reserved` (error)
+- `deprecated` (warning with migration guidance when available)
 
 ### 5.4 Config and Mod Gates
 
@@ -359,13 +475,45 @@ Canonical candidate ordering:
 1. enabled
 2. config gate
 3. integration gate
-4. selector, entity, and context match
-5. stage, tier, and optional world-context conditions
-6. priority
-7. cooldown
-8. one-shot
-9. chance
-10. execution
+4. scope/context availability check
+5. selector/entity/context match
+6. shared condition evaluation
+7. priority
+8. cooldown
+9. one-shot
+10. chance
+11. enqueue actions
+12. bounded action queue execution
+13. post-actions consumed/cooldown writes
+
+Shared action execution guarantees:
+- action queue execution is bounded
+- recursion/re-entry protections prevent unbounded self-triggering
+- idempotent actions must be safe when reevaluated
+- non-idempotent actions require explicit repeat guards by design
+- invalid actions disable owning objects (or branches) without taking down unrelated systems
+
+Condition guarantees:
+- missing required context evaluates `false` (fail-closed) unless the condition explicitly documents another behavior
+- condition semantics are shared across object types; `rules` and `trigger_rules` do not redefine meaning per type
+
+Component composition guarantees:
+- component ordering is deterministic (authored order + priority semantics)
+- duplicate/conflict behavior is explicit via shared composition metadata
+- impossible component compositions fail validation before runtime
+- canonical duplicate/conflict/order/budget/no-op resolution follows [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
+
+Performance guarantees:
+- rule evaluation must inspect only the active scope bucket (`O(bucket_size)`)
+- spawn events must not trigger full rule-set scans (`O(total_rules)`)
+- hot-path rules/selectors/actions must run from reload-compiled structures
+- canonical limits and guardrails follow [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
+
+Status-mode guarantees:
+- `implemented`: allowed
+- `planned`: warning or error based on active validation mode
+- `reserved`: rejected
+- `deprecated`: warning with migration note when available
 
 Implications:
 - chance rolls happen only after a candidate is fully eligible
@@ -400,6 +548,29 @@ Operational model:
 - operator/admin config controls baseline global difficulty modifier
 - optional challenge modifier policies and scope are server-controlled
 - World Awakened applies modifiers only to World Awakened-owned numeric difficulty outputs
+
+---
+
+### 5.10 Performance Budget Guardrails
+
+World Awakened enforces hot-path performance guardrails for rules and spawn mutation evaluation.
+
+Recommended limits:
+- `maximum_rules_per_bucket`: `500`
+- `maximum_rules_evaluated_per_event`: `50`
+- `maximum_actions_per_rule`: `10`
+- `max_mutators_per_spawn`: `8`
+- `max_components_per_mutator`: `10`
+- `max_action_chain_depth`: `1` (single-pass)
+
+Authoring implications:
+- keep rule sets distributed by scope to avoid oversized hot buckets
+- avoid giant action lists on one rule
+- keep mutator definitions and component stacks bounded
+- treat performance-limit diagnostics as balancing/architecture failures, not cosmetic warnings
+
+Canonical contract:
+- full semantics and diagnostics expectations are defined in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 
 ---
 
@@ -481,21 +652,29 @@ Example:
   "conditions": [
     {
       "type": "worldawakened:current_dimension",
-      "dimension": "minecraft:the_nether"
+      "parameters": {
+        "dimension": "minecraft:the_nether"
+      }
     },
     {
       "type": "worldawakened:stage_locked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "actions": [
     {
       "type": "worldawakened:unlock_stage",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     },
     {
       "type": "worldawakened:send_warning_message",
-      "message": { "translate": "worldawakened.stage.nether_opened" }
+      "parameters": {
+        "message": { "translate": "worldawakened.stage.nether_opened" }
+      }
     }
   ],
   "cooldown": { "seconds": 5 },
@@ -517,9 +696,15 @@ Common `trigger_type` values:
 Common trigger `actions[].type` values currently implemented:
 - `worldawakened:unlock_stage`
 - `worldawakened:lock_stage`
-- `worldawakened:emit_event` (or `worldawakened:emit_named_event`)
-- `worldawakened:increment_counter` (or `worldawakened:increment_trigger_counter`)
+- `worldawakened:emit_named_event`
+- `worldawakened:increment_counter`
 - `worldawakened:send_warning_message`
+- `worldawakened:grant_ascension_offer`
+
+Shared contract notes:
+- `conditions[]` must use shared canonical condition nodes (`type`, `parameters`, optional `enabled`, optional `debug_label`)
+- `actions[]` must use shared canonical action nodes (`type`, `parameters`, optional `enabled`, optional `priority`, optional `debug_label`)
+- `source_scope` uses shared scope semantics; `trigger_rules` currently support the v1 subset `world | player`
 
 Manual debug flow:
 - use `trigger_type = worldawakened:manual_debug`
@@ -563,27 +748,37 @@ Example:
   "conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     },
     {
       "type": "worldawakened:moon_phase",
-      "phases": ["full_moon", "waning_gibbous"]
+      "parameters": {
+        "phases": ["full_moon", "waning_gibbous"]
+      }
     },
     {
       "type": "worldawakened:random_chance",
-      "chance": 0.35
+      "parameters": {
+        "chance": 0.35
+      }
     }
   ],
   "actions": [
     {
       "type": "worldawakened:apply_mutator_pool",
-      "pool": "my_pack:overworld_night_t2"
+      "parameters": {
+        "pool": "my_pack:overworld_night_t2"
+      }
     },
     {
       "type": "worldawakened:set_world_scalar",
-      "key": "spawn_pressure",
-      "op": "multiply",
-      "value": 1.15
+      "parameters": {
+        "key": "spawn_pressure",
+        "op": "multiply",
+        "value": 1.15
+      }
     }
   ],
   "weight": 1.0,
@@ -605,6 +800,11 @@ Field defaults:
 - `cooldown`: absent
 - `execution_scope`: `world`
 - `tags`: `[]`
+
+Shared contract notes:
+- rule condition/action meaning comes from shared catalogs; do not redefine semantics per file
+- each condition/action must be legal for the selected `execution_scope`
+- status taxonomy is shared across runtime, docs, validation output, and web tooling
 
 ---
 
@@ -642,7 +842,9 @@ Example:
   "required_conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:baseline"
+      "parameters": {
+        "stage": "my_pack:baseline"
+      }
     }
   ],
   "components": [
@@ -683,8 +885,10 @@ Authoring model:
 - the mutator object ID (for example `my_pack:berserker_t1`) is the authored mutation definition identity
 - `components[]` defines the behavior composition
 - Java defines what each component type does
-- bundled presets shipped by World Awakened use the same component model as user packs
+- optional example/default packs distributed with World Awakened use the same component model as user packs
 - addon mods may register additional mutation component types in future extension APIs; unknown types fail validation when unavailable
+- shared composition semantics apply (`conflicts_with`, `stacking_group`, `duplicate_policy`, `max_instances`, `composition_priority`, companion requirements)
+- incompatible component compositions fail validation; runtime does not silently improvise stacking behavior
 
 Example mutation component type IDs currently registered by core:
 - `worldawakened:max_health_bonus`
@@ -745,11 +949,15 @@ Example:
   "conditions": [
     {
       "type": "worldawakened:current_dimension",
-      "dimension": "minecraft:overworld"
+      "parameters": {
+        "dimension": "minecraft:overworld"
+      }
     },
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "stage_filters": {
@@ -811,7 +1019,9 @@ Example:
   "conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "stage_filters": {
@@ -853,7 +1063,7 @@ Allowed `replace_mode` values:
 Compatibility note:
 - when Apotheosis compat is active and a target loot table is Apotheosis-sensitive, use additive modes (`inject`, `add_bonus_pool`)
 - destructive modes (`replace_entries`, `remove_entries`) are restricted on Apotheosis-sensitive targets and may be blocked, downgraded, or disabled by validation policy
-- bundled/default loot profiles may be shipped by World Awakened as datapack-authored presets; user-authored profiles are first-class and not secondary to bundled names
+- optional example/default loot profiles may be distributed by World Awakened as datapack-authored presets; user-authored profiles are first-class and not secondary to shipped example-pack names
 
 Field defaults:
 - `schema_version`: `1`
@@ -929,7 +1139,9 @@ Example:
   "conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "stage_filters": {
@@ -972,7 +1184,7 @@ Allowed `trigger_mode` values:
 - `apotheosis_tier_threshold`
 
 Authoring note:
-- bundled/default invasion profiles may be shipped by World Awakened as datapack-authored presets
+- optional example/default invasion profiles may be distributed by World Awakened as datapack-authored presets
 - user-authored invasion profiles are first-class definitions and should not rely on code-level preset names
 
 Field defaults:
@@ -1022,8 +1234,10 @@ Example (Apotheosis):
   "stage_hooks": [
     {
       "type": "worldawakened:tier_threshold_unlock",
-      "tier": 2,
-      "unlock_stage": "my_pack:apoth_tier_2"
+      "parameters": {
+        "tier": 2,
+        "unlock_stage": "my_pack:apoth_tier_2"
+      }
     }
   ],
   "trigger_hooks": [
@@ -1036,8 +1250,10 @@ Example (Apotheosis):
   "special_conditions": [
     {
       "type": "worldawakened:apotheosis_world_tier_compare",
-      "op": ">=",
-      "value": 2
+      "parameters": {
+        "op": ">=",
+        "value": 2
+      }
     }
   ],
   "notes": "Enable tier-based scaling and stage unlocks."
@@ -1119,7 +1335,9 @@ Example:
   "requires_conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "forbidden_conditions": [],
@@ -1139,7 +1357,8 @@ Reward rules:
 - `unique_group` can be used to prevent similar future picks
 - `offer_weight` is used when selecting rewards within a concrete offer candidate set
 - `tier_weight` is used only for higher-level tier or pool-driven reward generation when that generation mode exists
-- bundled presets and user-authored presets coexist; neither is privileged at runtime
+- optional shipped example-pack presets and user-authored presets coexist; neither is privileged at runtime
+- shared component composition semantics are mandatory; duplicate/stack/conflict behavior must be explicit
 
 Field defaults:
 - `schema_version`: `1`
@@ -1210,7 +1429,9 @@ Example:
   "trigger_conditions": [
     {
       "type": "worldawakened:stage_unlocked",
-      "stage": "my_pack:nether_opened"
+      "parameters": {
+        "stage": "my_pack:nether_opened"
+      }
     }
   ],
   "stage_filters": {
@@ -1230,7 +1451,7 @@ Example:
   "weighting_rules": {},
   "ui_priority": 100,
   "allow_duplicates_across_players": true,
-  "allow_reward_reuse_across_offers": false
+  "reward_repeat_policy": "block_all"
 }
 ```
 
@@ -1238,12 +1459,16 @@ Offer rules:
 - players may choose exactly one reward from a v1 offer
 - unchosen displayed rewards become permanently forfeited for that offer
 - resolved offers do not reopen for a different choice
-- `allow_reward_reuse_across_offers` should default to `false` in most packs
+- `reward_repeat_policy = "block_all"` excludes both previously chosen and previously forfeited rewards from later offers for that player
+- `reward_repeat_policy = "allow_forfeited_only"` keeps previously chosen rewards blocked but allows previously forfeited rewards to reappear later if the rest of the offer logic permits it
+- `reward_repeat_policy = "allow_all"` allows both previously chosen and previously forfeited rewards to reappear later if the rest of the offer logic permits it
+- `reward_repeat_policy` should default to `"block_all"` in most packs
 - `pressure_tier_filters` should be treated as optional external or pack-defined context unless the core spec later formalizes a built-in pressure-tier subsystem
 
 Runtime identity note:
 - the offer `id` identifies the reusable template
 - the per-player runtime instance identity is resolved by the engine, not authored directly in the datapack
+- v1 runtime grant identity is canonicalized as `(player UUID, offer ID, source progression key)`; player scope is implied by save ownership, and per-player persisted instance keys use `offer_id|source_key`
 - datapack authors must not try to manually encode runtime offer instance identities in object IDs, fields, or generated references
 
 Field defaults:
@@ -1264,7 +1489,7 @@ Field defaults:
 - `weighting_rules`: `{}`
 - `ui_priority`: `0`
 - `allow_duplicates_across_players`: `true`
-- `allow_reward_reuse_across_offers`: `false`
+- `reward_repeat_policy`: `block_all`
 
 Recommended v1:
 - `choice_count` of `2` or `3`
@@ -1352,6 +1577,9 @@ On reload, World Awakened should validate and report:
 - missing references
 - missing reward references inside ascension offers
 - invalid condition/action types
+- invalid condition/action shapes (missing `type`, missing/non-object `parameters`)
+- scope violations (condition/action used outside allowed shared scopes)
+- invalid logical wrapper payloads (`all_of`, `any_of`, `not`)
 - invalid optional world-context condition payloads (for example: negative day thresholds, missing both `min` and `max`, or `min > max`)
 - invalid config gates
 - unsafe replacement/removal behavior against Apotheosis-sensitive loot targets when Apotheosis compat is active
@@ -1367,7 +1595,17 @@ On reload, World Awakened should validate and report:
 - incompatible component combinations or explicit component conflicts
 - component compositions with no valid runtime result (for example all components disabled)
 - mutation component compositions over `component_budget` when budget is set
+- performance threshold exceedance:
+  - scope rule bucket size over `maximum_rules_per_bucket`
+  - per-event evaluated rules over `maximum_rules_evaluated_per_event`
+  - actions per rule over `maximum_actions_per_rule`
+  - mutators per spawn over `max_mutators_per_spawn`
+  - components per mutator over `max_components_per_mutator`
+  - action-chain complexity over `max_action_chain_depth`
 - duplicate component types where duplicates are not supported
+- missing required companion component types
+- forbidden companion component types
+- stacking group overflow and `max_instances` violations
 - `choice_count < 1`
 - `selection_count != 1` in v1
 - no valid candidate rewards after filtering
@@ -1376,11 +1614,16 @@ On reload, World Awakened should validate and report:
 - invasion profiles with no valid composition
 - Apotheosis-only conditions while integration disabled
 - unsupported or incompatible schema versions
+- invalid status taxonomy usage:
+  - `planned` usage severity depends on validation mode
+  - `reserved` usage is rejected
+  - `deprecated` usage emits warnings with migration notes where known
 
 Validation outcomes:
 - valid object -> active
 - invalid object -> disabled with error log
 - fatal startup failure only for unrecoverable core integrity issues
+- performance threshold violations should emit warnings by default and may optionally disable offending objects/branches based on policy
 - World Awakened should never silently substitute a different ascension reward or offer without logging
 - world-context conditions that are valid but unevaluable in a runtime context should behave as false matches, not validation errors
 - unsafe Apotheosis-sensitive loot operations should never silently destroy Apotheosis tier-gated behavior; fallback action should be explicit and logged
@@ -1428,6 +1671,7 @@ Guidance:
 ## 16B. Randomness and Determinism Expectations
 
 Pack authors should assume World Awakened random outcomes are controlled by server-side deterministic evaluation rules.
+Exact rule-execution sequence and bucket/index guarantees are defined in [SPECIFICATION.md](SPECIFICATION.md) Section `8.7`.
 
 Implications:
 - mutator rolls, invasion composition, and bonus loot rolls should not reroll repeatedly inside the same evaluation context
@@ -1440,15 +1684,21 @@ Implications:
 
 Suggested flow:
 1. Load pack and run `/wa reload validate`
-2. Use `/wa stage list` to verify stage load and state
-3. Use `/wa trigger fire <id>` for trigger testing
-4. Use `/wa stage unlock <id>` for rule gating checks
-5. Use `/wa ascension grant_offer <player> <offer_id>` and `/wa ascension inspect <player>` for ascension testing
-6. Use `/wa invasion start <profile>` for invasion profiles
-7. Use `/wa mob inspect` on mutated entities for provenance
-8. Use `/wa dump active_rules` to confirm rule activation set
-9. Use `/wa apotheosis tier inspect` if Apotheosis rules are used
-10. If enabled by server policy, use `/wa difficulty global get` and `/wa difficulty personal get` to confirm active scalar context while tuning pack behavior
+2. Use `/wa stage list`, `/wa stage list player <player>`, or `/wa stage list global` to verify stage load and state; in `PER_PLAYER` mode the explicit `player` and `global` targets are the authoritative operator paths
+3. Use `/wa trigger fire <id> player <player> [dimension <dimension_id>]` or `/wa trigger fire <id> global [dimension <dimension_id>]` for trigger testing; use the optional dimension override when validating dimension-dependent conditions from a controlled operator path
+4. Use `/wa stage unlock <id> player <player>`, `/wa stage lock <id> player <player>`, or the corresponding `global` forms for rule-gating checks and operator rollback
+5. Use `/wa ascension grant_offer <player> <offer_id>`, `/wa ascension open <player>`, `/wa ascension inspect <player>`, `/wa ascension choose <player> <instance_id> <reward_id>`, or `/wa ascension active <player> <reward_id>` for ascension testing
+6. Use `/wa ascension revoke <player> <reward_id>`, `/wa ascension reopen <player> <instance_id>`, `/wa ascension clear <player> <instance_id>`, and `/wa debug reset player <player> ascension` when testing recovery or rollback behavior
+7. Runtime ascension `instance_id` values are opaque command-safe IDs; inspect/debug output exposes `offer_id` and `source_key` separately when you need provenance
+8. Operator-facing ascension outputs should provide copy/suggest actions where the client supports clickable chat; authored IDs remain the canonical support/debug identity even when operators use the friendly shortcuts
+9. Use `/wa invasion start <profile>` for invasion profiles
+10. Use `/wa mob inspect` on mutated entities for provenance
+11. Use `/wa dump active_rules player <player> [dimension <dimension_id>]` or `/wa dump active_rules global [dimension <dimension_id>]` to confirm rule activation set; use the dimension override when validating dimension-sensitive rule context
+12. Use `/wa apotheosis tier inspect` if Apotheosis rules are used
+13. If enabled by server policy, use `/wa difficulty global get` and `/wa difficulty personal get` to confirm active scalar context while tuning pack behavior
+
+Debug payload contract note:
+- canonical trace/rejection/provenance output shape is defined in [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 
 ---
 
@@ -1488,8 +1738,12 @@ Core principle for authors:
 Before shipping a pack:
 - all IDs are unique
 - all references resolve
+- condition/action entries use canonical shared shape (`type` + `parameters`)
+- condition/action entries are only used in allowed scopes
 - stage names and display text are localized where needed
 - ascension offers only reference valid rewards
+- component compositions declare explicit duplicate/conflict/stacking behavior
+- no `reserved` status entries are used in runtime content
 - `selection_count` remains `1` unless the engine explicitly documents broader support
 - integration-specific objects are gated with mod/config conditions
 - no invalid JSON syntax

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:mutators/invasion_mutation_pressure",
+  "enabled": true,
+  "priority": 70,
+  "execution_scope": "spawn_event",
+  "conditions": [
+    {
+      "type": "worldawakened:invasion_active",
+      "parameters": {}
+    },
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 12
+      }
+    },
+    {
+      "type": "worldawakened:random_chance",
+      "parameters": {
+        "chance": 0.8
+      }
+    }
+  ],
+  "actions": [
+    {
+      "type": "worldawakened:apply_mutator_pool",
+      "parameters": {
+        "pool": "worldawakened:invasion_pool"
+      }
+    }
+  ],
+  "weight": 1,
+  "chance": 1,
+  "cooldown": {
+    "seconds": 20
+  },
+  "tags": [
+    "example",
+    "mutations",
+    "invasion"
+  ]
+}

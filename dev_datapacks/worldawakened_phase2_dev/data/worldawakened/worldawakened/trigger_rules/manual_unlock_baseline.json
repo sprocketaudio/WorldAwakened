@@ -4,7 +4,9 @@
   "actions": [
     {
       "type": "worldawakened:unlock_stage",
-      "stage": "worldawakened:baseline"
+      "parameters": {
+        "stage": "worldawakened:baseline"
+      }
     }
   ]
 }

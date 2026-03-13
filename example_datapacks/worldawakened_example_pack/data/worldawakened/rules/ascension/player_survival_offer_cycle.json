@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:ascension/player_survival_offer_cycle",
+  "enabled": true,
+  "priority": 28,
+  "execution_scope": "player",
+  "conditions": [
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 16
+      }
+    },
+    {
+      "type": "worldawakened:random_chance",
+      "parameters": {
+        "chance": 0.09
+      }
+    }
+  ],
+  "actions": [
+    {
+      "type": "worldawakened:grant_ascension_offer",
+      "parameters": {
+        "offer": "worldawakened:survival_path"
+      }
+    }
+  ],
+  "weight": 1,
+  "chance": 1,
+  "cooldown": {
+    "minutes": 40
+  },
+  "tags": [
+    "example",
+    "ascension",
+    "survivability"
+  ]
+}

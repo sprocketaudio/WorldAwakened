@@ -29,8 +29,8 @@ class WorldAwakenedTriggerMatcherTest {
                 WorldAwakenedTriggerTypes.PLAYER_ENTER_DIMENSION,
                 SourceScope.PLAYER,
                 List.of(
-                        node("{\"type\":\"worldawakened:current_dimension\",\"dimension\":\"minecraft:the_nether\"}"),
-                        node("{\"type\":\"worldawakened:stage_locked\",\"stage\":\"testpack:nether_opened\"}")),
+                        node("{\"type\":\"worldawakened:current_dimension\",\"parameters\":{\"dimension\":\"minecraft:the_nether\"}}"),
+                        node("{\"type\":\"worldawakened:stage_locked\",\"parameters\":{\"stage\":\"testpack:nether_opened\"}}")),
                 Optional.empty(),
                 false);
         TriggerRuleDefinition highPriority = triggerRule(
@@ -39,8 +39,8 @@ class WorldAwakenedTriggerMatcherTest {
                 WorldAwakenedTriggerTypes.PLAYER_ENTER_DIMENSION,
                 SourceScope.PLAYER,
                 List.of(
-                        node("{\"type\":\"worldawakened:current_dimension\",\"dimension\":\"minecraft:the_nether\"}"),
-                        node("{\"type\":\"worldawakened:stage_locked\",\"stage\":\"testpack:nether_opened\"}")),
+                        node("{\"type\":\"worldawakened:current_dimension\",\"parameters\":{\"dimension\":\"minecraft:the_nether\"}}"),
+                        node("{\"type\":\"worldawakened:stage_locked\",\"parameters\":{\"stage\":\"testpack:nether_opened\"}}")),
                 Optional.empty(),
                 false);
 
@@ -113,7 +113,7 @@ class WorldAwakenedTriggerMatcherTest {
                 0,
                 WorldAwakenedTriggerTypes.BOSS_KILLED,
                 SourceScope.WORLD,
-                List.of(node("{\"type\":\"worldawakened:entity_type\",\"entity\":\"minecraft:ender_dragon\"}")),
+                List.of(node("{\"type\":\"worldawakened:entity_type\",\"parameters\":{\"entity\":\"minecraft:ender_dragon\"}}")),
                 Optional.empty(),
                 false);
 
@@ -231,7 +231,7 @@ class WorldAwakenedTriggerMatcherTest {
                 triggerType,
                 sourceScope,
                 conditions,
-                List.of(node("{\"type\":\"worldawakened:increment_counter\",\"counter\":\"test\"}")),
+                List.of(node("{\"type\":\"worldawakened:increment_counter\",\"parameters\":{\"counter\":\"test\"}}")),
                 cooldown,
                 oneShot);
     }

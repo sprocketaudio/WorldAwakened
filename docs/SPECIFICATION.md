@@ -2,8 +2,8 @@
 
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
-- Document status: Active implementation spec (Phase 3 complete, Phase 4 active)
-- Last updated: 2026-03-12
+- Document status: Active implementation spec (Phase 4 complete, Phase 5 active)
+- Last updated: 2026-03-13
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -13,16 +13,29 @@ World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
 - This file is the primary design and behavior contract for the mod.
 - Whenever this spec is expanded or changed, update these files in the same change:
-  - `docs/DATAPACK_AUTHORING.md` for concrete user datapack format/schema updates
-  - `docs/COMPONENT_REFERENCE.md` for canonical mutation/ascension component IDs, statuses, and parameter schema details
-  - `docs/FUTURE_IDEAS.md` when promoting, removing, or reclassifying deferred ideas
-  - `docs/FUTURE_ADMIN_UI.md` when promoting, removing, or reshaping the deferred admin UI feature
-  - `README.md` for high-level goals, status, and roadmap summary
-  - `AGENTS.md` for contributor/agent workflow and guardrails
+  - [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md) for concrete user datapack format/schema updates
+  - [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md) for canonical mutation/ascension component IDs, statuses, and parameter schema details
+  - [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md) for shared condition IDs, wrapper semantics, and scope/status metadata
+  - [ACTION_REFERENCE.md](ACTION_REFERENCE.md) for shared action IDs, parameter schema notes, and runtime-status metadata
+  - [SCOPE_MATRIX.md](SCOPE_MATRIX.md) for shared scope legality and guaranteed-context contracts
+  - [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md) for canonical duplicate/conflict/order/budget/no-op resolution semantics
+  - [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md) for command/trace/provenance inspection contracts
+  - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md) for scope-indexing, hot-path limits, and performance guardrails
+  - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md) for diagnostic taxonomy and stable code naming
+  - [PRESET_CATALOG.md](PRESET_CATALOG.md) when shipped external example-pack presets/templates or their status taxonomy changes
+  - [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) for browser authoring-tool workflows, import/export behavior, and validation UX contracts
+  - [FUTURE_IDEAS.md](FUTURE_IDEAS.md) when promoting, removing, or reclassifying deferred ideas
+  - [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) when promoting, removing, or reshaping the deferred in-game/admin runtime UI feature
+  - [README.md](../README.md) for high-level goals, status, and roadmap summary
+  - [AGENTS.md](../AGENTS.md) for contributor/agent workflow and guardrails
+  - [docs/README.md](README.md) for docs set index/read-order and cross-update matrix
+- Update rule:
+  - Do not merge behavior or contract changes that leave this spec or its linked companion docs stale.
+  - Keep this file aligned with implemented runtime behavior, validation behavior, and command/debug surface.
 - New implementation work should not proceed on stale documentation when the mismatch is known.
 - Maintain the `Last updated` field at the top of this file on spec revisions.
 - `docs/FUTURE_IDEAS.md` is a non-normative backlog and does not alter MVP scope unless an idea is promoted into this spec.
-- `docs/FUTURE_ADMIN_UI.md` is a non-normative future feature document and does not alter MVP scope unless it is promoted into this spec.
+- `docs/FUTURE_ADMIN_UI.md` is a non-normative future feature document for deferred in-game/admin runtime UI scope and does not alter MVP scope unless it is promoted into this spec.
 
 ---
 
@@ -45,6 +58,7 @@ The framework must:
 - support user-extensible rules through datapacks
 - expose optional world-context inputs (for example world day and player distance from spawn) as datapack rule conditions, not primary trigger types
 - support Apotheosis World Tiers as an optional condition/scalar input
+- provide a browser-based datapack authoring and validation tool that round-trips the canonical World Awakened datapack format
 - keep gameplay logic on server side
 - keep balance/content externalized to data files
 
@@ -125,9 +139,11 @@ Hard constraints:
 - internal references always use stage IDs (`ResourceLocation`)
 - progression order is data-defined, not code-defined
 
-### 3A. Built-In Content Location Rule
+### 3A. Content Distribution Rule
 
-World Awakened built-in/default content should live in bundled datapack objects wherever practical.
+World Awakened must ship as a framework-first mod jar with no gameplay-active datapack content embedded in the jar.
+
+Reference/default/example content should be distributed as optional external datapacks alongside the mod or release package, using the same schema exposed to pack authors.
 
 Java owns:
 - component registries
@@ -137,13 +153,13 @@ Java owns:
 - persistence logic
 - debug and introspection behavior
 
-Bundled datapack content owns:
-- default mutation definitions
-- default ascension reward definitions
-- default ascension offers
-- default loot profiles where practical
-- default invasion profiles where practical
-- default pools/rules/stages where appropriate
+External optional datapack content owns:
+- example mutation definitions
+- example ascension reward definitions
+- example ascension offers
+- example loot profiles where practical
+- example invasion profiles where practical
+- example pools/rules/stages where appropriate
 
 Default progression mode in v1:
 - `GLOBAL`
@@ -152,6 +168,366 @@ Supported modes:
 - `GLOBAL` (implemented in v1)
 - `PER_PLAYER` (implemented in v1 for stage state, trigger context, and ascension scope; unsupported interactions must be explicitly documented or disabled)
 - `HYBRID` (reserved design, deferred implementation)
+
+### 3B. Shared Scope Model (Canonical)
+
+All systems must use the same scope model. Scopes are runtime contracts, not subsystem-local interpretations.
+
+Canonical scopes:
+- `world`
+- `player`
+- `entity`
+- `spawn_event`
+- `loot`
+- `invasion`
+- `event_context`
+
+#### Scope Contracts
+
+`world`
+- guaranteed runtime objects: server world context, world progression snapshots, world rule/trigger state
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `world`
+- persistence domain: world `SavedData`
+- missing-context behavior: never requires player/entity; evaluation still fails closed for unavailable optional providers
+- intended use: global progression, world scalars, world-wide invasion state
+
+`player`
+- guaranteed runtime objects: concrete player + world context
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `player`
+- persistence domain: player `SavedData` (plus world state when explicitly world-owned)
+- missing-context behavior: if player context is missing, evaluation fails closed and the owning object is treated as non-matching
+- intended use: ascension, per-player progression, player challenge modifiers
+
+`entity`
+- guaranteed runtime objects: concrete entity + world context; optional player source context
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `entity`
+- persistence domain: world state and ephemeral event state; persistent entity-owned state is optional
+- missing-context behavior: if entity disappears or becomes invalid during evaluation, evaluation fails closed
+- intended use: entity-targeted checks/effects
+
+`spawn_event`
+- guaranteed runtime objects: spawn evaluation snapshot; world context; optional player/entity context
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `spawn_event`
+- persistence domain: ephemeral spawn pipeline state unless an action explicitly writes persistent state
+- missing-context behavior: absent optional player/entity fields evaluate false for conditions that require them
+- intended use: spawn-time eligibility and mutation application decisions
+
+`loot`
+- guaranteed runtime objects: loot context (table/source/target snapshot); world context; optional player/entity
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `loot`
+- persistence domain: ephemeral loot evaluation unless an action explicitly mutates persistent state
+- missing-context behavior: player-dependent conditions fail closed when player context is unavailable
+- intended use: loot profile injection/reward decisions
+
+`invasion`
+- guaranteed runtime objects: invasion scheduler/wave context; world context; optional targeted player set
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `invasion`
+- persistence domain: world invasion state, cooldowns, and profile runtime state
+- missing-context behavior: player-targeted branches fail closed when no player context is present
+- intended use: invasion scheduling, wave selection, and invasion reward scaling
+
+`event_context`
+- guaranteed runtime objects: generic trigger/rule snapshot with explicitly documented fields
+- legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `event_context`
+- persistence domain: depends on resolved concrete scope at execution time
+- missing-context behavior: fields not present in the snapshot are treated as unavailable and fail closed
+- intended use: shared trigger/rule wrappers where concrete context varies by event
+
+Cross-scope hard rule:
+- every condition and action must declare `allowed_scopes`
+- using a condition or action outside its declared scopes is a validation error
+- scope validation is independent from subsystem ownership (`rules`, `trigger_rules`, `mob_mutators`, `ascension_rewards`, `loot_profiles`, `invasion_profiles`, future systems)
+
+### 3C. Shared Condition System (Canonical)
+
+Purpose:
+- one condition model shared across trigger rules, runtime rules, mutation definitions/components, ascension rewards/components, ascension offers, mutation pools, loot profiles, invasion profiles, and web authoring validation
+
+Hard rules:
+- all conditions use one canonical shape
+- unknown condition type is a validation error
+- conditions are server-authoritative
+- condition semantics must not drift by subsystem
+- conditions are composable
+- missing context evaluates `false` unless a condition explicitly documents another behavior
+
+Canonical logical wrappers:
+- `all_of`
+- `any_of`
+- `not`
+
+Wrapper payload rules:
+- `all_of.parameters.conditions`: list of child condition nodes, all must pass
+- `any_of.parameters.conditions`: list of child condition nodes, at least one must pass
+- `not.parameters.condition`: single child condition node to negate
+- wrapper nodes support optional `enabled` and `debug_label`
+- wrapper status is `planned` in v1 runtime; strict validators may reject wrappers until promoted to `implemented`
+- flat condition arrays in currently implemented systems are interpreted as implicit `all_of`
+
+Canonical leaf condition shape:
+- `type: ResourceLocation`
+- `parameters: object`
+- `enabled: boolean` (optional, default `true`)
+- `debug_label: string` (optional)
+
+Validation rule:
+- shared condition nodes must be validatable independently from the subsystem that references them
+
+Condition catalog status labels use Section `3F` taxonomy.
+
+#### 3C.1 Progression/State Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `stage_unlocked` | True when the target stage is active in the resolved scope snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "stage": "<resource_location>" }` | `{ "type":"worldawakened:stage_unlocked","parameters":{"stage":"my_pack:nether_opened"} }` | `implemented` | False when the resolved scope has no stage snapshot. |
+| `stage_locked` | True when the target stage is not active in the resolved scope snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "stage": "<resource_location>" }` | `{ "type":"worldawakened:stage_locked","parameters":{"stage":"my_pack:end_reached"} }` | `implemented` | False when the resolved scope has no stage snapshot. |
+| `ascension_reward_owned` | True when player scope owns the reward ID. | `player`,`entity`,`spawn_event`,`event_context`,`invasion` | `{ "reward": "<resource_location>" }` | `{ "type":"worldawakened:ascension_reward_owned","parameters":{"reward":"my_pack:ember_blood"} }` | `implemented` | False when player context is unavailable. |
+| `ascension_offer_pending` | True when player has a pending runtime offer matching definition ID. | `player`,`event_context` | `{ "offer": "<resource_location>" }` | `{ "type":"worldawakened:ascension_offer_pending","parameters":{"offer":"my_pack:tier2_offer"} }` | `implemented` | False when player context is unavailable. |
+| `invasion_active` | True when an invasion runtime is currently active. | `world`,`invasion`,`event_context` | `{ "profile"?: "<resource_location>" }` | `{ "type":"worldawakened:invasion_active","parameters":{"profile":"my_pack:nightfall"} }` | `implemented` | False when invasion runtime context is unavailable. |
+| `mutation_present` | True when the target entity carries at least one matching mutation ID/tag. | `entity`,`spawn_event`,`loot`,`event_context` | `{ "mutation_id"?: "<resource_location>", "mutation_tag"?: "<string>" }` | `{ "type":"worldawakened:mutation_present","parameters":{"mutation_tag":"worldawakened:elite"} }` | `planned` | False when entity mutation metadata is unavailable. |
+| `rule_consumed` | True when a rule consumed flag exists for the resolved scope key. | `world`,`player`,`entity`,`event_context` | `{ "rule": "<resource_location>" }` | `{ "type":"worldawakened:rule_consumed","parameters":{"rule":"my_pack:lock_after_first_run"} }` | `planned` | False when rule-state snapshot is unavailable. |
+| `trigger_consumed` | True when one-shot trigger state exists for the resolved scope key. | `world`,`player`,`event_context` | `{ "trigger": "<resource_location>" }` | `{ "type":"worldawakened:trigger_consumed","parameters":{"trigger":"my_pack:first_nether_entry"} }` | `planned` | False when trigger-state snapshot is unavailable. |
+
+#### 3C.2 World/Time/Environment Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `current_dimension` | Match current dimension ID. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "dimension": "<resource_location>" }` | `{ "type":"worldawakened:current_dimension","parameters":{"dimension":"minecraft:the_nether"} }` | `implemented` | False when dimension cannot be resolved. |
+| `current_biome` | Match current biome ID. | `player`,`entity`,`spawn_event`,`loot`,`event_context` | `{ "biome": "<resource_location>" }` | `{ "type":"worldawakened:current_biome","parameters":{"biome":"minecraft:deep_dark"} }` | `implemented` | False when biome cannot be resolved. |
+| `world_day_gte` | True when world day is >= threshold. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "value": "<integer>=0" }` | `{ "type":"worldawakened:world_day_gte","parameters":{"value":20} }` | `implemented` | False when world day is unavailable. |
+| `moon_phase` | Match moon phase index or named phase set. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "phase"?: "<int_or_name>", "phases"?: ["<int_or_name>", ...] }` | `{ "type":"worldawakened:moon_phase","parameters":{"phases":["full_moon","new_moon"]} }` | `implemented` | False when world day/phase is unavailable. |
+| `time_of_day_range` | Match world time-of-day within inclusive range. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "min"?: "<0-23999>", "max"?: "<0-23999>" }` | `{ "type":"worldawakened:time_of_day_range","parameters":{"min":13000,"max":23000} }` | `planned` | False when time-of-day context is unavailable. |
+| `weather_state` | Match weather state (`clear`,`rain`,`thunder`). | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "state": "<clear/rain/thunder>" }` | `{ "type":"worldawakened:weather_state","parameters":{"state":"thunder"} }` | `planned` | False when weather state cannot be resolved. |
+| `structure_context` | Match structure context label or structure ID when available. | `spawn_event`,`loot`,`event_context` | `{ "structure": "<string_or_resource_location>" }` | `{ "type":"worldawakened:structure_context","parameters":{"structure":"minecraft:stronghold"} }` | `implemented` | False when structure context is unavailable. |
+| `light_level_range` | Match block/entity light level range. | `entity`,`spawn_event`,`event_context` | `{ "min"?: "<0-15>", "max"?: "<0-15>" }` | `{ "type":"worldawakened:light_level_range","parameters":{"max":7} }` | `planned` | False when light level context is unavailable. |
+
+#### 3C.3 Player Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `player_distance_from_spawn` | Match player distance from shared spawn in blocks. | `player`,`entity`,`spawn_event`,`event_context`,`invasion` | `{ "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:player_distance_from_spawn","parameters":{"min":128,"max":1500} }` | `implemented` | False when player context is unavailable. |
+| `player_count_online` | Match online player count range. | `world`,`invasion`,`event_context` | `{ "min"?: "<integer>", "max"?: "<integer>" }` | `{ "type":"worldawakened:player_count_online","parameters":{"min":2} }` | `implemented` | False when server player-count provider is unavailable. |
+| `player_health_range` | Match player health range. | `player`,`event_context` | `{ "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:player_health_range","parameters":{"max":8.0} }` | `planned` | False when player health context is unavailable. |
+| `player_armor_range` | Match total player armor value range. | `player`,`event_context` | `{ "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:player_armor_range","parameters":{"min":10} }` | `planned` | False when player armor context is unavailable. |
+| `player_tag` | Match player scoreboard/team/datapack tag membership. | `player`,`event_context` | `{ "tag": "<string>" }` | `{ "type":"worldawakened:player_tag","parameters":{"tag":"wa_hardcore"} }` | `planned` | False when player tag context is unavailable. |
+| `held_item` | Match currently held/offhand item filters. | `player`,`event_context` | `{ "item"?: "<resource_location>", "tag"?: "<item_tag>", "slot"?: "<mainhand/offhand/either>" }` | `{ "type":"worldawakened:held_item","parameters":{"item":"minecraft:totem_of_undying"} }` | `planned` | False when player inventory context is unavailable. |
+| `equipped_item` | Match armor/equipment slot item filters. | `player`,`event_context` | `{ "slot": "<head/chest/legs/feet/any>", "item"?: "<resource_location>", "tag"?: "<item_tag>" }` | `{ "type":"worldawakened:equipped_item","parameters":{"slot":"chest","tag":"minecraft:chest_armor"} }` | `planned` | False when player equipment context is unavailable. |
+| `effect_active` | Match active effect status/amplifier bounds. | `player`,`entity`,`event_context` | `{ "effect": "<resource_location>", "min_amplifier"?: "<int>", "max_amplifier"?: "<int>" }` | `{ "type":"worldawakened:effect_active","parameters":{"effect":"minecraft:strength","min_amplifier":1} }` | `planned` | False when effect context is unavailable. |
+
+#### 3C.4 Entity Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `entity_type` | Match exact entity type ID. | `entity`,`spawn_event`,`loot`,`event_context` | `{ "entity": "<resource_location>" }` | `{ "type":"worldawakened:entity_type","parameters":{"entity":"minecraft:zombie"} }` | `implemented` | False when entity context is unavailable. |
+| `entity_tag` | Match entity type tag membership. | `entity`,`spawn_event`,`loot`,`event_context` | `{ "tag": "<entity_tag_resource_location>" }` | `{ "type":"worldawakened:entity_tag","parameters":{"tag":"minecraft:raiders"} }` | `implemented` | False when entity context is unavailable. |
+| `entity_is_boss` | True when entity is classified as boss. | `entity`,`spawn_event`,`loot`,`event_context` | `{}` | `{ "type":"worldawakened:entity_is_boss","parameters":{} }` | `planned` | False when entity context is unavailable. |
+| `entity_not_boss` | True when entity exists and is not classified as boss. | `entity`,`spawn_event`,`loot`,`event_context` | `{}` | `{ "type":"worldawakened:entity_not_boss","parameters":{} }` | `implemented` | False when entity context is unavailable. |
+| `entity_is_mutated` | True when entity carries World Awakened mutation state. | `entity`,`spawn_event`,`loot`,`event_context` | `{}` | `{ "type":"worldawakened:entity_is_mutated","parameters":{} }` | `implemented` | False when entity context is unavailable. |
+| `entity_health_range` | Match entity health range. | `entity`,`event_context` | `{ "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:entity_health_range","parameters":{"max":20.0} }` | `planned` | False when entity health context is unavailable. |
+| `entity_on_fire` | True when entity burn state is active. | `entity`,`spawn_event`,`event_context` | `{}` | `{ "type":"worldawakened:entity_on_fire","parameters":{} }` | `planned` | False when entity context is unavailable. |
+| `entity_hostile` | True when entity resolves to hostile category/classification. | `entity`,`spawn_event`,`loot`,`event_context` | `{}` | `{ "type":"worldawakened:entity_hostile","parameters":{} }` | `planned` | False when hostility classifier context is unavailable. |
+| `entity_passive` | True when entity resolves to passive category/classification. | `entity`,`spawn_event`,`loot`,`event_context` | `{}` | `{ "type":"worldawakened:entity_passive","parameters":{} }` | `planned` | False when passive classifier context is unavailable. |
+
+#### 3C.5 External/Integration/Config Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `loaded_mod` | True when a mod ID is present in the loaded mod list. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "mod": "<string_mod_id>" }` | `{ "type":"worldawakened:loaded_mod","parameters":{"mod":"apotheosis"} }` | `implemented` | False when loaded-mod provider is unavailable. |
+| `config_toggle_enabled` | True when a config toggle path resolves true. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "config_gate": "<dot_path>" }` | `{ "type":"worldawakened:config_toggle_enabled","parameters":{"config_gate":"compat.apotheosis.enabled"} }` | `implemented` | False when toggle map is unavailable or key missing. |
+| `apotheosis_world_tier_compare` | Compare external Apotheosis world tier using operator/value. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "op": "<comparison_operator>", "value": "<number>" }` | `{ "type":"worldawakened:apotheosis_world_tier_compare","parameters":{"op":">=","value":3} }` | `planned` | False when Apotheosis provider/config gate is unavailable. |
+| `external_scalar_range` | Match a named external scalar against min/max. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "scalar": "<string>", "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:external_scalar_range","parameters":{"scalar":"pressure_tier","min":2} }` | `planned` | False when external scalar provider/key is unavailable. |
+| `integration_active` | True when a named integration profile is active. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "integration": "<string_or_resource_location>" }` | `{ "type":"worldawakened:integration_active","parameters":{"integration":"apotheosis"} }` | `planned` | False when integration activation context is unavailable. |
+
+#### 3C.6 Random/Event Context Conditions
+
+| Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| `random_chance` | Deterministic probabilistic gate for the evaluation snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "chance": "<0.0-1.0>" }` | `{ "type":"worldawakened:random_chance","parameters":{"chance":0.35} }` | `implemented` | False when deterministic roll context is unavailable. |
+| `event_type` | Match event type identifier in current event snapshot. | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "event": "<resource_location_or_string>" }` | `{ "type":"worldawakened:event_type","parameters":{"event":"worldawakened:entity_killed"} }` | `planned` | False when event-type field is unavailable. |
+| `recent_trigger` | Match whether a named trigger recently fired within a bounded window. | `world`,`player`,`event_context` | `{ "trigger": "<resource_location>", "within_seconds"?: "<integer>" }` | `{ "type":"worldawakened:recent_trigger","parameters":{"trigger":"my_pack:nether_entry","within_seconds":60} }` | `planned` | False when recent-trigger cache is unavailable. |
+| `source_scope_match` | Match the source scope of the current wrapped event context. | `event_context` | `{ "scope": "<world/player/entity/spawn_event/loot/invasion>" }` | `{ "type":"worldawakened:source_scope_match","parameters":{"scope":"player"} }` | `planned` | False when source scope metadata is unavailable. |
+
+### 3D. Shared Action System (Canonical)
+
+Purpose:
+- one action model shared across trigger outputs, runtime rules, event/profile execution, and web authoring validation
+
+Hard rules:
+- all actions use one canonical shape
+- unknown action type is a validation error
+- actions execute only in valid scopes
+- every action declares idempotency behavior
+- every action declares persistence behavior
+- runtime enforces bounded queue execution and recursion protection
+
+Canonical action shape:
+- `type: ResourceLocation`
+- `parameters: object`
+- `enabled: boolean` (optional, default `true`)
+- `priority: integer` (optional, default `0`)
+- `debug_label: string` (optional)
+
+Execution guarantees:
+- actions execute from a bounded queue
+- idempotent actions must be safe under repeated evaluation
+- non-idempotent actions must document repeat protections
+- action chains must not recurse unboundedly
+- invalid actions disable only the owning object unless framework integrity is broken
+
+Action catalog status labels use Section `3F` taxonomy.
+
+#### 3D.1 Progression/State Actions
+
+| Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `unlock_stage` | Unlock a stage in resolved scope context. | `world`,`player` | `{ "stage": "<resource_location>" }` | yes | yes | executes before downstream stage-dependent actions in same queue pass | `implemented` |
+| `lock_stage` | Lock a stage in resolved scope context (policy-gated). | `world`,`player` | `{ "stage": "<resource_location>" }` | yes | yes | ordered with stage unlocks by action priority then queue order | `implemented` |
+| `emit_named_event` | Emit a named internal event for downstream processing. | `world`,`player`,`entity`,`event_context` | `{ "event": "<resource_location>" }` | no | no | event emissions append to bounded event queue | `implemented` |
+| `increment_counter` | Increment named counter by delta. | `world`,`player`,`event_context` | `{ "counter": "<string>", "amount"?: "<integer>" }` | no | yes | deterministic by priority then authored order | `implemented` |
+| `set_counter` | Set named counter to explicit value. | `world`,`player`,`event_context` | `{ "counter": "<string>", "value": "<integer>" }` | yes | yes | executes after increments at same priority only if explicitly ordered | `planned` |
+| `start_cooldown` | Start/update cooldown key with fixed duration. | `world`,`player`,`entity`,`event_context` | `{ "key": "<string>", "duration_seconds": "<number>" }` | no | yes | repeated applications refresh or extend by policy | `planned` |
+| `mark_rule_consumed` | Mark rule consumed for resolved scope key. | `world`,`player`,`entity`,`event_context` | `{ "rule"?: "<resource_location>" }` | yes | yes | should execute late in chain after gating actions | `implemented` |
+| `set_world_scalar` | Set/add/multiply world scalar value. | `world`,`event_context` | `{ "key": "<string>", "op"?: "<set/add/multiply>", "value": "<number>" }` | no | yes | op semantics deterministic; last-writer rules apply by queue order | `implemented` |
+| `set_player_scalar` | Set/add/multiply player scalar value. | `player`,`event_context` | `{ "key": "<string>", "op"?: "<set/add/multiply>", "value": "<number>" }` | no | yes | requires concrete player context | `planned` |
+| `set_temp_invasion_modifier` | Apply temporary invasion scalar override. | `invasion`,`world`,`event_context` | `{ "key": "<string>", "value": "<number>", "duration_seconds"?: "<number>" }` | no | no | expiry handling must be deterministic and bounded | `planned` |
+
+#### 3D.2 Ascension Actions
+
+| Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `grant_ascension_offer` | Grant an ascension offer runtime instance. | `player`,`event_context` | `{ "offer": "<resource_location>", "source_key"?: "<string>" }` | yes | yes | idempotent by `(player, offer, source_key)` runtime key | `implemented` |
+| `revoke_ascension_reward` | Revoke a chosen ascension reward (policy/admin gated). | `player`,`event_context` | `{ "reward": "<resource_location>" }` | yes | yes | should run before reconcile/apply pass | `planned` |
+| `queue_ascension_offer` | Queue offer when one-pending policy blocks immediate grant. | `player`,`event_context` | `{ "offer": "<resource_location>", "source_key"?: "<string>" }` | yes | yes | queue dedupe is keyed by runtime instance identity | `planned` |
+
+#### 3D.3 Mutation/Spawn Actions
+
+| Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `apply_mutator_pool` | Apply mutator pool selection to target spawn/entity context. | `spawn_event`,`entity`,`event_context` | `{ "pool": "<resource_location>" }` | no | no | runs after eligibility filters, before final spawn finalize | `planned` |
+| `apply_stat_profile` | Apply named stat profile package to target context. | `spawn_event`,`entity`,`event_context` | `{ "profile": "<resource_location>" }` | no | no | conflicts resolved by shared composition priority | `planned` |
+| `attach_spawn_metadata` | Attach deterministic metadata to spawned entity context. | `spawn_event`,`event_context` | `{ "key": "<string>", "value": "<json_value>" }` | yes | no | metadata writes are deterministic by action ordering | `planned` |
+
+#### 3D.4 Loot/Reward Actions
+
+| Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `inject_loot_profile` | Inject loot profile into current loot evaluation. | `loot`,`event_context` | `{ "profile": "<resource_location>" }` | no | no | additive merge/replace policies apply deterministically | `planned` |
+| `drop_reward_table` | Trigger explicit reward table drop. | `loot`,`entity`,`event_context` | `{ "table": "<resource_location>" }` | no | no | bounded by anti-recursion drop guards | `planned` |
+| `grant_reward` | Grant non-loot-table reward payload. | `player`,`loot`,`invasion`,`event_context` | `{ "reward_type": "<string>", "payload": "<object>" }` | no | yes | reward handler must document dedupe behavior | `planned` |
+
+#### 3D.5 Invasion/Event Actions
+
+| Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `trigger_invasion_profile` | Trigger invasion profile immediately. | `world`,`invasion`,`event_context` | `{ "profile": "<resource_location>" }` | no | yes | conflicts resolved by invasion priority/concurrency policy | `planned` |
+| `schedule_invasion_check` | Schedule invasion chance check by key/time. | `world`,`invasion`,`event_context` | `{ "profile"?: "<resource_location>", "delay_seconds"?: "<number>" }` | yes | yes | scheduler dedupes by key and due-time policy | `planned` |
+| `send_warning_message` | Send warning/system message to player(s). | `world`,`player`,`invasion`,`event_context` | `{ "message": "<text_component_or_string>", "audience"?: "<player/nearby/world>" }` | no | no | ordered late for user-facing observability | `implemented` |
+
+### 3E. Shared Component Composition and Conflict Model
+
+This section is the canonical composition contract for both mutation components and ascension components.
+Detailed resolver pipeline and examples are defined in [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md).
+
+Hard rules:
+- components do not stack by accident
+- duplicate semantics are explicit per component type
+- conflicts are explicit and validated
+- execution order is deterministic
+- incompatible compositions fail validation (no silent misbehavior)
+
+Canonical composition concepts:
+- `conflicts_with`
+- `stacking_group`
+- `duplicate_policy`
+- `exclusive_with`
+- `max_instances`
+- `composition_priority`
+- `requires_component_types`
+- `forbidden_component_types`
+
+Duplicate policies:
+- `reject`
+- `allow_identical`
+- `stack`
+- `last_wins`
+- `merge`
+
+Stacking categories:
+- additive stats
+- multiplicative stats
+- behavioral toggles
+- elemental packages
+- summon controls
+- presentation layers
+- aura/retaliation effects
+- utility/passive effects
+
+Required composition rules:
+- additive and multiplicative effects must declare deterministic ordering (authored order + `composition_priority`)
+- elemental packages must declare whether they are mutually exclusive
+- summon helper components are invalid without required summon core components
+- presentation components may stack only when the component type explicitly allows it
+- utility/passive components must document duplicate behavior
+- deterministic ordering is required: authored order first, then explicit priority semantics
+- impossible compositions must be rejected at validation time
+
+Required diagnostics:
+- unknown component type
+- missing required companion component
+- forbidden duplicate
+- max instances exceeded
+- explicit conflict hit
+- stacking group overflow
+- budget exceeded (where budget is configured)
+
+### 3F. Shared Status Taxonomy (Canonical)
+
+One lifecycle vocabulary is required across conditions, actions, components, and major object-shape extensions.
+
+Canonical statuses:
+- `implemented`
+- `planned`
+- `reserved`
+- `deprecated`
+
+Required coverage rule:
+- every condition, action, component, and major object-shape extension must carry one of these statuses in documentation/reference metadata
+
+Definitions:
+
+`implemented`
+- exists in runtime code now
+- supported by codecs/validators as active feature
+- may be used in shipped examples
+- should be active in web tooling
+
+`planned`
+- designed/documented but not fully runtime-supported
+- strict validation modes must block it; permissive modes may warn
+- may appear in docs as future capability
+
+`reserved`
+- identifier/shape intentionally held
+- no runtime behavior guarantee
+- invalid for authored runtime content until promoted
+
+`deprecated`
+- recognized for compatibility/migration only
+- not recommended for new authored content
+- should emit warnings with migration guidance when possible
+
+Validation mode rule:
+- `implemented`: allowed
+- `planned`: warning or error depending on validation mode
+- `reserved`: error
+- `deprecated`: warning with migration note
+
+Docs/tooling rule:
+- identical status labels must be used in:
+  - this spec
+  - `docs/DATAPACK_AUTHORING.md`
+  - `docs/COMPONENT_REFERENCE.md`
+  - future web authoring/validation outputs
 
 ---
 
@@ -283,6 +659,7 @@ Fallback rules:
 ### 5.2 PER_PLAYER (v1 partial)
 - Player-specific stage state and trigger context.
 - World-level events can still read aggregate context if configured.
+- Operator/admin commands that inspect or mutate progression state must support explicit `player` targeting in this mode; no-target command variants may still resolve to the executing player or global fallback for convenience, but they are not sufficient as the only operator path.
 
 ### 5.3 HYBRID (design only for v1)
 - Combined world + player stage spaces.
@@ -420,6 +797,7 @@ Persist:
 Hard rules:
 - chosen rewards are permanent unless future admin or debug tooling explicitly revokes them
 - forfeited rewards from a resolved offer must never reappear for that same offer
+- operator/admin reversal must be explicit; low-level reward removal and runtime-offer reopen/clear paths must not be conflated
 - if a chosen reward definition is later removed, the saved chosen reward ID remains recorded, the effect is no longer applied once reconciliation detects the missing definition, no automatic substitution occurs, and a structured warning should be emitted for operators in validation/debug output
 
 ### 5A.6 Reward Definition Schema
@@ -438,8 +816,8 @@ Each reward definition should support:
 - `tier_weight` or `offer_weight`
 - `unique_group`
 - `exclusion_tags[]`
-- `requires_conditions[]`
-- `forbidden_conditions[]`
+- `requires_conditions[]` (shared condition nodes from Section `3C`)
+- `forbidden_conditions[]` (shared condition nodes from Section `3C`)
 - `ui_style`
 - `max_rank` (reserved for future, default `1`)
 
@@ -447,6 +825,7 @@ Design rule:
 - datapacks define what reward can appear and when
 - datapacks define reward component combinations and parameters
 - Java defines what each ascension component type actually does
+- component duplicate/conflict/ordering semantics must follow shared composition rules in Section `3E`
 - `offer_weight` is used when selecting rewards within a concrete offer candidate set
 - `tier_weight` is used only for higher-level tier or pool-driven reward generation when that generation mode exists
 
@@ -490,7 +869,7 @@ Fields:
 - `display_name`
 - `description`
 - `enabled`
-- `trigger_conditions[]`
+- `trigger_conditions[]` (shared condition nodes from Section `3C`)
 - `stage_filters`
 - `pressure_tier_filters`
 - `apotheosis_tier_filters`
@@ -502,7 +881,7 @@ Fields:
 - `weighting_rules`
 - `ui_priority`
 - `allow_duplicates_across_players`
-- `allow_reward_reuse_across_offers`
+- `reward_repeat_policy`
 
 Offer modes:
 - `explicit_list`
@@ -519,8 +898,9 @@ Rules:
 - a player may select exactly one reward from an offer
 - once selected, the offer becomes resolved
 - all unchosen rewards in that offer become permanently forfeited
-- forfeited rewards from that offer never appear again for that player
-- a chosen reward cannot be selected again unless explicitly allowed by reward config
+- `reward_repeat_policy = block_all` means previously chosen and previously forfeited rewards do not appear again for that player later
+- `reward_repeat_policy = allow_forfeited_only` means forfeited rewards may reappear later, but chosen rewards remain blocked
+- `reward_repeat_policy = allow_all` means previously chosen and previously forfeited rewards may both reappear later if the authored offer logic still selects them
 - `unique_group` may block future similar rewards
 
 Suggested evaluation precedence:
@@ -565,14 +945,21 @@ On datapack reload (and config reload for config-owned settings), validate:
 - contradictory or impossible conditions
 - offers that can never trigger
 
+All ascension condition/action and component composition validation semantics must stay aligned with shared contracts in Sections `3C`, `3D`, `3E`, and `3F`.
+
 Required debug and command support:
 - `/wa ascension list <player>`
 - `/wa ascension pending <player>`
 - `/wa ascension open <player>`
 - `/wa ascension grant_offer <player> <offer_id>`
-- `/wa ascension choose <player> <offer_id> <reward_id>`
+- `/wa ascension choose <player> <instance_id> <reward_id>`
+- `/wa ascension active <player> <reward_id>`
 - `/wa ascension revoke <player> <reward_id>`
+- `/wa ascension reopen <player> <instance_id>`
+- `/wa ascension clear <player> <instance_id>`
 - `/wa ascension inspect <player>`
+- `/wa debug reset player <player> ascension`
+- `/wa debug clear player <player> ascension_instance <instance_id>`
 
 Inspect output should show:
 - pending offers
@@ -586,6 +973,8 @@ Debug trace should be able to explain:
 - why an offer triggered
 - why a reward was eligible or ineligible
 - whether a reward was filtered by forfeiture, `unique_group`, or missing definition state
+- whether a reward revoke reopened one or more resolved offer instances
+- whether an operator/debug clear removed pending history, resolved history, or both
 
 Example ascension inspect/debug lines:
 - `Chosen Ascension Reward: my_pack:unyielding_hunter`
@@ -1039,15 +1428,21 @@ Responsibility split:
 - Apotheosis tier threshold reached
 - integration-specific signal event
 
-World-context checks such as world day and distance-from-spawn must be modeled as rule conditions (Section 8), not as core trigger types.
+World-context checks such as world day and distance-from-spawn must be modeled with shared conditions (Section `3C`) through rules, not as core trigger types.
 
 ### 7.2 Trigger Output Actions
 
-- unlock stage
-- emit named event
-- increment counter
-- start/update cooldown
-- schedule invasion chance check
+Trigger outputs use the shared action model in Section `3D`.
+
+v1 trigger runtime currently executes the implemented trigger subset:
+- `unlock_stage`
+- `lock_stage`
+- `emit_named_event`
+- `increment_counter`
+- `send_warning_message`
+- `grant_ascension_offer`
+
+Additional shared actions remain valid framework contracts but may be `planned` in trigger execution until promoted.
 
 ### 7.3 Trigger Rule Schema
 
@@ -1060,12 +1455,15 @@ Fields:
 - `actions[]`
 - `cooldown`
 - `one_shot`
-- `source_scope: world | player`
+- `source_scope: world | player` (v1 trigger subset of Section `3B`)
 
 Execution rules:
 - higher priority resolves first
 - one-shot triggers persist consumed state
 - cooldown keyed by scope and trigger ID
+- `conditions[]` entries must use the canonical shared condition node shape (Section `3C`)
+- `actions[]` entries must use the canonical shared action node shape (Section `3D`)
+- condition/action scope checks are enforced against the declared trigger source scope
 
 ### 7.4 Boss Kill Classification
 
@@ -1126,11 +1524,16 @@ Rules are declarative `conditions -> actions` objects.
 - `weight` (for weighted selections)
 - `chance`
 - `cooldown`
-- `execution_scope: world | player | entity | spawn_event`
+- `execution_scope: world | player | entity | spawn_event` (v1 implemented subset of Section `3B`)
 - `tags[]`
+- `conditions[]` must use shared canonical condition nodes (Section `3C`)
+- `actions[]` must use shared canonical action nodes (Section `3D`)
 
 ### 8.2 Condition Types (v1)
 
+Rules consume shared conditions from Section `3C`; they do not define a separate condition model.
+
+Current runtime-implemented subset for `rules`:
 - `stage_unlocked`
 - `stage_locked`
 - `ascension_reward_owned`
@@ -1146,8 +1549,6 @@ Rules are declarative `conditions -> actions` objects.
 - `entity_not_boss`
 - `entity_is_mutated`
 - `player_count_online`
-- `local_difficulty_range`
-- `apotheosis_world_tier_compare`
 - `random_chance`
 - `moon_phase`
 - `structure_context`
@@ -1155,15 +1556,15 @@ Rules are declarative `conditions -> actions` objects.
 
 ### 8.2A Optional World-Context Condition Semantics
 
-World-context conditions are optional datapack-driven rule inputs. They must not be treated as primary built-in progression systems.
+World-context conditions are optional datapack-driven inputs from the shared condition catalog (Section `3C.2`). They must not be treated as primary built-in progression systems.
 
 Supported optional world-context conditions include:
 - `world_day_gte`
-  - true when the world day counter is greater than or equal to the configured threshold
-  - expected payload field: `value` (integer day threshold)
+  - true when world day is greater than or equal to the configured threshold
+  - payload uses shared `parameters` with `value` (integer day threshold)
 - `player_distance_from_spawn`
   - true when the player's distance from world spawn is within the configured range
-  - expected payload fields: `min` and/or `max` (inclusive range; at least one must be present)
+  - payload uses shared `parameters` with `min` and/or `max` (inclusive; at least one required)
 
 Design rules:
 - these conditions are optional and datapack-driven
@@ -1173,25 +1574,32 @@ Design rules:
 
 ### 8.3 Action Types (v1)
 
+Rules consume shared actions from Section `3D`; they do not define a separate action model.
+
+Current runtime-implemented subset for `rules`:
 - `unlock_stage`
 - `lock_stage`
 - `grant_ascension_offer`
+- `send_warning_message`
+- `mark_rule_consumed`
+- `set_world_scalar`
+
+Accepted-but-planned deferred action handlers:
 - `apply_mutator_pool`
 - `apply_stat_profile`
 - `inject_loot_profile`
 - `trigger_invasion_profile`
-- `send_warning_message`
 - `drop_reward_table`
-- `mark_rule_consumed`
-- `set_world_scalar`
 - `set_temp_invasion_modifier`
 
 ### 8.4 Evaluation Guarantees
 
 - deterministic condition parsing and validation
-- bounded action execution (no infinite loops)
+- bounded action queue execution (no infinite loops)
 - per-rule cooldown and chance handling
 - structured debug trace for rule decisions in debug mode
+- shared scope validation before condition/action evaluation
+- recursion guard and same-pass reroll protections
 
 ### 8.5 Rule Conflict Resolution
 
@@ -1239,6 +1647,108 @@ Integration conflicts:
 - rule recursion must be prevented
 - repeated evaluation within the same tick must not reroll the same outcome for the same evaluation context
 - action execution must not create unbounded self-triggering loops
+
+### 8.7 Rule Execution Contract (Normative)
+
+This section locks exact rule-engine mechanics for deterministic runtime behavior.
+
+#### 8.7.1 Evaluation Buckets by Scope/Context
+
+Rules must compile into scope buckets at reload time:
+- `world`
+- `player`
+- `entity`
+- `spawn_event`
+
+Each bucket may include secondary indexes:
+- by stage references used in conditions
+- by selector/entity/tag usage
+- by integration/config gate dependencies
+
+Hard rules:
+- a rule is evaluated only in its declared `execution_scope`
+- cross-scope fallback evaluation is not allowed
+- adding later scopes (`loot`, `invasion`, `event_context`) must preserve the same bucket/index contract
+
+#### 8.7.2 Reload-Time Compilation and Indexing
+
+Rule processing during datapack reload must compile:
+- typed condition nodes and parameter validators
+- typed action nodes and parameter validators
+- scope legality flags
+- selector/tag/entity matchers
+- stage/integration/config dependency indexes
+- priority-sorted candidate lists per scope bucket
+
+Hot-path rule evaluation must not parse raw JSON.
+
+#### 8.7.3 Canonical Rule Pipeline Sequence
+
+For each event pass and selected scope bucket, rules must execute in this exact sequence:
+1. acquire immutable event snapshot + scope context
+2. fetch precompiled candidate list for the scope bucket
+3. filter `enabled`
+4. filter config gates
+5. filter integration gates
+6. filter context/selector eligibility
+7. evaluate condition nodes
+8. sort by effective priority (stable tiebreaker)
+9. enforce cooldown
+10. enforce one-shot/consumed flags
+11. apply chance
+12. enqueue actions
+13. resolve bounded action queue
+14. persist consumed/cooldown writes
+15. emit trace summary
+
+No step may be skipped or reordered by subsystem-specific behavior.
+
+#### 8.7.4 Cache Invalidation and Reload Guarantees
+
+Required invalidation behavior:
+- datapack reload invalidates all compiled rule buckets/indexes and rebuilds them atomically
+- config reload invalidates dependent gate/index views used by rule matching
+- runtime state changes never mutate compiled definitions
+
+Atomicity rule:
+- evaluation must use either the old compiled graph or the new compiled graph, never a mixed graph
+
+#### 8.7.5 Single-Pass Meaning for Rule Eligibility
+
+Single-pass means:
+- one snapshot per event pass
+- eligibility is computed from pre-action snapshot state
+- actions from the pass do not cause same-pass candidate expansion/re-evaluation
+- newly unlocked stages or state writes only affect future passes
+
+Even if an action would make another rule eligible, that newly eligible rule waits until the next pass.
+
+#### 8.7.6 Debug Trace Attachment Points
+
+A trace record must attach at minimum to:
+- pass start (snapshot and scope bucket)
+- per-rule decision (`matched`/`rejected` + reason)
+- per-action enqueue/dequeue decision
+- pass end (state writes and outcome summary)
+
+Trace fields and provenance shape must follow [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md).
+
+### 8.8 Rule Engine Performance Guarantees
+
+This section is normative for hot-path performance behavior.
+Detailed limits and guardrails are defined in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md).
+
+Hard guarantees:
+- rule evaluation complexity must be `O(bucket_size)`, never `O(total_rules)`
+- rules must be scope-indexed during reload and evaluated from the active scope bucket only
+- rule selectors and typed nodes must be compiled during reload
+- event pipelines must remain bounded and deterministic
+- spawn-time mutation resolution must respect strict mutator/component budgets
+
+Runtime safety contract:
+- no unbounded full-collection scans in event or spawn hot paths
+- no runtime datapack JSON parsing in rule or mutator hot paths
+- budget exceedance must emit diagnostics and apply policy-defined branch/object handling without crashing unrelated systems
 
 ---
 
@@ -1692,7 +2202,7 @@ Mob mutations are named datapack-authored definitions composed from mutation com
 - `eligible_entity_tags[]`
 - `excluded_entities[]`
 - `excluded_entity_tags[]`
-- `required_conditions[]`
+- `required_conditions[]` (shared condition nodes from Section `3C`)
 - `component_budget` (optional)
 - `reward_modifier{}`
 - `visuals{}`
@@ -1704,7 +2214,8 @@ Mob mutations are named datapack-authored definitions composed from mutation com
 
 - mutation definition ID is the authored identity used in datapacks, pools, inspect output, and debug traces
 - mutation component types are behavior primitives and are not the user-facing mutation identity
-- built-in names such as Juggernaut or Summoner are bundled datapack presets, not privileged Java constants
+- names such as Juggernaut or Summoner are datapack-authored example-pack presets, not privileged Java constants
+- mutation component duplicate/conflict/ordering semantics must follow shared composition rules in Section `3E`
 
 ### 9.3 Application Contexts
 
@@ -2108,6 +2619,7 @@ Baseline config groups (v1):
 [general]
 enable_mod = true
 debug_logging = false
+enable_debug_commands = true
 validation_logging = true
 ```
 
@@ -2116,7 +2628,6 @@ validation_logging = true
 [progression]
 mode = "global"
 announce_stage_unlocks = true
-allow_stage_regression = false
 allow_hidden_stages_in_debug = true
 ```
 
@@ -2285,6 +2796,65 @@ Behavior:
 All World Awakened object types may optionally include:
 - `schema_version`
 
+### 17.0A Shared Condition Node (Canonical)
+
+All condition arrays (`conditions`, `requires_conditions`, `forbidden_conditions`, `trigger_conditions`, component-level `conditions`) must use:
+- `type`
+- `parameters`
+- optional `enabled`
+- optional `debug_label`
+
+Logical wrappers are also condition nodes:
+- `all_of` with `parameters.conditions[]`
+- `any_of` with `parameters.conditions[]`
+- `not` with `parameters.condition`
+
+Conditions must declare allowed scopes through shared metadata and are invalid outside allowed scopes.
+
+### 17.0B Shared Action Node (Canonical)
+
+All action arrays (`actions`) must use:
+- `type`
+- `parameters`
+- optional `enabled`
+- optional `priority`
+- optional `debug_label`
+
+Actions must declare:
+- allowed scopes
+- idempotency behavior
+- persistence behavior
+
+### 17.0C Shared Scope Fields
+
+Scope-bearing objects must use canonical scope IDs from Section `3B`.
+
+v1 currently implemented scope fields:
+- `trigger_rule.source_scope`: `world | player`
+- `rule.execution_scope`: `world | player | entity | spawn_event`
+
+Additional canonical scope IDs (`loot`, `invasion`, `event_context`) are framework-level contracts and may appear in future object shapes when promoted.
+
+### 17.0D Shared Status Metadata
+
+All condition/action/component catalogs and major object-shape extensions must use status labels from Section `3F`:
+- `implemented`
+- `planned`
+- `reserved`
+- `deprecated`
+
+### 17.0E Shared Component Composition Metadata
+
+Component-bearing objects (`mutator.json`, `ascension_reward.json`) must honor shared composition semantics (Section `3E`) with explicit metadata where applicable:
+- `stacking_group`
+- `duplicate_policy`
+- `max_instances`
+- `composition_priority`
+- `conflicts_with`
+- `exclusive_with`
+- `requires_component_types`
+- `forbidden_component_types`
+
 ### 17.1 `stage.json`
 Required support:
 - `id`
@@ -2308,7 +2878,7 @@ Required support:
 - `weight`
 - `eligibility`
 - `conditions`
-- component composition options (`enabled`, `priority`, `parameters`, `conditions`, `exclusions`, `conflicts_with`)
+- component composition options (`enabled`, `priority`, `parameters`, `conditions`, `exclusions`, `conflicts_with`, plus shared composition metadata from Section `3E`)
 - stacking rules
 - visuals
 
@@ -2326,8 +2896,8 @@ Required support:
 Required support:
 - `id`
 - `trigger_type`
-- `conditions`
-- `actions`
+- `conditions` (shared condition nodes from Section `17.0A`)
+- `actions` (shared action nodes from Section `17.0B`)
 - `cooldown`
 - `one_shot`
 
@@ -2361,30 +2931,41 @@ Required support:
 - `description`
 - `icon`
 - `components[]`
-- `requires_conditions`
-- `forbidden_conditions`
+- `requires_conditions` (shared condition nodes from Section `17.0A`)
+- `forbidden_conditions` (shared condition nodes from Section `17.0A`)
 - `unique_group`
 
 ### 17.8 `ascension_offer.json`
 Required support:
 - `id`
 - `display_name`
-- `trigger_conditions`
+- `trigger_conditions` (shared condition nodes from Section `17.0A`)
 - `stage_filters`
 - `choice_count`
 - `selection_count`
 - candidate reward refs or tags
 - `offer_mode`
+- `reward_repeat_policy`
 
 ---
 
 ## 18. Debug and Command Surface
 
+Normative output and trace/provenance payload details are defined in [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md).
+
 Required commands (v1):
 - `/wa stage list`
+- `/wa stage list player <player>`
+- `/wa stage list global`
 - `/wa stage unlock <id>`
+- `/wa stage unlock <id> player <player>`
+- `/wa stage unlock <id> global`
 - `/wa stage lock <id>`
+- `/wa stage lock <id> player <player>`
+- `/wa stage lock <id> global`
 - `/wa trigger fire <id>`
+- `/wa trigger fire <id> player <player> [dimension <dimension_id>]`
+- `/wa trigger fire <id> global [dimension <dimension_id>]`
 - `/wa invasion start <profile>`
 - `/wa invasion stop`
 - `/wa mob inspect`
@@ -2394,11 +2975,40 @@ Required commands (v1):
 - `/wa ascension pending <player>`
 - `/wa ascension open <player>`
 - `/wa ascension grant_offer <player> <offer_id>`
-- `/wa ascension choose <player> <offer_id> <reward_id>`
+- `/wa ascension choose <player> <instance_id> <reward_id>`
+- `/wa ascension active <player> <reward_id>`
 - `/wa ascension revoke <player> <reward_id>`
+- `/wa ascension reopen <player> <instance_id>`
+- `/wa ascension clear <player> <instance_id>`
 - `/wa ascension inspect <player>`
+- `/wa debug reset global stages`
+- `/wa debug reset global triggers`
+- `/wa debug reset global rules`
+- `/wa debug reset global all`
+- `/wa debug reset player <player> stages`
+- `/wa debug reset player <player> triggers`
+- `/wa debug reset player <player> rules`
+- `/wa debug reset player <player> ascension`
+- `/wa debug reset player <player> all`
+- `/wa debug clear global stage <id>`
+- `/wa debug clear global trigger <id>`
+- `/wa debug clear global rule <id>`
+- `/wa debug clear player <player> stage <id>`
+- `/wa debug clear player <player> trigger <id>`
+- `/wa debug clear player <player> rule <id>`
+- `/wa debug clear player <player> ascension_instance <instance_id>`
 - `/wa dump active_rules`
+- `/wa dump active_rules player <player> [dimension <dimension_id>]`
+- `/wa dump active_rules global [dimension <dimension_id>]`
 - `/wa reload validate`
+
+Command targeting notes:
+- `global` means the shared save-wide progression bucket, not a second Minecraft world
+- `dimension <dimension_id>` overrides world-context evaluation for the command pass without changing the targeted `player` or `global` persistence bucket
+- ascension runtime `instance_id` values are short opaque command-safe IDs such as `wao_ab12cd34`; inspect/debug output must surface `offer_id` and `source_key` separately for provenance
+- operator-facing ascension output should expose clickable copy and suggest-command actions for runtime IDs and common next actions where the client supports chat click events
+- operator command arguments that target loaded authored objects or pending runtime instances should provide Brigadier suggestions from the live runtime state
+- the `/wa debug` tree is only available when `general.enable_debug_commands = true`
 
 Optional difficulty commands (when difficulty/challenge subsystems are enabled):
 - `/wa difficulty global get`
@@ -2414,6 +3024,13 @@ Optional difficulty commands (when difficulty/challenge subsystems are enabled):
 - `/wa difficulty world set <value>`
 - `/wa difficulty vote yes`
 - `/wa difficulty vote no`
+
+Required future performance-debug surfaces:
+- `/wa debug perf`
+- `/wa debug rules`
+- `/wa debug mutators`
+
+These commands are expected to expose bucket sizes, evaluation counts, spawn mutation counts, and timing summaries once implemented.
 
 ### 18.1 Command Permission Model
 
@@ -2439,6 +3056,10 @@ Operator or admin commands:
 - `/wa ascension grant_offer`
 - `/wa ascension choose`
 - `/wa ascension revoke`
+- `/wa ascension reopen`
+- `/wa ascension clear`
+- all `/wa debug reset *` commands
+- all `/wa debug clear *` commands
 - all `/wa difficulty global *` commands
 - all `/wa difficulty world *` commands unless vote-based policy explicitly allows non-operator initiation
 - operator override paths for difficulty vote flows
@@ -2464,6 +3085,27 @@ Console behavior:
 - forfeited rewards
 - active permanent effects
 - source stages or tiers for each reward
+- runtime offer instance IDs suitable for `reopen` and debug-clear targeting
+
+Command semantics:
+- operator-level commands mutate or invoke gameplay-facing state intentionally (`stage unlock|lock`, `trigger fire`, `ascension grant_offer|choose|revoke|reopen|clear`)
+- debug-level commands are explicit persistence-bucket tools and may clear whole sections or exact entries without guessing hidden cascade rollback
+- operator stage/trigger/rule inspection and mutation commands must expose explicit `player` and `global` targeting variants so console and remote operators can address one player or the shared progression bucket without relying on fallback
+- manual trigger fire and rule-dump inspection must support optional `dimension <dimension_id>` overrides for world-context testing
+- all future `/wa` commands must declare and follow one of three output layers: player-facing notification, operator command feedback, or inspect/debug output
+- player-facing notifications must stay minimal, display-name-first, and free of raw authored/runtime IDs unless the surface is explicitly inspect/debug oriented
+- concise non-debug operator outputs should prefer display names, short recovery guidance, and action affordances over raw internals
+- dense raw IDs, source keys, reason codes, and provenance belong in inspect/debug surfaces first; concise operator commands may append extra raw detail only when `general.debug_logging = true`
+- `general.debug_logging = true` must enrich concise operator output, not replace it with dense-only output
+- new command surfaces must not leak copy/debug affordances into normal gameplay notifications when the same action is already available through the intended player-facing path
+- `ascension revoke <reward_id>` must reverse the chosen reward and reopen matching resolved offer instances when such instances exist
+- `ascension reopen <instance_id>` must move a resolved offer instance back to pending and restore access to that instance's candidate choices
+- `ascension clear <instance_id>` must remove pending or resolved offer history for that exact runtime instance without reopening it
+- `ascension choose` must target runtime `instance_id`, not only templated `offer_id`
+- `ascension active <reward_id>` may resolve the currently visible pending instance directly for operator convenience in one-pending-offer mode
+- `debug reset` commands must target whole persisted buckets (`stages`, `triggers`, `rules`, `ascension`, `all`)
+- `debug clear` commands must target explicit authored/runtime identities (for example stage ID, trigger ID, rule ID, or ascension runtime instance ID)
+- when `general.enable_debug_commands = false`, the debug tree must not be registered
 
 ---
 
@@ -2479,6 +3121,9 @@ On datapack reload, validate:
 - missing mutator refs
 - missing ascension reward refs in offers
 - invalid condition/action types
+- invalid shared condition/action node shapes (missing `type` or missing/non-object `parameters`)
+- condition/action scope violations against Section `3B` allowed scopes
+- invalid logical wrapper payloads (`all_of`, `any_of`, `not`)
 - invalid config gates
 - impossible pool selections
 - `choice_count < 1`
@@ -2493,7 +3138,19 @@ On datapack reload, validate:
 - impossible component compositions
 - component compositions with no valid runtime result
 - over-budget mutation compositions when budget rules apply
+- performance budget threshold exceedance for scope rule buckets (`maximum_rules_per_bucket`)
+- performance budget threshold exceedance for per-event evaluated rule count (`maximum_rules_evaluated_per_event`)
+- performance budget threshold exceedance for actions per rule (`maximum_actions_per_rule`)
+- performance budget threshold exceedance for mutators per spawn (`max_mutators_per_spawn`)
+- performance budget threshold exceedance for components per mutator (`max_components_per_mutator`)
+- action-chain complexity violations against single-pass depth rules (`max_action_chain_depth`)
 - unsupported duplicate component combinations when duplicates are disallowed
+- forbidden duplicate policy violations (`duplicate_policy=forbid`)
+- component `max_instances` exceeded
+- missing required companion component types (`requires_component_types`)
+- forbidden companion component types present (`forbidden_component_types`)
+- explicit component conflict hits (`conflicts_with`, `exclusive_with`)
+- stacking-group overflow and composition-order ambiguity
 - invalid icon references for ascension rewards or offers
 - conflicting exclusive-stage definitions
 - Apotheosis-only conditions while integration disabled
@@ -2508,11 +3165,17 @@ On datapack reload, validate:
 - invalid challenge bounds/defaults/step/cooldown
 - invalid challenge vote configuration when vote requirement is enabled
 - activation-path settings that conflict with disabled difficulty/challenge subsystems
+- invalid status taxonomy usage (missing status where required)
+- `planned` status usage violations in strict validation mode
+- `reserved` status usage in authored runtime content
+- `deprecated` status usage without migration warning text when migration target is known
 
 Validation policy:
 - log clear object-scoped errors
 - disable the broken object and any directly dependent objects, not unrelated World Awakened systems
 - avoid whole-mod crash unless startup integrity is impossible
+- performance threshold violations should emit warnings by default and may optionally disable offending objects/branches by policy
+- apply Section `3F` status-mode policy consistently across all object types and catalogs
 - never silently substitute a different ascension reward or offer without logging
 - never silently destroy Apotheosis tier-gated loot behavior; enforce explicit fallback behavior when unsafe overrides are encountered
 - for unsafe Apotheosis-sensitive loot operations, the policy outcome must be explicit: block operation, downgrade to safe additive behavior, or disable the offending profile branch
@@ -2545,12 +3208,19 @@ Examples:
 - `WA_APOTHEOSIS_LOOT_TARGET_SENSITIVE`
 - `WA_COMPONENT_TYPE_UNKNOWN`
 - `WA_COMPONENT_COMPOSITION_INVALID`
+- `WA_SCOPE_VIOLATION`
+- `WA_CONDITION_SHAPE_INVALID`
+- `WA_ACTION_SHAPE_INVALID`
+- `WA_STATUS_MODE_VIOLATION`
 
 ### 19.2 Performance Constraints
+
+Canonical limits, buckets, and guardrails are defined in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md).
 
 - datapack objects must compile into cached runtime structures during reload
 - no raw JSON parsing may occur during spawn-time or event-time evaluation
 - rule evaluation must operate on compiled condition trees or equivalent cached evaluators
+- rule evaluation must inspect active scope buckets only; avoid full rule-set scans
 - selector matching must use precompiled matchers
 - spawn-time evaluation must run in bounded passes
 
@@ -2701,6 +3371,25 @@ Recommended rule:
 
 ---
 
+## 20B. World Awakened Web Authoring Tool (v1 Release Requirement)
+
+The World Awakened web authoring tool is a required v1 companion deliverable.
+
+Hard design boundary:
+- website: authoring and validation
+- mod: loading and execution
+- both must use one shared datapack format
+
+Release position:
+- required for v1 release
+- implemented late, after core gameplay systems and schema contracts are stable
+
+Normative detail:
+- full contract for workflows, UI modules, validation layers, schema/versioning, import/export layout, templates, and acceptance criteria is defined in `docs/WEB_AUTHORING_TOOL_SPEC.md`
+- any change to web authoring behavior or data contract must keep this section, `docs/WEB_AUTHORING_TOOL_SPEC.md`, `docs/DATAPACK_AUTHORING.md`, `README.md`, and `AGENTS.md` in sync
+
+---
+
 ## 21. MVP Implementation Order
 
 ### Phase 0 (Complete) - Contracts and Loading Foundation
@@ -2768,7 +3457,7 @@ Exit criteria:
 - `/wa dump active_rules` reports usable rule state
 - same-context re-evaluation within a tick does not reroll outcomes
 
-### Phase 4 - Ascension Choice System
+### Phase 4 (Complete) - Ascension Choice System
 - implement player-scoped ascension offer state and persistence
 - implement ascension component-type registry plus reward/offer definition loading
 - implement clickable chat notification flow and server-authoritative selection
@@ -2784,11 +3473,34 @@ Exit criteria:
 - client selection requests are validated server-side and cannot bypass lockout or eligibility rules
 - repeated login or respawn does not duplicate-stack rewards
 
+### Shared Contract Lock-In Impact (Current Update)
+
+These shared-contract additions are framework-level and do not reset completed phase status.
+
+Phase impact expectations:
+- Phase 0: spec/docs/validation contract alignment only
+- Phase 1: no major runtime behavior change expected
+- Phase 2: trigger docs/validation wording aligned to shared action + scope contracts
+- Phase 3: rule docs/validation wording aligned to shared condition + action + scope contracts
+- Phase 4: ascension component docs/validation wording aligned to shared composition + status contracts
+- Phase 5: mutator runtime must satisfy composition + performance budget contracts (`COMPOSITION_AND_STACKING.md`, `PERFORMANCE_BUDGETS.md`)
+- Phase 6: rule-event and spawn guardrails must satisfy performance budget and debug-observability contracts
+- Phase 7-9: downstream systems (loot/invasion/compat) must preserve bounded evaluation and traceable rejection diagnostics
+- Phase 10: web authoring validation must surface composition/performance contract warnings with canonical diagnostics mapping
+- Phase 11: hardening must confirm telemetry/debug surfaces and large-pack stability against performance contracts
+
+Outcome rule:
+- all future systems must extend these shared contracts instead of defining subsystem-specific condition/action/scope/composition/status variants
+
 ### Phase 5 - Mutators and Pools
 - implement mutation component-type registry and v1 behavior set
 - implement mutation pool matching and weighted selection
 - apply mutators at spawn-time with stacking/exclusivity enforcement
 - implement optional mutation component budget enforcement (`component_budget` plus registered component costs)
+- implement spawn-time performance budgets from [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md):
+  - `max_mutators_per_spawn`
+  - `max_components_per_mutator`
+  - deterministic overflow handling (truncate or reject by policy)
 - persist entity metadata for provenance and debugging
 - compile selector definitions into cached matchers
 
@@ -2796,6 +3508,8 @@ Exit criteria:
 - eligible spawns can receive mutators from matching pools
 - configured caps and exclusions are respected
 - when configured, mutator budget enforcement rejects over-budget candidates deterministically
+- spawn-time mutator/component count budgets are enforced deterministically
+- budget overflow paths emit structured diagnostics and do not trigger unbounded rerolls
 - `/wa mob inspect` shows source pool, active mutators, and stat deltas
 - mutator rerolls remain bounded and rejected candidates are inspectable
 
@@ -2805,6 +3519,10 @@ Exit criteria:
 - implement shared effective-difficulty scalar provider for global and optional challenge modifiers
 - implement global difficulty modifier config and command surface
 - implement optional challenge modifier scope/policy/bounds/cooldown handling (including optional vote flow)
+- implement rule-engine runtime guardrails from [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md):
+  - `maximum_rules_evaluated_per_event`
+  - `maximum_actions_per_rule`
+  - diagnostics-first enforcement policy
 - implement hard safety caps and loop guards
 - support dimension and stage-conditioned pressure adjustments
 
@@ -2814,6 +3532,7 @@ Exit criteria:
 - dimension baseline composition order is deterministic and precedes global/challenge/integration scalar layers
 - effective scalar composition is deterministic and consistently applied across World Awakened-owned numeric difficulty outputs
 - out-of-bounds or unauthorized difficulty/challenge changes are rejected with diagnostics
+- per-event rule and per-rule action budgets are enforced with deterministic outcomes and diagnostics
 - no uncontrolled spawn loops under malformed data
 - peaceful mode is respected and category restrictions are obeyed when exposed by the hook; otherwise modifiers fail closed
 
@@ -2857,17 +3576,45 @@ Exit criteria:
 - external tier integrations can feed rule and ascension eligibility safely when enabled
 - `/wa compat list` and `/wa apotheosis tier inspect` are functional
 
-### Phase 10 - Hardening, Examples, and Release Prep
+### Phase 10 - Web Authoring Tool (Browser Companion)
+- implement web authoring project model and canonical object collections
+- implement schema-backed validation layers (schema, semantic, cross-object reference)
+- implement import pipelines for folder, zip, and selected JSON object files
+- implement deterministic export generation for canonical datapack layout
+- implement visual editors, structured editors, and raw JSON editor synchronization
+- implement condition and component builders with implemented/planned/deprecated markers
+- implement performance budget validation and warnings in authoring workflows:
+  - scope bucket size estimation warnings
+  - actions-per-rule warnings
+  - mutator/component hot-path warnings
+- implement template starter sets for mutators, ascension content, and common rule patterns
+- integrate inline documentation links and reference-navigation helpers
+
+Exit criteria:
+- tool can import, edit, validate, and export all v1 object types using one shared datapack format
+- exported datapacks load in World Awakened without format translation
+- validation errors block export and are surfaced with object-level context
+- performance budget warnings are surfaced with actionable object-level context
+- users can switch between visual, structured, and raw JSON layers without losing semantic fidelity
+- deterministic export output remains stable for unchanged project content
+
+### Phase 11 - Hardening, Examples, and Release Prep
 - complete validation rule coverage and improve error quality
 - add reference example datapack set for all major object types
 - complete docs pass across spec/readme/authoring/agents
 - perform performance sanity checks for reload and spawn-path logic
+- validate large-pack hot-path behavior against performance contracts (thousands of authored objects)
+- implement minimum performance-debug command surfaces:
+  - `/wa debug perf`
+  - `/wa debug rules`
+  - `/wa debug mutators`
 - verify save compatibility behavior across datapack changes and schema-version handling
 
 Exit criteria:
 - validation output is actionable for pack authors
 - example datapack loads cleanly and demonstrates end-to-end flow
 - docs are synchronized and reflect implemented behavior
+- performance-debug outputs expose bucket sizes, evaluation counts, and mutation budget telemetry
 - migration and downgrade behavior degrade safely without corrupting saves
 
 ### Cross-Phase Quality Gates
@@ -2902,10 +3649,11 @@ Must-have:
 - optional world-context conditions as datapack rule inputs (non-core progression drivers)
 - debug commands
 - datapack-driven rules
+- browser-based datapack authoring, validation, import, and export tooling using the same canonical datapack format as runtime
 
 Deferred:
 - full hybrid conflict resolver
-- GUI rule editor
+- in-game admin GUI authoring and deep runtime inspection beyond the web authoring companion
 - large integration catalog
 - custom boss bar visuals
 - retroactive mutation of pre-existing entities
@@ -2948,7 +3696,7 @@ Therefore:
 - stage IDs configurable: yes
 - rule content configurable: yes
 - mutation and ascension definition content configurable: yes
-- built-in presets shipped as datapack compositions: yes
+- external example/default presets distributed as datapack compositions: yes
 - ascension player choice permanent and exclusive: yes
 - arbitrary new behavior type implementation purely in datapack: no
 

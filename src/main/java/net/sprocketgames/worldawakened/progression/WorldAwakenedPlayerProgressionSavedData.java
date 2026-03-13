@@ -1,6 +1,7 @@
 package net.sprocketgames.worldawakened.progression;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -15,6 +16,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionOfferRuntime;
 
 public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
     private static final String DATA_NAME = "worldawakened_player_progression";
@@ -28,7 +30,14 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
     private final Map<UUID, PlayerStageState> playerStates = new LinkedHashMap<>();
 
     public static WorldAwakenedPlayerProgressionSavedData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+        return canonicalStorageLevel(level).getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+    }
+
+    private static ServerLevel canonicalStorageLevel(ServerLevel level) {
+        if (level.getServer() != null && level.getServer().overworld() != null) {
+            return level.getServer().overworld();
+        }
+        return level;
     }
 
     private static WorldAwakenedPlayerProgressionSavedData load(CompoundTag tag, HolderLookup.Provider provider) {
@@ -108,6 +117,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private static final String KEY_RESOLVED_ASCENSION_OFFERS = "resolved_ascension_offers";
         private static final String KEY_CHOSEN_ASCENSION_REWARDS = "chosen_ascension_rewards";
         private static final String KEY_FORFEITED_ASCENSION_REWARDS = "forfeited_ascension_rewards";
+        private static final String KEY_PENDING_ASCENSION_OFFER_INSTANCES = "pending_ascension_offer_instances";
+        private static final String KEY_RESOLVED_ASCENSION_OFFER_INSTANCES = "resolved_ascension_offer_instances";
+        private static final String KEY_FORFEITED_ASCENSION_REWARDS_BY_OFFER = "forfeited_ascension_rewards_by_offer";
+        private static final String KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS = "ascension_reward_unlock_timestamps";
+        private static final String KEY_ASCENSION_REWARD_SOURCES = "ascension_reward_sources";
 
         private final WorldAwakenedPlayerProgressionSavedData owner;
 
@@ -127,6 +141,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private final Set<ResourceLocation> resolvedAscensionOffers = new LinkedHashSet<>();
         private final Set<ResourceLocation> chosenAscensionRewards = new LinkedHashSet<>();
         private final Set<ResourceLocation> forfeitedAscensionRewards = new LinkedHashSet<>();
+        private final Map<String, WorldAwakenedAscensionOfferRuntime> pendingAscensionOfferInstances = new LinkedHashMap<>();
+        private final Map<String, WorldAwakenedAscensionOfferRuntime> resolvedAscensionOfferInstances = new LinkedHashMap<>();
+        private final Map<String, Set<ResourceLocation>> forfeitedAscensionRewardsByOffer = new LinkedHashMap<>();
+        private final Map<ResourceLocation, Long> ascensionRewardUnlockTimestamps = new LinkedHashMap<>();
+        private final Map<ResourceLocation, String> ascensionRewardSources = new LinkedHashMap<>();
 
         private PlayerStageState(WorldAwakenedPlayerProgressionSavedData owner) {
             this.owner = owner;
@@ -148,6 +167,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             resolvedAscensionOffers.clear();
             chosenAscensionRewards.clear();
             forfeitedAscensionRewards.clear();
+            pendingAscensionOfferInstances.clear();
+            resolvedAscensionOfferInstances.clear();
+            forfeitedAscensionRewardsByOffer.clear();
+            ascensionRewardUnlockTimestamps.clear();
+            ascensionRewardSources.clear();
 
             unlockedStages.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_UNLOCKED_STAGES));
             unlockTimestamps.putAll(WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_UNLOCK_TIMESTAMPS));
@@ -164,9 +188,150 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             resolvedAscensionOffers.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_RESOLVED_ASCENSION_OFFERS));
             chosenAscensionRewards.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_CHOSEN_ASCENSION_REWARDS));
             forfeitedAscensionRewards.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_FORFEITED_ASCENSION_REWARDS));
+
+            ListTag pendingRuntime = tag.getList(KEY_PENDING_ASCENSION_OFFER_INSTANCES, Tag.TAG_COMPOUND);
+            for (Tag raw : pendingRuntime) {
+                if (!(raw instanceof CompoundTag entry)) {
+                    continue;
+                }
+                WorldAwakenedAscensionOfferRuntime.fromTag(entry)
+                        .ifPresent(runtime -> pendingAscensionOfferInstances.put(runtime.instanceId(), runtime));
+            }
+
+            ListTag resolvedRuntime = tag.getList(KEY_RESOLVED_ASCENSION_OFFER_INSTANCES, Tag.TAG_COMPOUND);
+            for (Tag raw : resolvedRuntime) {
+                if (!(raw instanceof CompoundTag entry)) {
+                    continue;
+                }
+                WorldAwakenedAscensionOfferRuntime.fromTag(entry)
+                        .ifPresent(runtime -> resolvedAscensionOfferInstances.put(runtime.instanceId(), runtime));
+            }
+
+            ListTag forfeitedByOffer = tag.getList(KEY_FORFEITED_ASCENSION_REWARDS_BY_OFFER, Tag.TAG_COMPOUND);
+            for (Tag raw : forfeitedByOffer) {
+                if (!(raw instanceof CompoundTag entry)) {
+                    continue;
+                }
+                String instanceId = entry.getString("instance_id");
+                if (instanceId.isBlank()) {
+                    continue;
+                }
+                Set<ResourceLocation> rewards = WorldAwakenedProgressionNbt.readResourceLocationSet(entry, "rewards");
+                if (!rewards.isEmpty()) {
+                    forfeitedAscensionRewardsByOffer.put(instanceId, rewards);
+                }
+            }
+
+            ascensionRewardUnlockTimestamps.putAll(WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS));
+            ascensionRewardSources.putAll(WorldAwakenedProgressionNbt.readStageStringMap(tag, KEY_ASCENSION_REWARD_SOURCES));
+
+            if (pendingAscensionOfferInstances.isEmpty() && !pendingAscensionOffers.isEmpty()) {
+                for (ResourceLocation offerId : pendingAscensionOffers) {
+                    String legacyInstanceId = syntheticLegacyInstanceId(offerId, "legacy_pending");
+                    pendingAscensionOfferInstances.putIfAbsent(
+                            legacyInstanceId,
+                            WorldAwakenedAscensionOfferRuntime.pending(
+                                    legacyInstanceId,
+                                    offerId,
+                                    offerId.toString(),
+                                    0L,
+                                    List.of()));
+                }
+            }
+            if (resolvedAscensionOfferInstances.isEmpty() && !resolvedAscensionOffers.isEmpty()) {
+                for (ResourceLocation offerId : resolvedAscensionOffers) {
+                    String legacyInstanceId = syntheticLegacyInstanceId(offerId, "legacy_resolved");
+                    resolvedAscensionOfferInstances.putIfAbsent(
+                            legacyInstanceId,
+                            WorldAwakenedAscensionOfferRuntime.pending(
+                                    legacyInstanceId,
+                                    offerId,
+                                    offerId.toString(),
+                                    0L,
+                                    List.of()));
+                }
+            }
+            migrateAscensionInstanceIds();
+            rebuildAscensionSummarySets();
+        }
+
+        private void migrateAscensionInstanceIds() {
+            LinkedHashSet<String> usedIds = new LinkedHashSet<>();
+            Map<String, String> remappedIds = new LinkedHashMap<>();
+
+            Map<String, WorldAwakenedAscensionOfferRuntime> migratedPending = migrateInstanceMap(
+                    pendingAscensionOfferInstances,
+                    usedIds,
+                    remappedIds);
+            Map<String, WorldAwakenedAscensionOfferRuntime> migratedResolved = migrateInstanceMap(
+                    resolvedAscensionOfferInstances,
+                    usedIds,
+                    remappedIds);
+
+            pendingAscensionOfferInstances.clear();
+            pendingAscensionOfferInstances.putAll(migratedPending);
+            resolvedAscensionOfferInstances.clear();
+            resolvedAscensionOfferInstances.putAll(migratedResolved);
+
+            if (!remappedIds.isEmpty()) {
+                LinkedHashMap<String, Set<ResourceLocation>> migratedForfeits = new LinkedHashMap<>();
+                for (Map.Entry<String, Set<ResourceLocation>> entry : forfeitedAscensionRewardsByOffer.entrySet()) {
+                    String mappedId = remappedIds.getOrDefault(entry.getKey(), entry.getKey());
+                    migratedForfeits.computeIfAbsent(mappedId, ignored -> new LinkedHashSet<>()).addAll(entry.getValue());
+                }
+                forfeitedAscensionRewardsByOffer.clear();
+                forfeitedAscensionRewardsByOffer.putAll(migratedForfeits);
+                markDirty();
+            }
+        }
+
+        private Map<String, WorldAwakenedAscensionOfferRuntime> migrateInstanceMap(
+                Map<String, WorldAwakenedAscensionOfferRuntime> source,
+                Set<String> usedIds,
+                Map<String, String> remappedIds) {
+            LinkedHashMap<String, WorldAwakenedAscensionOfferRuntime> migrated = new LinkedHashMap<>();
+            for (WorldAwakenedAscensionOfferRuntime runtime : source.values()) {
+                String currentId = runtime.instanceId();
+                String nextId = currentId;
+                if (!WorldAwakenedAscensionOfferRuntime.isOpaqueInstanceId(currentId) || usedIds.contains(currentId)) {
+                    nextId = migratedInstanceId(runtime, usedIds);
+                }
+                usedIds.add(nextId);
+                remappedIds.put(currentId, nextId);
+                migrated.put(nextId, nextId.equals(currentId) ? runtime : runtime.withInstanceId(nextId));
+            }
+            return migrated;
+        }
+
+        private static String migratedInstanceId(
+                WorldAwakenedAscensionOfferRuntime runtime,
+                Set<String> usedIds) {
+            String seed = runtime.offerId()
+                    + "|"
+                    + runtime.sourceKey()
+                    + "|"
+                    + runtime.grantedAtMillis()
+                    + "|"
+                    + runtime.candidateRewards()
+                    + "|"
+                    + runtime.chosenRewardId().map(ResourceLocation::toString).orElse("")
+                    + "|"
+                    + runtime.resolvedAtMillis().orElse(0L);
+            int salt = 0;
+            String candidate = WorldAwakenedAscensionOfferRuntime.stableOpaqueInstanceId(seed, salt);
+            while (usedIds.contains(candidate)) {
+                salt++;
+                candidate = WorldAwakenedAscensionOfferRuntime.stableOpaqueInstanceId(seed, salt);
+            }
+            return candidate;
+        }
+
+        private static String syntheticLegacyInstanceId(ResourceLocation offerId, String suffix) {
+            return WorldAwakenedAscensionOfferRuntime.stableOpaqueInstanceId(offerId + "|" + suffix);
         }
 
         private void writeToTag(CompoundTag tag) {
+            rebuildAscensionSummarySets();
             WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_UNLOCKED_STAGES, unlockedStages);
             WorldAwakenedProgressionNbt.writeStageLongMap(tag, KEY_UNLOCK_TIMESTAMPS, unlockTimestamps);
             WorldAwakenedProgressionNbt.writeStageStringMap(tag, KEY_UNLOCK_SOURCES, unlockSources);
@@ -182,6 +347,46 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_RESOLVED_ASCENSION_OFFERS, resolvedAscensionOffers);
             WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_CHOSEN_ASCENSION_REWARDS, chosenAscensionRewards);
             WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_FORFEITED_ASCENSION_REWARDS, forfeitedAscensionRewards);
+
+            ListTag pendingRuntime = new ListTag();
+            pendingAscensionOfferInstances.values().forEach(runtime -> pendingRuntime.add(runtime.toTag()));
+            tag.put(KEY_PENDING_ASCENSION_OFFER_INSTANCES, pendingRuntime);
+
+            ListTag resolvedRuntime = new ListTag();
+            resolvedAscensionOfferInstances.values().forEach(runtime -> resolvedRuntime.add(runtime.toTag()));
+            tag.put(KEY_RESOLVED_ASCENSION_OFFER_INSTANCES, resolvedRuntime);
+
+            ListTag forfeitedByOffer = new ListTag();
+            forfeitedAscensionRewardsByOffer.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        CompoundTag value = new CompoundTag();
+                        value.putString("instance_id", entry.getKey());
+                        WorldAwakenedProgressionNbt.writeResourceLocationSet(value, "rewards", entry.getValue());
+                        forfeitedByOffer.add(value);
+                    });
+            tag.put(KEY_FORFEITED_ASCENSION_REWARDS_BY_OFFER, forfeitedByOffer);
+
+            WorldAwakenedProgressionNbt.writeStageLongMap(tag, KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS, ascensionRewardUnlockTimestamps);
+            WorldAwakenedProgressionNbt.writeStageStringMap(tag, KEY_ASCENSION_REWARD_SOURCES, ascensionRewardSources);
+        }
+
+        private void rebuildAscensionSummarySets() {
+            pendingAscensionOffers.clear();
+            for (WorldAwakenedAscensionOfferRuntime runtime : pendingAscensionOfferInstances.values()) {
+                pendingAscensionOffers.add(runtime.offerId());
+            }
+
+            resolvedAscensionOffers.clear();
+            for (WorldAwakenedAscensionOfferRuntime runtime : resolvedAscensionOfferInstances.values()) {
+                resolvedAscensionOffers.add(runtime.offerId());
+                runtime.chosenRewardId().ifPresent(chosenAscensionRewards::add);
+            }
+
+            LinkedHashSet<ResourceLocation> mergedForfeited = new LinkedHashSet<>(forfeitedAscensionRewards);
+            forfeitedAscensionRewardsByOffer.values().forEach(mergedForfeited::addAll);
+            forfeitedAscensionRewards.clear();
+            forfeitedAscensionRewards.addAll(mergedForfeited);
         }
 
         @Override
@@ -250,6 +455,26 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
 
         public Set<ResourceLocation> forfeitedAscensionRewards() {
             return forfeitedAscensionRewards;
+        }
+
+        public Map<String, WorldAwakenedAscensionOfferRuntime> pendingAscensionOfferInstances() {
+            return pendingAscensionOfferInstances;
+        }
+
+        public Map<String, WorldAwakenedAscensionOfferRuntime> resolvedAscensionOfferInstances() {
+            return resolvedAscensionOfferInstances;
+        }
+
+        public Map<String, Set<ResourceLocation>> forfeitedAscensionRewardsByOffer() {
+            return forfeitedAscensionRewardsByOffer;
+        }
+
+        public Map<ResourceLocation, Long> ascensionRewardUnlockTimestamps() {
+            return ascensionRewardUnlockTimestamps;
+        }
+
+        public Map<ResourceLocation, String> ascensionRewardSources() {
+            return ascensionRewardSources;
         }
 
         @Override

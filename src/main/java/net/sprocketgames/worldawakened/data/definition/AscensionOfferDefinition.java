@@ -49,7 +49,9 @@ public record AscensionOfferDefinition(
             Codec.INT.optionalFieldOf("selection_count", 1).forGetter(OfferPolicy::selectionCount),
             Codec.INT.optionalFieldOf("ui_priority", 0).forGetter(OfferPolicy::uiPriority),
             Codec.BOOL.optionalFieldOf("allow_duplicates_across_players", true).forGetter(OfferPolicy::allowDuplicatesAcrossPlayers),
-            Codec.BOOL.optionalFieldOf("allow_reward_reuse_across_offers", false).forGetter(OfferPolicy::allowRewardReuseAcrossOffers))
+            WorldAwakenedJsonCodecs.enumCodec(AscensionRewardRepeatPolicy.class)
+                    .optionalFieldOf("reward_repeat_policy", AscensionRewardRepeatPolicy.BLOCK_ALL)
+                    .forGetter(OfferPolicy::rewardRepeatPolicy))
             .apply(instance, OfferPolicy::new));
 
     public static final Codec<AscensionOfferDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -102,8 +104,8 @@ public record AscensionOfferDefinition(
         return policy.allowDuplicatesAcrossPlayers();
     }
 
-    public boolean allowRewardReuseAcrossOffers() {
-        return policy.allowRewardReuseAcrossOffers();
+    public AscensionRewardRepeatPolicy rewardRepeatPolicy() {
+        return policy.rewardRepeatPolicy();
     }
 
     public List<ResourceLocation> candidateRewards() {
@@ -146,7 +148,7 @@ public record AscensionOfferDefinition(
             int selectionCount,
             int uiPriority,
             boolean allowDuplicatesAcrossPlayers,
-            boolean allowRewardReuseAcrossOffers) {
+            AscensionRewardRepeatPolicy rewardRepeatPolicy) {
     }
 }
 

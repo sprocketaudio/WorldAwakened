@@ -8,6 +8,18 @@ Deferred and long-term feature backlog for World Awakened.
 
 ---
 
+Related contracts:
+- [docs/README.md](README.md)
+- [SPECIFICATION.md](SPECIFICATION.md)
+- [README.md](../README.md)
+- [AGENTS.md](../AGENTS.md)
+
+Update rule:
+- Update this file when backlog entries are promoted, deprecated, removed, or reclassified.
+- Keep this file aligned with active-scope boundaries in `SPECIFICATION.md` and workflow rules in `AGENTS.md`.
+
+---
+
 ## 0. How To Use This Doc
 
 This document records post-v1 and long-term ideas.
@@ -24,7 +36,10 @@ Use this document to:
 - guide post-v1 planning once core systems prove stable
 
 Related deferred design docs:
-- `docs/FUTURE_ADMIN_UI.md` for the dedicated admin authoring and inspection UI concept
+- `docs/FUTURE_ADMIN_UI.md` for the dedicated post-v1 in-game/admin runtime authoring and inspection UI concept
+
+Related active companion scope:
+- `docs/WEB_AUTHORING_TOOL_SPEC.md` defines the v1 browser datapack authoring/validation tool and is not a backlog item
 
 ---
 

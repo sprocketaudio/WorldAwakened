@@ -19,5 +19,9 @@ public final class WorldAwakenedFeatureGates {
     public static boolean apotheosisEnabled() {
         return WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get();
     }
+
+    public static boolean ascensionEnabled() {
+        return WorldAwakenedCommonConfig.ENABLE_ASCENSION.get();
+    }
 }
 

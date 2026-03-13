@@ -27,6 +27,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.fml.ModList;
+import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
@@ -53,12 +54,17 @@ public final class WorldAwakenedRuleService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
+    private final WorldAwakenedAscensionService ascensionService;
     private final AtomicReference<CachedCompiledRules> cache = new AtomicReference<>(new CachedCompiledRules(Instant.EPOCH, List.of()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
 
-    public WorldAwakenedRuleService(WorldAwakenedDatapackService datapackService, WorldAwakenedStageService stageService) {
+    public WorldAwakenedRuleService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedAscensionService ascensionService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
+        this.ascensionService = ascensionService;
     }
 
     public WorldAwakenedRuleRunResult evaluate(RuleEventContext context) {
@@ -152,11 +158,14 @@ public final class WorldAwakenedRuleService {
                         consumed++;
                     }
                     case GRANT_ASCENSION_OFFER -> {
-                        if (action.resourceRef().isEmpty() || target.playerState() == null) {
+                        if (action.resourceRef().isEmpty() || context.player() == null) {
                             continue;
                         }
-                        target.playerState().pendingAscensionOffers().add(action.resourceRef().get());
-                        target.playerState().markDirty();
+                        ascensionService.grantOfferFromRule(
+                                context.level(),
+                                context.player(),
+                                action.resourceRef().get(),
+                                matched.rule().id().toString());
                     }
                     case SET_WORLD_SCALAR -> {
                         if (action.text().isEmpty() || action.value().isEmpty()) {
@@ -371,8 +380,9 @@ public final class WorldAwakenedRuleService {
         Map<String, Boolean> toggles = new LinkedHashMap<>();
         toggles.put("general.enable_mod", WorldAwakenedCommonConfig.ENABLE_MOD.get());
         toggles.put("general.debug_logging", WorldAwakenedCommonConfig.DEBUG_LOGGING.get());
+        toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
         toggles.put("general.validation_logging", WorldAwakenedCommonConfig.VALIDATION_LOGGING.get());
-        toggles.put("progression.allow_stage_regression", WorldAwakenedCommonConfig.ALLOW_STAGE_REGRESSION.get());
+        toggles.put("ascension.enable_ascension", WorldAwakenedCommonConfig.ENABLE_ASCENSION.get());
         toggles.put("compat.apotheosis.enabled", WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get());
         toggles.put("compat.apotheosis.allow_world_tier_conditions", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get());
         toggles.put("compat.apotheosis.allow_world_tier_stage_unlocks", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_STAGE_UNLOCKS.get());

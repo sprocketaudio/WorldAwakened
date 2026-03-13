@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:survival_path",
+  "display_name": {
+    "translate": "ascension_offer.worldawakened.survival_path"
+  },
+  "description": {
+    "translate": "ascension_offer.worldawakened.survival_path.desc"
+  },
+  "enabled": true,
+  "trigger_conditions": [
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 16
+      }
+    }
+  ],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened:tempered_steel",
+    "worldawakened:void_resilience",
+    "worldawakened:ember_blood"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 40,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

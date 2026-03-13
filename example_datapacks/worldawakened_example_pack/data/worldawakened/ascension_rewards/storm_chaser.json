@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:storm_chaser",
+  "display_name": { "translate": "ascension.worldawakened.storm_chaser" },
+  "description": { "translate": "ascension.worldawakened.storm_chaser.desc" },
+  "icon": { "item": "minecraft:trident" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": 0.12 } },
+    { "type": "worldawakened:sprint_efficiency", "parameters": { "amount": 0.15 } },
+    { "type": "worldawakened:jump_bonus", "parameters": { "amount": 0.1 } },
+    { "type": "worldawakened:crit_bonus", "parameters": { "amount": 0.06 } }
+  ],
+  "rarity": "rare",
+  "tags": ["ascension:tier2", "theme:storm", "archetype:skirmisher"],
+  "offer_weight": 7,
+  "unique_group": "speed_major",
+  "exclusion_tags": [],
+  "requires_conditions": [
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 12
+      }
+    }
+  ],
+  "forbidden_conditions": [],
+  "ui_style": { "accent": "cyan" },
+  "max_rank": 1
+}
