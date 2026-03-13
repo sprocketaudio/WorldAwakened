@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:phase4_gate",
+  "display_name": "Phase 4 Gate",
+  "enabled": true,
+  "default_unlocked": false,
+  "visible_to_players": true
+}

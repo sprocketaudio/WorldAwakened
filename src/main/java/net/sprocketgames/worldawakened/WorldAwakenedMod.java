@@ -13,6 +13,8 @@ import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionEventHandlers;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
+import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierAttachments;
+import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierEventHandlers;
 import net.sprocketgames.worldawakened.command.WorldAwakenedCommands;
 import net.sprocketgames.worldawakened.config.WorldAwakenedClientConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
@@ -38,9 +40,11 @@ public final class WorldAwakenedMod {
     public WorldAwakenedMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
         modContainer.registerConfig(ModConfig.Type.CLIENT, WorldAwakenedClientConfig.SPEC);
+        WorldAwakenedOwnedCarrierAttachments.ATTACHMENT_TYPES.register(modEventBus);
 
         WorldAwakenedTriggerEventHandlers triggerHandlers = new WorldAwakenedTriggerEventHandlers(TRIGGER_SERVICE);
         WorldAwakenedAscensionEventHandlers ascensionHandlers = new WorldAwakenedAscensionEventHandlers(ASCENSION_SERVICE);
+        WorldAwakenedOwnedCarrierEventHandlers carrierHandlers = new WorldAwakenedOwnedCarrierEventHandlers();
         modEventBus.addListener(WorldAwakenedNetwork::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListener);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
@@ -53,6 +57,7 @@ public final class WorldAwakenedMod {
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onStageUnlocked);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerRespawn);
+        NeoForge.EVENT_BUS.addListener(carrierHandlers::onLivingIncomingDamage);
 
         WorldAwakenedLog.info(LOGGER, WorldAwakenedLogCategory.CORE, "Initialized {}", WorldAwakenedConstants.MOD_NAME);
     }

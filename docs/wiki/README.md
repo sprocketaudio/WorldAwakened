@@ -3,7 +3,7 @@
 Human-friendly guide set for operators, pack authors, testers, and server owners.
 
 - Document status: Active companion guide index
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Plain-language concepts, recipes, workflows, troubleshooting, and FAQs
 
 ---

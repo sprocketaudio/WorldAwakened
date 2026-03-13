@@ -154,6 +154,22 @@ Order guarantees:
 
 ---
 
+## 6A. Suppression Interaction Rules (Ascension)
+
+Ascension suppression requests must compose with the same shared component contracts.
+
+Rules:
+- suppression must honor `requires_component_types`/companion semantics where those metadata paths are active
+- suppression must honor grouped package semantics (`suppression_policy=grouped` + `suppression_group`)
+- suppression must not create invalid partial compositions
+- grouped suppression expansion and resolution must be deterministic and inspectable
+- invalid suppression requests must be rejected before live reconcile
+
+Runtime safety rule:
+- if persisted suppression state becomes invalid after datapack changes, the affected suppression branch is rejected with diagnostics and reward ownership remains intact
+
+---
+
 ## 7. Budget Interaction Rules
 
 Budget evaluation uses resolved components after duplicates/conflicts are applied.

@@ -124,6 +124,14 @@ When updating command surfaces, operator UX, or runtime output layering:
 - Update [AGENTS.md](../AGENTS.md) if the change alters contributor expectations for future command additions
 - Keep the concise-vs-debug output split explicit rather than implied by examples
 
+When updating ownership-safe reconciliation, carrier models, or mixed-mod fail-closed behavior:
+- Update [SPECIFICATION.md](SPECIFICATION.md)
+- Update [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
+- Update [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
+- Update [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
+- Update [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md), [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md), and [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) when authoring/runtime-surface guidance changes
+- Update affected docs under [wiki/README.md](wiki/README.md), especially [wiki/TROUBLESHOOTING.md](wiki/TROUBLESHOOTING.md), [wiki/FAQ.md](wiki/FAQ.md), and [wiki/CONCEPTS.md](wiki/CONCEPTS.md)
+
 When promoting deferred scope into active scope:
 - Update [SPECIFICATION.md](SPECIFICATION.md)
 - Update [README.md](../README.md)

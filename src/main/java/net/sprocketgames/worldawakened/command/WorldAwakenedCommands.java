@@ -1,9 +1,12 @@
 package net.sprocketgames.worldawakened.command;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -27,12 +30,18 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.core.Holder;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionOfferRuntime;
+import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionRewardEffects;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
+import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition;
@@ -41,6 +50,7 @@ import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedComponentDebugFormatter;
+import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
 import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedEffectiveStageContext;
@@ -71,7 +81,7 @@ public final class WorldAwakenedCommands {
                 .then(Commands.literal("reload")
                         .then(Commands.literal("validate")
                                 .requires(source -> source.hasPermission(2))
-                                .executes(context -> runReloadValidate(context.getSource(), datapackService))))
+                                .executes(context -> runReloadValidate(context.getSource(), datapackService, ascensionService))))
                 .then(buildStageTree(stageService))
                 .then(buildTriggerTree(datapackService, triggerService))
                 .then(buildDumpTree(ruleService))
@@ -281,11 +291,16 @@ public final class WorldAwakenedCommands {
                 .then(activeRules);
     }
 
-    private static int runReloadValidate(CommandSourceStack source, WorldAwakenedDatapackService datapackService) {
+    private static int runReloadValidate(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedAscensionService ascensionService) {
         WorldAwakenedDatapackSnapshot snapshot = datapackService.reloadFromServer(source.getServer(), "command:/wa reload validate");
+        int reconciledPlayers = ascensionService.reconcileAllOnlinePlayers(source.getServer(), "datapack_reload");
         source.sendSuccess(
                 () -> Component.literal("World Awakened reload validation complete: " + snapshot.validationSummary().toCompactString()),
                 true);
+        source.sendSuccess(() -> Component.literal("Ascension reconcile after reload: players=" + reconciledPlayers), false);
         if (!snapshot.validationSummary().diagnostics().isEmpty()
                 && (snapshot.validationSummary().errorCount() > 0
                         || snapshot.validationSummary().warningCount() > 0
@@ -637,6 +652,63 @@ public final class WorldAwakenedCommands {
                                         datapackService,
                                         ascensionService,
                                         EntityArgument.getPlayer(context, "player")))))
+                .then(Commands.literal("reconcile")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> runAscensionReconcile(
+                                        context.getSource(),
+                                        ascensionService,
+                                        EntityArgument.getPlayer(context, "player")))))
+                .then(Commands.literal("suppress")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("reward")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("reward_id", ResourceLocationArgument.id())
+                                                .suggests(suggestChosenRewardIds(ascensionService))
+                                                .executes(context -> runAscensionSuppressReward(
+                                                        context.getSource(),
+                                                        datapackService,
+                                                        ascensionService,
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        ResourceLocationArgument.getId(context, "reward_id"))))))
+                        .then(Commands.literal("component")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("reward_id", ResourceLocationArgument.id())
+                                                .suggests(suggestChosenRewardIds(ascensionService))
+                                                .then(Commands.argument("component_key", StringArgumentType.word())
+                                                        .suggests(suggestSuppressibleComponentKeys(ascensionService))
+                                                        .executes(context -> runAscensionSuppressComponent(
+                                                                context.getSource(),
+                                                                datapackService,
+                                                                ascensionService,
+                                                                EntityArgument.getPlayer(context, "player"),
+                                                                ResourceLocationArgument.getId(context, "reward_id"),
+                                                                StringArgumentType.getString(context, "component_key"))))))))
+                .then(Commands.literal("unsuppress")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("reward")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("reward_id", ResourceLocationArgument.id())
+                                                .suggests(suggestSuppressedRewardIds(ascensionService))
+                                                .executes(context -> runAscensionUnsuppressReward(
+                                                        context.getSource(),
+                                                        datapackService,
+                                                        ascensionService,
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        ResourceLocationArgument.getId(context, "reward_id"))))))
+                        .then(Commands.literal("component")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("reward_id", ResourceLocationArgument.id())
+                                                .suggests(suggestChosenRewardIds(ascensionService))
+                                                .then(Commands.argument("component_key", StringArgumentType.word())
+                                                        .suggests(suggestSuppressedComponentKeys(ascensionService))
+                                                        .executes(context -> runAscensionUnsuppressComponent(
+                                                                context.getSource(),
+                                                                datapackService,
+                                                                ascensionService,
+                                                                EntityArgument.getPlayer(context, "player"),
+                                                                ResourceLocationArgument.getId(context, "reward_id"),
+                                                                StringArgumentType.getString(context, "component_key"))))))))
                 .then(Commands.literal("grant_offer")
                         .requires(source -> source.hasPermission(2))
                         .then(Commands.argument("player", EntityArgument.player())
@@ -917,6 +989,35 @@ public final class WorldAwakenedCommands {
         };
     }
 
+    private static SuggestionProvider<CommandSourceStack> suggestSuppressedRewardIds(WorldAwakenedAscensionService ascensionService) {
+        return (context, builder) -> {
+            ServerPlayer player = EntityArgument.getPlayer(context, "player");
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = WorldAwakenedPlayerProgressionSavedData.get(player.serverLevel())
+                    .getOrCreate(player.getUUID());
+            return SharedSuggestionProvider.suggestResource(state.suppressedAscensionRewards(), builder);
+        };
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestSuppressibleComponentKeys(WorldAwakenedAscensionService ascensionService) {
+        return (context, builder) -> {
+            ServerPlayer player = EntityArgument.getPlayer(context, "player");
+            ResourceLocation rewardId = ResourceLocationArgument.getId(context, "reward_id");
+            return suggestStrings(
+                    ascensionService.suppressibleComponentKeys(player.serverLevel(), player, rewardId),
+                    builder);
+        };
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestSuppressedComponentKeys(WorldAwakenedAscensionService ascensionService) {
+        return (context, builder) -> {
+            ServerPlayer player = EntityArgument.getPlayer(context, "player");
+            ResourceLocation rewardId = ResourceLocationArgument.getId(context, "reward_id");
+            return suggestStrings(
+                    ascensionService.suppressedComponentKeys(player.serverLevel(), player, rewardId),
+                    builder);
+        };
+    }
+
     private static CompletableFuture<Suggestions> suggestStrings(List<String> values, SuggestionsBuilder builder) {
         for (String value : values) {
             builder.suggest(value);
@@ -1048,6 +1149,161 @@ public final class WorldAwakenedCommands {
             case "reward_ineligible" -> "that reward is no longer eligible";
             default -> detail == null || detail.isBlank() ? "unknown reason" : detail.replace('_', ' ');
         };
+    }
+
+    private static String describeSuppressionDetail(String detail) {
+        return switch (detail) {
+            case "invalid_request" -> "that suppression request is missing required fields";
+            case "reward_not_owned" -> "that player does not own the requested reward";
+            case "reward_already_suppressed" -> "that reward is already suppressed";
+            case "reward_not_suppressed" -> "that reward is not currently suppressed";
+            case "component_target_unknown" -> "that component key was not found for the selected reward";
+            case "component_not_suppressible" -> "that component cannot be suppressed independently";
+            case "component_already_suppressed" -> "that component is already suppressed";
+            case "component_not_suppressed" -> "that component is not currently suppressed";
+            case "suppression_group_required" -> "that component requires grouped suppression";
+            case "suppression_invalid_partial" -> "that suppression would create an invalid partial state";
+            case "suppressed_definition_missing" -> "the reward definition is missing so suppression cannot be evaluated";
+            default -> detail == null || detail.isBlank() ? "unknown reason" : detail.replace('_', ' ');
+        };
+    }
+
+    private static int runAscensionReconcile(
+            CommandSourceStack source,
+            WorldAwakenedAscensionService ascensionService,
+            ServerPlayer target) {
+        if (target == null) {
+            source.sendFailure(Component.literal("Choose a player for /wa ascension reconcile."));
+            return 0;
+        }
+        ascensionService.reconcilePlayerRewards(target.serverLevel(), target, "ascension_manual_reconcile");
+        source.sendSuccess(
+                () -> Component.literal("Reconciled ascension rewards for ")
+                        .append(Component.literal(target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA)),
+                true);
+        return 1;
+    }
+
+    private static int runAscensionSuppressReward(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedAscensionService ascensionService,
+            ServerPlayer target,
+            ResourceLocation rewardId) {
+        WorldAwakenedAscensionService.SuppressionMutationResult result =
+                ascensionService.suppressReward(target.serverLevel(), target, rewardId);
+        if (result.changed()) {
+            source.sendSuccess(() -> Component.literal("Suppressed ")
+                    .append(rewardDisplayComponent(datapackService, source, rewardId).withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" for "))
+                    .append(Component.literal(target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA)), true);
+            if (showVerboseOperatorDetails()) {
+                source.sendSuccess(() -> Component.literal("   code="
+                        + result.diagnosticCode()
+                        + " detail="
+                        + result.detail()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+            return 1;
+        }
+        source.sendFailure(Component.literal("Could not suppress reward: " + describeSuppressionDetail(result.detail()))
+                .append(debugCodeSuffix(result.detail())));
+        if (showVerboseOperatorDetails()) {
+            source.sendSuccess(() -> Component.literal("   code=" + result.diagnosticCode()).withStyle(ChatFormatting.DARK_GRAY), false);
+        }
+        return 0;
+    }
+
+    private static int runAscensionUnsuppressReward(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedAscensionService ascensionService,
+            ServerPlayer target,
+            ResourceLocation rewardId) {
+        WorldAwakenedAscensionService.SuppressionMutationResult result =
+                ascensionService.unsuppressReward(target.serverLevel(), target, rewardId);
+        if (result.changed()) {
+            source.sendSuccess(() -> Component.literal("Re-enabled ")
+                    .append(rewardDisplayComponent(datapackService, source, rewardId).withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" for "))
+                    .append(Component.literal(target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA)), true);
+            if (showVerboseOperatorDetails()) {
+                source.sendSuccess(() -> Component.literal("   code="
+                        + result.diagnosticCode()
+                        + " detail="
+                        + result.detail()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+            return 1;
+        }
+        source.sendFailure(Component.literal("Could not re-enable reward: " + describeSuppressionDetail(result.detail()))
+                .append(debugCodeSuffix(result.detail())));
+        if (showVerboseOperatorDetails()) {
+            source.sendSuccess(() -> Component.literal("   code=" + result.diagnosticCode()).withStyle(ChatFormatting.DARK_GRAY), false);
+        }
+        return 0;
+    }
+
+    private static int runAscensionSuppressComponent(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedAscensionService ascensionService,
+            ServerPlayer target,
+            ResourceLocation rewardId,
+            String componentKey) {
+        WorldAwakenedAscensionService.SuppressionMutationResult result =
+                ascensionService.suppressComponent(target.serverLevel(), target, rewardId, componentKey);
+        if (result.changed()) {
+            source.sendSuccess(() -> Component.literal("Suppressed component state for ")
+                    .append(rewardDisplayComponent(datapackService, source, rewardId).withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" on "))
+                    .append(Component.literal(target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA)), true);
+            if (showVerboseOperatorDetails()) {
+                source.sendSuccess(() -> Component.literal("   keys="
+                        + result.componentKeys()
+                        + " code="
+                        + result.diagnosticCode()
+                        + " detail="
+                        + result.detail()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+            return 1;
+        }
+        source.sendFailure(Component.literal("Could not suppress component: " + describeSuppressionDetail(result.detail()))
+                .append(debugCodeSuffix(result.detail())));
+        if (showVerboseOperatorDetails()) {
+            source.sendSuccess(() -> Component.literal("   code=" + result.diagnosticCode()).withStyle(ChatFormatting.DARK_GRAY), false);
+        }
+        return 0;
+    }
+
+    private static int runAscensionUnsuppressComponent(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedAscensionService ascensionService,
+            ServerPlayer target,
+            ResourceLocation rewardId,
+            String componentKey) {
+        WorldAwakenedAscensionService.SuppressionMutationResult result =
+                ascensionService.unsuppressComponent(target.serverLevel(), target, rewardId, componentKey);
+        if (result.changed()) {
+            source.sendSuccess(() -> Component.literal("Re-enabled component state for ")
+                    .append(rewardDisplayComponent(datapackService, source, rewardId).withStyle(ChatFormatting.AQUA))
+                    .append(Component.literal(" on "))
+                    .append(Component.literal(target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA)), true);
+            if (showVerboseOperatorDetails()) {
+                source.sendSuccess(() -> Component.literal("   keys="
+                        + result.componentKeys()
+                        + " code="
+                        + result.diagnosticCode()
+                        + " detail="
+                        + result.detail()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+            return 1;
+        }
+        source.sendFailure(Component.literal("Could not re-enable component: " + describeSuppressionDetail(result.detail()))
+                .append(debugCodeSuffix(result.detail())));
+        if (showVerboseOperatorDetails()) {
+            source.sendSuccess(() -> Component.literal("   code=" + result.diagnosticCode()).withStyle(ChatFormatting.DARK_GRAY), false);
+        }
+        return 0;
     }
 
     private static int runAscensionReopen(
@@ -1560,6 +1816,19 @@ public final class WorldAwakenedCommands {
         WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = WorldAwakenedPlayerProgressionSavedData.get(level).getOrCreate(target.getUUID());
         List<WorldAwakenedAscensionOfferRuntime> pending = ascensionService.pendingOffers(level, target);
         List<WorldAwakenedAscensionOfferRuntime> resolved = ascensionService.resolvedOffers(level, target);
+        Map<ResourceLocation, WorldAwakenedAscensionService.RewardSuppressionView> suppressionViews = new LinkedHashMap<>();
+        for (ResourceLocation rewardId : state.chosenAscensionRewards()) {
+            suppressionViews.put(rewardId, ascensionService.inspectRewardSuppression(level, target, rewardId));
+        }
+        Map<ResourceLocation, ResourceLocation> ownedCarriers = WorldAwakenedOwnedCarrierService.snapshot(target);
+        List<OwnedModifierView> liveModifiers = collectOwnedModifierViews(target);
+        List<FailedClosedRewardComponentView> failedClosed = collectFailedClosedRewardComponents(
+                datapackService.currentSnapshot(),
+                target,
+                state,
+                ownedCarriers,
+                suppressionViews);
+        List<ForeignModifierView> foreignModifiers = collectForeignModifierViews(target);
 
         source.sendSuccess(() -> Component.literal("Ascension inspect for "
                 + target.getGameProfile().getName()
@@ -1569,6 +1838,8 @@ public final class WorldAwakenedCommands {
                 + resolved.size()
                 + ", chosen="
                 + state.chosenAscensionRewards().size()
+                + ", suppressed_rewards="
+                + state.suppressedAscensionRewards().size()
                 + ", forfeited="
                 + state.forfeitedAscensionRewards().size()), false);
 
@@ -1625,14 +1896,36 @@ public final class WorldAwakenedCommands {
         source.sendSuccess(() -> Component.literal(" - Chosen rewards"), false);
         for (ResourceLocation rewardId : state.chosenAscensionRewards()) {
             var rewardDefinition = datapackService.currentSnapshot().data().ascensionRewards().get(rewardId);
+            WorldAwakenedAscensionService.RewardSuppressionView suppressionViewRaw = suppressionViews.get(rewardId);
+            final WorldAwakenedAscensionService.RewardSuppressionView suppressionView = suppressionViewRaw != null
+                    ? suppressionViewRaw
+                    : new WorldAwakenedAscensionService.RewardSuppressionView(
+                            rewardId,
+                            true,
+                            false,
+                            WorldAwakenedAscensionService.RewardLiveState.UNKNOWN,
+                            Set.of(),
+                            Set.of(),
+                            Set.of(),
+                            "",
+                            "",
+                            false);
             if (rewardDefinition == null) {
-                source.sendSuccess(() -> Component.literal("   " + rewardId + " (missing definition)").withStyle(ChatFormatting.RED), false);
+                source.sendSuccess(() -> Component.literal("   " + rewardId + " (missing definition, state=missing_definition)")
+                        .withStyle(ChatFormatting.RED), false);
                 continue;
             }
-            source.sendSuccess(() -> Component.literal("   ")
+            String suppressCommand = "/wa ascension suppress reward " + target.getGameProfile().getName() + " " + rewardId;
+            String unsuppressCommand = "/wa ascension unsuppress reward " + target.getGameProfile().getName() + " " + rewardId;
+            MutableComponent rewardLine = Component.literal("   ")
                     .append(rewardDisplayComponent(datapackService, source, rewardId).withStyle(ChatFormatting.AQUA))
                     .append(Component.literal(" "))
-                    .append(copyButton("Copy ID", rewardId.toString(), rewardId.toString())), false);
+                    .append(copyButton("Copy ID", rewardId.toString(), rewardId.toString()))
+                    .append(Component.literal(" "))
+                    .append(suggestCommandButton("Suppress", suppressCommand, "Prefill reward suppression"))
+                    .append(Component.literal(" "))
+                    .append(suggestCommandButton("Unsuppress", unsuppressCommand, "Prefill reward unsuppression"));
+            source.sendSuccess(() -> rewardLine, false);
             List<ResourceLocation> componentTypes = rewardDefinition.components().stream()
                     .map(component -> component.type())
                     .toList();
@@ -1643,6 +1936,93 @@ public final class WorldAwakenedCommands {
             long unlockTimestamp = state.ascensionRewardUnlockTimestamps().getOrDefault(rewardId, 0L);
             source.sendSuccess(() -> Component.literal("   source=" + sourceValue + " unlocked_at=" + unlockTimestamp)
                     .withStyle(ChatFormatting.DARK_GRAY), false);
+            source.sendSuccess(() -> Component.literal("   state=" + suppressionView.liveState().name().toLowerCase(Locale.ROOT)
+                    + " reward_suppressed=" + suppressionView.rewardSuppressed()
+                    + " grouped_suppression=" + suppressionView.groupedSuppressionActive()).withStyle(ChatFormatting.DARK_GRAY), false);
+            source.sendSuccess(() -> Component.literal("   suppressed_component_keys="
+                    + suppressionView.configuredSuppressedComponentKeys()
+                    + " effective="
+                    + suppressionView.effectiveSuppressedComponentKeys()).withStyle(ChatFormatting.DARK_GRAY), false);
+            if (!suppressionView.missingSuppressedComponentKeys().isEmpty()) {
+                source.sendSuccess(() -> Component.literal("   code="
+                        + WorldAwakenedDiagnosticCodes.ASC_SUPPRESSED_DEFINITION_MISSING
+                        + " missing_component_keys="
+                        + suppressionView.missingSuppressedComponentKeys()).withStyle(ChatFormatting.RED), false);
+            }
+            if (suppressionView.liveState() == WorldAwakenedAscensionService.RewardLiveState.SUPPRESSION_REJECTED_INVALID_GROUP_STATE
+                    || suppressionView.liveState() == WorldAwakenedAscensionService.RewardLiveState.SUPPRESSION_REJECTED_NOT_INDEPENDENTLY_SUPPORTED) {
+                source.sendSuccess(() -> Component.literal("   code="
+                        + suppressionView.rejectionCode()
+                        + " detail="
+                        + suppressionView.rejectionDetail()).withStyle(ChatFormatting.RED), false);
+            }
+            List<String> suppressibleComponentKeys = ascensionService.suppressibleComponentKeys(level, target, rewardId);
+            if (!suppressibleComponentKeys.isEmpty()) {
+                String componentHint = suppressibleComponentKeys.stream().collect(Collectors.joining(", "));
+                source.sendSuccess(() -> Component.literal("   suppressible_component_keys=" + componentHint).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(" - Active owned carriers"), false);
+        if (ownedCarriers.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            ownedCarriers.forEach((stableKey, carrierId) -> source.sendSuccess(
+                    () -> Component.literal("   carrier=" + carrierId + " key=" + stableKey).withStyle(ChatFormatting.DARK_GRAY),
+                    false));
+        }
+
+        source.sendSuccess(() -> Component.literal(" - Live WA-owned modifiers"), false);
+        if (liveModifiers.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            for (OwnedModifierView modifier : liveModifiers) {
+                source.sendSuccess(() -> Component.literal("   attribute="
+                        + modifier.attributeId()
+                        + " modifier="
+                        + modifier.modifierId()
+                        + " amount="
+                        + modifier.amount()
+                        + " op="
+                        + modifier.operation()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(" - Failed-closed reward components"), false);
+        if (failedClosed.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            for (FailedClosedRewardComponentView failure : failedClosed) {
+                source.sendSuccess(() -> Component.literal("   reward="
+                        + failure.rewardId()
+                        + " component="
+                        + failure.componentType()
+                        + " code="
+                        + failure.code()
+                        + " detail="
+                        + failure.detail()).withStyle(ChatFormatting.RED), false);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(" - Foreign state intentionally preserved"), false);
+        if (foreignModifiers.isEmpty()) {
+            source.sendSuccess(
+                    () -> Component.literal("   No foreign modifiers detected on WA-managed attributes. Foreign effects, visuals, and unrelated mod state are still preserved by design.")
+                            .withStyle(ChatFormatting.DARK_GRAY),
+                    false);
+        } else {
+            for (ForeignModifierView modifier : foreignModifiers) {
+                source.sendSuccess(() -> Component.literal("   code="
+                        + WorldAwakenedDiagnosticCodes.PLAYER_FOREIGN_MODIFIER_PRESERVED
+                        + " attribute="
+                        + modifier.attributeId()
+                        + " modifier="
+                        + modifier.modifierId()).withStyle(ChatFormatting.DARK_GRAY), false);
+            }
+            source.sendSuccess(
+                    () -> Component.literal("   Third-party modifiers are untouched. Foreign effects and visual state are also preserved unless a documented compat contract says otherwise.")
+                            .withStyle(ChatFormatting.DARK_GRAY),
+                    false);
         }
 
         source.sendSuccess(() -> Component.literal(" - Forfeited rewards by offer"), false);
@@ -1789,6 +2169,152 @@ public final class WorldAwakenedCommands {
 
     private static ServerPlayer sourcePlayer(CommandSourceStack source) {
         return source.getEntity() instanceof ServerPlayer player ? player : null;
+    }
+
+    private static List<OwnedModifierView> collectOwnedModifierViews(ServerPlayer target) {
+        List<OwnedModifierView> views = new ArrayList<>();
+        for (Holder<Attribute> attribute : WorldAwakenedAscensionRewardEffects.managedAttributes()) {
+            AttributeInstance instance = target.getAttribute(attribute);
+            if (instance == null) {
+                continue;
+            }
+            String attributeId = attribute.unwrapKey().map(key -> key.location().toString()).orElse("<unknown>");
+            for (AttributeModifier modifier : instance.getModifiers()) {
+                if (WorldAwakenedAscensionRewardEffects.isWorldAwakenedOwnedModifier(modifier.id())) {
+                    views.add(new OwnedModifierView(
+                            attributeId,
+                            modifier.id().toString(),
+                            modifier.amount(),
+                            modifier.operation().name().toLowerCase(Locale.ROOT)));
+                }
+            }
+        }
+        return views;
+    }
+
+    private static List<ForeignModifierView> collectForeignModifierViews(ServerPlayer target) {
+        List<ForeignModifierView> views = new ArrayList<>();
+        for (Holder<Attribute> attribute : WorldAwakenedAscensionRewardEffects.managedAttributes()) {
+            AttributeInstance instance = target.getAttribute(attribute);
+            if (instance == null) {
+                continue;
+            }
+            String attributeId = attribute.unwrapKey().map(key -> key.location().toString()).orElse("<unknown>");
+            for (AttributeModifier modifier : instance.getModifiers()) {
+                if (!WorldAwakenedAscensionRewardEffects.isWorldAwakenedOwnedModifier(modifier.id())) {
+                    views.add(new ForeignModifierView(attributeId, modifier.id().toString()));
+                }
+            }
+        }
+        return views;
+    }
+
+    private static List<FailedClosedRewardComponentView> collectFailedClosedRewardComponents(
+            WorldAwakenedDatapackSnapshot snapshot,
+            ServerPlayer target,
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            Map<ResourceLocation, ResourceLocation> ownedCarriers,
+            Map<ResourceLocation, WorldAwakenedAscensionService.RewardSuppressionView> suppressionViews) {
+        List<FailedClosedRewardComponentView> failures = new ArrayList<>();
+        for (ResourceLocation rewardId : state.chosenAscensionRewards()) {
+            WorldAwakenedAscensionService.RewardSuppressionView suppressionView = suppressionViews.get(rewardId);
+            if (suppressionView != null
+                    && suppressionView.liveState() == WorldAwakenedAscensionService.RewardLiveState.SUPPRESSED) {
+                continue;
+            }
+            AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+            if (rewardDefinition == null) {
+                failures.add(new FailedClosedRewardComponentView(
+                        rewardId.toString(),
+                        "<definition>",
+                        WorldAwakenedDiagnosticCodes.RUNTIME_INSTANCE_MISSING_DEFINITION,
+                        "saved reward ownership remains, but the definition is missing so no live projection is applied"));
+                continue;
+            }
+            for (int index = 0; index < rewardDefinition.components().size(); index++) {
+                var component = rewardDefinition.components().get(index);
+                if (!component.enabled()) {
+                    continue;
+                }
+                String componentKey = index + "|" + component.type();
+                if (suppressionView != null && suppressionView.effectiveSuppressedComponentKeys().contains(componentKey)) {
+                    continue;
+                }
+                ResourceLocation componentType = component.type();
+                Optional<Holder<Attribute>> attribute = WorldAwakenedAscensionRewardEffects.managedAttributeForComponent(componentType);
+                if (attribute.isPresent()) {
+                    if (!component.parameters().has("amount")
+                            || !component.parameters().get("amount").isJsonPrimitive()
+                            || !component.parameters().get("amount").getAsJsonPrimitive().isNumber()) {
+                        failures.add(new FailedClosedRewardComponentView(
+                                rewardId.toString(),
+                                componentType.toString(),
+                                WorldAwakenedDiagnosticCodes.ASCENSION_RECONCILE_COMPONENT_PARAM_INVALID,
+                                "parameters.amount is missing or non-numeric"));
+                        continue;
+                    }
+                    if (target.getAttribute(attribute.get()) == null) {
+                        failures.add(new FailedClosedRewardComponentView(
+                                rewardId.toString(),
+                                componentType.toString(),
+                                WorldAwakenedDiagnosticCodes.PLAYER_ATTRIBUTE_SURFACE_MISSING,
+                                "required attribute surface is unavailable"));
+                        continue;
+                    }
+                    ResourceLocation expectedKey = WorldAwakenedAscensionRewardEffects.stableOwnedKeyForComponent(rewardId, index);
+                    boolean present = collectOwnedModifierViews(target).stream()
+                            .anyMatch(view -> view.modifierId().equals(expectedKey.toString()));
+                    if (!present) {
+                        failures.add(new FailedClosedRewardComponentView(
+                                rewardId.toString(),
+                                componentType.toString(),
+                                WorldAwakenedDiagnosticCodes.RECONCILE_OWNERSHIP_VIOLATION,
+                                "expected WA-owned modifier projection is missing after reconcile"));
+                    }
+                    continue;
+                }
+
+                Optional<ResourceLocation> carrierId = WorldAwakenedAscensionRewardEffects.ownedCarrierForComponent(componentType);
+                if (carrierId.isPresent()) {
+                    ResourceLocation stableKey = WorldAwakenedAscensionRewardEffects.stableOwnedKeyForComponent(rewardId, index);
+                    ResourceLocation actualCarrier = ownedCarriers.get(stableKey);
+                    if (actualCarrier == null) {
+                        failures.add(new FailedClosedRewardComponentView(
+                                rewardId.toString(),
+                                componentType.toString(),
+                                carrierId.get().toString().contains("night_vision")
+                                        ? WorldAwakenedDiagnosticCodes.VISUAL_CARRIER_UNAVAILABLE
+                                        : WorldAwakenedDiagnosticCodes.GAMEPLAY_CARRIER_UNAVAILABLE,
+                                "required WA-owned carrier is not active"));
+                    } else if (!actualCarrier.equals(carrierId.get())) {
+                        failures.add(new FailedClosedRewardComponentView(
+                                rewardId.toString(),
+                                componentType.toString(),
+                                WorldAwakenedDiagnosticCodes.RECONCILE_OWNERSHIP_VIOLATION,
+                                "active carrier does not match the expected carrier type"));
+                    }
+                    continue;
+                }
+
+                failures.add(new FailedClosedRewardComponentView(
+                        rewardId.toString(),
+                        componentType.toString(),
+                        componentType.getPath().endsWith("_passive")
+                                ? WorldAwakenedDiagnosticCodes.REWARD_CARRIER_TYPE_MISSING
+                                : WorldAwakenedDiagnosticCodes.REWARD_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE,
+                        "no safe WA-owned runtime surface exists for this component type"));
+            }
+        }
+        return failures;
+    }
+
+    private record OwnedModifierView(String attributeId, String modifierId, double amount, String operation) {
+    }
+
+    private record FailedClosedRewardComponentView(String rewardId, String componentType, String code, String detail) {
+    }
+
+    private record ForeignModifierView(String attributeId, String modifierId) {
     }
 }
 

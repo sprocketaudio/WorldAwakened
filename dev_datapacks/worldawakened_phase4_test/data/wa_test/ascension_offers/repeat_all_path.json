@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:repeat_all_path",
+  "display_name": "WA Test Repeat All Path",
+  "description": "Command-driven offer for verifying allow_all reward repeat behavior.",
+  "enabled": true,
+  "trigger_conditions": [
+    {
+      "type": "worldawakened:world_day_gte",
+      "parameters": {
+        "value": 999999
+      }
+    }
+  ],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "wa_test:tempered_core",
+    "wa_test:ember_heart",
+    "wa_test:grave_step"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 40,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "allow_all"
+}

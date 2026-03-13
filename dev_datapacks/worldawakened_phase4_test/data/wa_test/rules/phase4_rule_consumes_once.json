@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:phase4_rule_consumes_once",
+  "enabled": true,
+  "priority": 10,
+  "execution_scope": "world",
+  "conditions": [
+    {
+      "type": "worldawakened:stage_unlocked",
+      "parameters": {
+        "stage": "wa_test:phase4_gate"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "type": "worldawakened:mark_rule_consumed",
+      "parameters": {}
+    }
+  ],
+  "weight": 1,
+  "chance": 1
+}

@@ -923,8 +923,200 @@ Required reapplication points:
 Application model:
 - rewards grant persistent player state or modifiers
 - component handlers reconcile active bonuses from saved selections
+- player reward reconciliation must be additive-first
+- reconciliation may apply, refresh, or remove only World Awakened-owned modifiers/effects identified by stable WA-owned keys
+- reconciliation must not clear, replace, or normalize third-party modifiers/effects from vanilla or other mods
+- if an external attribute/effect carrier required by a WA component is unavailable or cannot be safely owned, that component must fail closed with structured diagnostics and must not corrupt unrelated player state
+- client-side visual affordances for long-lived passive rewards must use WA-owned client visual carriers driven from synced WA-owned state, not shared vanilla effect slots or player options
 - repeated login or respawn must not duplicate stack the same reward component outcomes
 - if a chosen reward definition is missing during reconciliation, its saved ID remains recorded but its live effect is not applied
+
+### 5A.10A Player Reward Ownership and Carrier Reconciliation Contract
+
+World Awakened player reward reconciliation must be additive-first and ownership-scoped.
+
+Hard rules:
+- saved chosen reward IDs remain the source of truth for permanent reward ownership
+- World Awakened may apply, refresh, reconcile, or remove only World Awakened-owned state, including WA-owned modifiers, WA-owned carrier entries, WA-owned flags, and other WA-tracked runtime state
+- where live effects or passives are represented through a WA-owned carrier model, reconciliation must target carrier state rather than broadly mutating shared vanilla or third-party effect surfaces
+- World Awakened must not clear, normalize, rebuild, or overwrite the full player attribute/effect surface
+- World Awakened must not remove third-party or vanilla attribute modifiers/effects unless a future explicitly documented compat path allows it
+- every World Awakened-applied persistent modifier, carrier entry, or equivalent contribution must use a stable World Awakened-owned identity key
+- components that depend on optional runtime surfaces must declare or document that dependency clearly enough for validation, debugging, and future compat expansion
+- reconciliation must target World Awakened-owned contributions by stable identity, not by broad attribute wipe, effect-category wipe, or foreign-state normalization
+- repeated login, respawn, suppression change, and reconcile passes must not duplicate-stack World Awakened-owned contributions
+
+Failure behavior:
+- if a reward component requires a WA-owned carrier type that does not yet exist for that behavior class, the component must fail closed until such a carrier exists
+- if a required external attribute, effect channel, visual channel, or compat hook is missing, the affected World Awakened component must fail closed
+- failure of one World Awakened reward component must not corrupt unrelated player state or remove unrelated third-party state
+- failures must emit structured diagnostics with player, reward, and component identity where possible
+
+Design rule:
+- reward ownership is permanent saved state
+- carrier state is WA-owned runtime application state derived from saved ownership plus other WA-owned policy state such as suppression
+- live effects, modifiers, or visuals are projections from WA-owned carriers where supported
+
+### 5A.10AA WA-Owned Carrier Model
+
+World Awakened may use owned carrier models as the runtime application surface for passive reward effects.
+
+Purpose:
+- preserve strict ownership boundaries
+- avoid broad mutation of shared vanilla or third-party effect surfaces
+- support safe reconciliation, suppression, and debug inspection
+- separate saved ownership state from live applied state
+
+Hard rules:
+- carrier state is derived from saved chosen rewards and other WA-owned runtime policy state
+- carrier state is World Awakened-owned runtime state
+- carriers must use stable WA-owned identities
+- reconciliation may rebuild or refresh carrier state, but must not mutate foreign state outside WA-owned identities
+- carrier rebuilds must be deterministic
+- carrier failure must disable only the affected component or branch, not unrelated reward ownership state
+
+Carrier classes may include:
+- gameplay/passive carriers for server-authoritative passive behavior
+- visual/client carriers for client-facing visual behavior where direct use of shared effect surfaces would violate ownership safety
+
+Carrier behavior rule:
+- World Awakened does not treat broad vanilla potion-effect application as the default ownership model for passive rewards
+- reward components must use the safest available WA-owned application surface:
+  - stable WA-owned attribute modifiers where appropriate
+  - WA-owned gameplay/passive carriers for server-authoritative passive behavior
+  - WA-owned visual/client carriers for client-facing visual behavior
+  - otherwise fail closed until a safe owned carrier exists
+
+Night-vision style visual rule:
+- effects whose primary behavior is client visual presentation must not rely on shared foreign vanilla effect state when World Awakened needs ownership-safe reconciliation, suppression, or removal
+- such effects should use a WA-owned client visual carrier synchronized from server-authoritative WA-owned state
+- until a safe WA-owned visual carrier exists, these components fail closed
+
+Performance rule:
+- carrier systems must be event-driven and reconciliation-based
+- carrier rebuilds occur only on ownership-changing or lifecycle-changing events such as login, respawn, reward selection change, suppression change, datapack reload, and other explicitly documented reconcile points
+- carrier systems must not require broad per-tick rescans of all owned rewards/components for normal operation
+- client visual carriers must synchronize on state change, not every tick
+
+Current implementation contract:
+- ascension reconciliation currently supports WA-owned attribute modifiers plus WA-owned passive carriers for `fire_resistance_passive` and `night_vision_passive`
+- `fire_resistance_passive` is enforced through a WA-owned server runtime carrier that blocks fire-tagged incoming damage
+- `night_vision_passive` is enforced through a WA-owned client visual carrier driven from synced owned-carrier state and the client lightmap path; it does not occupy the shared vanilla `NIGHT_VISION` effect slot
+- when the client already has real vanilla/modded `NIGHT_VISION`, the WA-owned night-vision carrier yields to the vanilla-owned runtime surface instead of double-stacking
+- future mutation and other subsystem effect handlers must route refreshable/revocable runtime effects through the same owned-carrier model
+
+### 5A.10B Ascension Reward Suppression (v1)
+
+World Awakened supports temporary suppression of chosen ascension rewards.
+
+Purpose:
+- allow players to temporarily disable unwanted or situational reward effects
+- preserve permanence of reward ownership while improving usability
+- avoid cases where a chosen reward harms moment-to-moment gameplay experience
+
+Hard rules:
+- suppression does not remove ownership
+- suppression does not change chosen reward identity
+- suppression does not reopen an offer
+- suppression does not clear forfeiture state
+- suppression affects only live application of reward effects
+- suppressed rewards remain recorded in saved player ascension state
+- suppression and re-enabling must be server-authoritative
+
+v1 suppression model:
+- suppression is reward-scoped by default
+- component-level suppression is allowed only when the component type and component metadata declare safe support
+- if a reward contains no independently suppressible components, suppression applies to the whole reward
+- if a reward contains grouped components, those components suppress together according to shared composition rules
+
+Design rule:
+- reward ownership is permanent
+- live reward application is suppressible where safe
+- suppression is a usability control, not a respec system
+
+### 5A.10C Suppression Scope and Component Rules
+
+Suppression state may exist at two levels.
+
+Reward-level suppression:
+- always valid
+- disables live application of the reward as a whole
+
+Component-level suppression:
+- optional
+- allowed only when the component type and component metadata allow component-level suppression
+- must not violate grouped suppression rules
+- must not leave the reward in an invalid partial state
+
+Component suppression hard rules:
+- component entries may declare `suppressible_individually: true|false`
+- component entries may declare `suppression_policy: reward_only | independent | grouped`
+- component entries may declare `suppression_group` when using grouped suppression
+- default behavior is `reward_only`
+- component-level policies (`independent` and `grouped`) require `suppressible_individually=true` on that component entry
+- grouped suppression requests must resolve deterministically to the full linked group
+- invalid partial suppression states are rejected and must not apply
+
+Examples:
+- `movement_speed_bonus`: may be independently suppressible
+- `night_vision_passive`: may be independently suppressible
+- elemental/summon package components: typically grouped, not independently suppressible
+- companion/helper components in grouped packages: suppress together as one group
+
+### 5A.10D Persistence and Reconciliation Rules for Suppression
+
+Suppression state is player-scoped persistent state.
+
+Persist:
+- suppressed reward IDs
+- suppressed component keys per reward when component-level suppression is used
+- suppression timestamps for inspect/debug audit output
+
+Reconciliation rules:
+- login, respawn, datapack reload, and manual reconcile must respect suppression state
+- suppressed rewards/components must not apply live effects while suppressed
+- re-enabling a suppressed reward/component must re-enter normal reconciliation and apply only World Awakened-owned state
+- repeated suppression or re-enable operations must not duplicate-stack effects
+- suppression must not remove or rewrite foreign vanilla or third-party state
+
+Failure behavior:
+- if a reward or component cannot be safely suppressed independently, reject the suppression request
+- if a referenced suppressed reward/component definition is missing, preserve suppression state and emit structured diagnostics
+- failures disable only the affected suppression branch and must not corrupt reward ownership state
+
+### 5A.10E Suppression Command and UX Surface (v1)
+
+v1 command support:
+- `/wa ascension suppress reward <player> <reward_id>`
+- `/wa ascension unsuppress reward <player> <reward_id>`
+- `/wa ascension suppress component <player> <reward_id> <component_key>`
+- `/wa ascension unsuppress component <player> <reward_id> <component_key>`
+- `/wa ascension reconcile <player>`
+- `/wa ascension inspect <player>`
+
+`component_key` command format:
+- canonical form: `index|namespace:component_type` (example: `0|worldawakened:movement_speed_bonus`)
+- index-only shorthand (example: `0`) is accepted
+- inspect/suggestion output should provide canonical keys
+
+Player-safe self-service may optionally include:
+- self-targeted suppress/unsuppress commands when server policy allows
+- GUI toggles for suppressible rewards/components in a future client UX pass
+
+Required inspect output:
+- chosen reward IDs
+- whether each reward is active or suppressed
+- whether any components are independently suppressed
+- whether suppression was rejected due to grouping or component-support rules
+- live-applied versus owned-but-suppressed state
+
+Design rule:
+- player-facing output should clearly distinguish:
+  - owned
+  - active
+  - suppressed
+  - missing definition
+  - degraded or skipped component state
 
 ### 5A.11 Validation and Debug Expectations
 
@@ -954,6 +1146,11 @@ Required debug and command support:
 - `/wa ascension grant_offer <player> <offer_id>`
 - `/wa ascension choose <player> <instance_id> <reward_id>`
 - `/wa ascension active <player> <reward_id>`
+- `/wa ascension suppress reward <player> <reward_id>`
+- `/wa ascension unsuppress reward <player> <reward_id>`
+- `/wa ascension suppress component <player> <reward_id> <component_key>`
+- `/wa ascension unsuppress component <player> <reward_id> <component_key>`
+- `/wa ascension reconcile <player>`
 - `/wa ascension revoke <player> <reward_id>`
 - `/wa ascension reopen <player> <instance_id>`
 - `/wa ascension clear <player> <instance_id>`
@@ -1884,6 +2081,7 @@ Hard guarantees:
 - no unbounded rerolls
 - no recursive re-entry from mutator application
 - no more than one final application pass per entity spawn
+- if the spawn event has already been cancelled, denied, or invalidated by an upstream mod or hook, World Awakened must skip mutation processing and exit without retry behavior
 
 Failure behavior:
 - if no valid mutator or rule matches, the entity spawns normally
@@ -2010,11 +2208,13 @@ Required safeguards:
 - spawn-processing marker on the entity
 - one-shot and cooldown persistence
 - explicit no-reentry zones for invasion resolution
+- spawn-processing must not re-enter for externally redirected or World Awakened-induced follow-up spawns unless the specific path is explicitly marked compat-safe
 
 Failure behavior:
 - abort the recursive branch
 - log a structured warning
 - preserve server stability over feature completion
+- World Awakened may only remove, rewrite, refresh, or suppress state it owns; foreign or unknown state must be preserved unless a documented compat contract explicitly says otherwise
 
 ### Runtime Caching Model
 
@@ -2041,6 +2241,44 @@ Cache invalidation rules:
 Performance rule:
 - no JSON tree walking during spawn paths or other hot paths
 - expensive selector and tag resolution should be precompiled during reload; if that is impossible for a specific hook, the result must be resolved once and cached before repeated hot-path use
+
+### Runtime Reload and Compiled Graph Ownership Contract
+
+World Awakened compiled definitions are immutable runtime content graphs created during datapack reload.
+
+Hard rules:
+- live gameplay must never mutate compiled definitions
+- datapack reload must atomically replace compiled graphs
+- evaluation must use either the old compiled graph or the new compiled graph, never a mixed graph
+- SavedData, runtime instance state, and WA-owned carrier state are mutable runtime state; compiled datapack definitions are not
+- removed or invalid definitions must disable only the affected object and dependent branches, not unrelated systems
+
+Migration and removal behavior:
+- if a chosen ascension reward definition is removed, the saved reward ID remains recorded but no live effect is applied
+- if a mutator definition is removed, existing already-mutated entities keep their persisted provenance until despawn or rebuild policy applies
+- if a runtime instance references a removed object, inspect/debug output must report that state explicitly
+- if a carrier-backed component references a removed or unsupported definition, the carrier branch fails closed and remains inspectable
+- no automatic substitution to a different definition occurs unless a future migration contract explicitly allows it
+
+### External Capability / Attribute / Hook Fail-Closed Contract
+
+World Awakened must assume that other mods may add entities, attributes, effects, equipment systems, render paths, or hook behavior that are absent, transformed, or incompatible in some environments.
+
+Hard rules:
+- World Awakened components may only act on runtime capabilities, attributes, hooks, or channels that are known to exist in the current context
+- absent or incompatible external state must fail closed for the affected World Awakened branch/component only
+- World Awakened must not treat missing optional external state as permission to rewrite fallback state broadly
+- World Awakened must not corrupt entity or player state when an expected external capability, attribute, integration surface, or visual channel is unavailable
+
+Examples:
+- missing player attribute required by a reward component -> skip that component with diagnostic
+- missing gameplay carrier type for a passive effect -> fail closed for that component
+- missing visual carrier for a client-facing passive effect -> fail closed for that component
+- missing entity hook required by a mutator behavior -> skip that component or mutator branch with diagnostic
+- missing compat provider -> evaluate false or disable the affected compat-owned branch
+
+Design rule:
+- preserve stability and ownership boundaries over feature completion
 
 ### Debug Trace Contract
 
@@ -2125,6 +2363,7 @@ Stage failure policy:
 
 Runtime failure policy:
 - hot-path runtime errors should fail closed for the affected World Awakened action; only framework-integrity failures may justify aborting startup or hard-failing the subsystem
+- optional runtime-surface failures must remain branch-local and inspectable; they must not trigger broad fallback mutation of foreign state
 - isolated failures must emit structured diagnostics
 
 ### Priority, Chance, and Cooldown Ordering
@@ -2308,6 +2547,90 @@ Selection constraints:
 - mutator rerolls must respect a global reroll limit
 - mutator selection must never loop indefinitely
 - spawn-time results must be deterministic for a given spawn event context
+
+### 9.7B Spawn Hook Coexistence and External Spawn Controller Contract
+
+World Awakened must assume that other mods may also inspect, deny, transform, redirect, or otherwise modify spawn events.
+
+Hard coexistence rules:
+- World Awakened is additive-first on spawn hooks in v1
+- World Awakened must not assume it is the sole authority over spawn eligibility
+- if an upstream hook or external mod denies/cancels a spawn, World Awakened must not retry, recreate, or reintroduce that spawn
+- if another mod transforms or replaces the spawning entity/context before World Awakened mutation evaluation, World Awakened evaluates only the final surviving spawn context exposed by the hook
+- World Awakened must not force a denied spawn back into existence through mutator or pool logic
+- World Awakened must not recursively process spawns created indirectly by its own spawn-time effects unless a future subsystem explicitly documents safe handling
+
+Safe default behavior:
+- react to eligible spawn events
+- mutate only when the spawn remains valid after upstream processing
+- fail closed when required spawn context is unavailable or invalidated by another mod
+- preserve server stability and compatibility over feature completion
+
+Design rule:
+- World Awakened is not a full replacement for vanilla or external spawn-rule engines in v1
+- World Awakened extends eligible spawn outcomes; it does not seize authoritative control over all spawning
+
+### 9.7C Mutator Ownership and Runtime-Surface Fail-Closed Contract
+
+Mutator application must remain ownership-scoped, capability-aware, and additive-first in mixed-mod environments.
+
+Hard rules:
+- spawn-time mutator handlers may mutate only World Awakened-owned runtime state, provenance, and owned projections for that mutator branch
+- World Awakened must not clear, normalize, rebuild, or overwrite foreign entity modifier/effect/capability state to force mutator compatibility
+- each long-lived mutator projection must use a stable World Awakened-owned identity key where that projection model exists
+- mutator branches may execute only when required entity runtime surfaces, capabilities, or hooks are present and compatible
+- components that depend on optional runtime surfaces must declare or document that dependency clearly enough for validation, debugging, and future compat expansion
+- missing or incompatible runtime surfaces must fail closed for the affected mutator component or branch only
+- one mutator branch failure must not corrupt unrelated entity/player state or remove unrelated third-party state
+
+Required diagnostics:
+- missing required entity capability/hook/runtime surface should emit structured branch-level diagnostics
+- skipped mutator components due to unavailable surfaces should emit structured branch-level diagnostics
+- runtime instances/provenance that reference removed definitions must remain inspectable and non-fatal
+
+Inspect contract:
+- `/wa mob inspect` must expose:
+  - persisted mutation provenance
+  - currently resolvable definition state
+  - failed-closed mutator component state
+  - preserved-foreign-state intent where relevant on WA-managed runtime surfaces
+
+Code mapping expectation:
+- `WA_ENTITY_RUNTIME_SURFACE_MISSING`
+- `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
+- `WA_RUNTIME_INSTANCE_MISSING_DEFINITION`
+- `WA_FOREIGN_STATE_PRESERVATION_REQUIRED`
+
+### 9.7D Optional Runtime-Surface Compatibility Contract (v1)
+
+Some World Awakened mutator and reward components may depend on optional runtime surfaces beyond vanilla baseline behavior.
+
+Examples of optional runtime surfaces:
+- extra equipment slot systems
+- custom or non-vanilla combat/damage hooks
+- boss-runtime metadata or classification surfaces
+- custom attribute surfaces exposed by compatible mods
+- custom projectile or hit-processing hooks
+- client-visual presentation channels where relevant to owned carrier-backed effects
+
+v1 design rule:
+- these runtime surfaces are optional and compat-sensitive
+- World Awakened must not assume they exist in every modpack
+- components that require unavailable or unsupported runtime surfaces must fail closed for that branch/component only
+- World Awakened must not invent broad compatibility fallback by rewriting foreign state or bypassing ownership rules
+
+Hard rules:
+- optional runtime surfaces do not become implied requirements for the core framework
+- absence of an optional runtime surface must disable only the affected component, mutator branch, or reward branch
+- World Awakened must preserve foreign or unknown runtime state rather than mutate it as fallback behavior
+- inspect/debug output must explain when a component was skipped because its required runtime surface was unavailable
+- compat-sensitive behavior must remain additive-first and ownership-safe
+
+Examples:
+- a reward component that requires a Curios-style slot surface fails closed if that slot system is absent
+- a mutator component that depends on a custom combat hook fails closed if the hook is unavailable
+- a boss-sensitive mutator branch may depend on boss-classification/runtime data and fail closed if that data is unavailable
+- a carrier-backed visual reward component fails closed until an appropriate WA-owned visual carrier exists
 
 ### 9.8 Mutator Budget System (Optional Guard)
 
@@ -3077,6 +3400,10 @@ Console behavior:
 - stage context
 - Apotheosis tier context (when active)
 - final attribute deltas
+- persisted mutation provenance keys
+- currently resolvable vs missing mutator definition state
+- failed-closed mutator component reasons when runtime surfaces/hooks/capabilities are unavailable
+- explicit marker when foreign entity state was intentionally preserved instead of mutated
 
 `ascension inspect` output must include:
 - pending offers
@@ -3084,6 +3411,8 @@ Console behavior:
 - chosen rewards
 - forfeited rewards
 - active permanent effects
+- suppression state (`active`, `suppressed`, `partially_suppressed`, `suppressed_group`)
+- suppression rejection state (`suppression_rejected_invalid_group_state`, `suppression_rejected_not_independently_supported`)
 - source stages or tiers for each reward
 - runtime offer instance IDs suitable for `reopen` and debug-clear targeting
 
@@ -3106,6 +3435,103 @@ Command semantics:
 - `debug reset` commands must target whole persisted buckets (`stages`, `triggers`, `rules`, `ascension`, `all`)
 - `debug clear` commands must target explicit authored/runtime identities (for example stage ID, trigger ID, rule ID, or ascension runtime instance ID)
 - when `general.enable_debug_commands = false`, the debug tree must not be registered
+
+### 18.2 Phase 5+ Runtime Testability and Command-Driven Verification Contract
+
+World Awakened phases that operate on hot paths, external conditions, random selection, or deferred runtime state must be testable through explicit command-driven verification surfaces.
+
+Required verification surface types:
+- `inspect`: show current state or resolved runtime state
+- `evaluate`: dry-run the real pipeline against a target context
+- `force`: bypass selection randomness or scheduling uncertainty where safe for operator testing
+- `controlled_live_test`: execute an end-to-end bounded runtime path using the real compiled pipeline
+
+Hard rules:
+- debug/test commands must use the real compiled runtime evaluation path wherever possible
+- dry-run paths must report the same eligibility and rejection logic as live runtime
+- forced paths may bypass randomness or scheduling but must still enforce safety, composition, ownership, and policy rules unless a future explicit override mode is documented
+- command-driven test paths must remain bounded and deterministic
+- operator test commands must not become uncontrolled world-modification tools
+- dry-run is the default mode unless live application is explicitly requested by command design
+
+#### 18.2A Phase 5 - Mutators / Spawn
+
+Required commands:
+- `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
+- `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
+
+Required behavior:
+- `evaluate` builds a normal `spawn_event` context and dry-runs selector/pool/mutator evaluation
+- `force_pool` bypasses pool randomness but still enforces selector, composition, exclusion, and budget rules
+- `force_mutator` bypasses mutator weighting but still enforces composition, exclusion, and budget rules
+- `spawn test` performs end-to-end controlled spawn-path verification using the real compiled pipeline
+
+#### 18.2B Phase 6 - Spawn Pressure / Difficulty / Challenge
+
+Required commands:
+- `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
+- `/wa debug difficulty scalar [player]`
+- `/wa difficulty global get`
+- `/wa difficulty global set <value>`
+- `/wa difficulty global reset`
+- `/wa difficulty personal get`
+- `/wa difficulty personal set <value>`
+- `/wa difficulty world get`
+- `/wa difficulty world set <value>`
+- `/wa difficulty vote yes`
+- `/wa difficulty vote no`
+
+Required behavior:
+- `pressure evaluate` dry-runs spawn-pressure composition for a target context
+- `difficulty scalar` reports resolved effective scalar inputs and final output for the target context
+- difficulty commands must expose rejection reasons for bounds, permissions, cooldowns, vote requirements, and unsupported scope combinations
+
+#### 18.2C Phase 7 - Loot
+
+Required commands:
+- `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+
+Supported target types include:
+- `loot_table`
+- `entity`
+- `chest`
+- `structure`
+- `invasion_reward`
+
+Required behavior:
+- `loot evaluate` dry-runs the real loot-profile pipeline for the given target context
+- `force_profile` evaluates one specific loot profile against the target context
+- both commands must report additive/replace/remove decisions, compatibility safety restrictions, and final outcome summary
+- when Apotheosis compat is active, these commands must surface why a profile branch was blocked, downgraded, or allowed
+
+#### 18.2D Phase 8 - Invasions
+
+Required commands:
+- `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
+- `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
+- `/wa invasion start <profile>`
+- `/wa invasion stop`
+
+Required behavior:
+- `invasion evaluate` dry-runs scheduler/profile eligibility and reports why the invasion would or would not activate
+- `force_wave` dry-runs or controlled-runs one wave composition pass with mutator and scalar resolution visible
+- live `start`/`stop` commands remain the operational verification path for end-to-end invasion behavior
+
+#### 18.2E Phase 9 - Compat / Integrations
+
+Required commands:
+- `/wa compat list`
+- `/wa apotheosis tier inspect`
+- `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
+- `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
+
+Required behavior:
+- `compat evaluate` shows integration activation gates, config state, loaded-mod state, profile state, and why compat-owned branches are active or inactive
+- `scalar provider` shows raw provider output, fallback behavior, and resolved scalar contribution for the target context
+- these commands must explain fail-closed outcomes when compat providers are absent or unavailable
 
 ---
 
@@ -3369,6 +3795,60 @@ Recommended rule:
 - each implemented phase should add or update automated coverage in at least one relevant test category
 - runtime-determinism and migration regressions should be treated as high-priority failures
 
+### 20A.1 Phase 5-9 Manual Verification Sets
+
+Phase 5 manual verification set:
+- evaluate valid and invalid spawn contexts
+- force valid and invalid pools
+- force valid and invalid mutators
+- run controlled spawn test
+- verify `/wa mob inspect` provenance
+
+Phase 6 manual verification set:
+- evaluate spawn pressure in multiple dimensions
+- inspect effective scalar composition
+- test difficulty/challenge bounds, cooldowns, and permissions
+- verify policy rejection diagnostics
+
+Phase 7 manual verification set:
+- evaluate loot on valid and invalid targets
+- force a profile on a target
+- verify compat-safe downgrade/block behavior
+- inspect final loot outcome summary
+
+Phase 8 manual verification set:
+- evaluate invasion eligibility
+- force a wave
+- run controlled invasion `start`/`stop`
+- inspect scheduler, cap, and safe-zone behavior
+
+Phase 9 manual verification set:
+- inspect compat activation
+- evaluate integration-gated behavior
+- inspect scalar provider outputs
+- verify fail-closed behavior when compat is missing or disabled
+
+### 20A.2 Recommended Automated Coverage Additions
+
+- dry-run command paths use compiled runtime graphs
+- forced commands still enforce safety/composition/policy rules
+- debug output contains candidate and rejection summaries
+- pipeline mismatch between debug path and live path is treated as a regression
+
+### Command-Driven Verification Reuse Rule
+
+All debug/evaluate/force commands for Phases 5 through 9 must reuse the same compiled runtime structures used by live gameplay:
+- compiled selector indexes
+- compiled rule buckets
+- compiled mutator pools
+- compiled loot profile matchers
+- compiled invasion profile matchers
+- compiled compat activation state
+- compiled scalar provider views
+
+Hard rule:
+- no major subsystem may rely only on passive observation of natural runtime events for verification if a controlled evaluation path can be provided safely
+
 ---
 
 ## 20B. World Awakened Web Authoring Tool (v1 Release Requirement)
@@ -3483,7 +3963,9 @@ Phase impact expectations:
 - Phase 2: trigger docs/validation wording aligned to shared action + scope contracts
 - Phase 3: rule docs/validation wording aligned to shared condition + action + scope contracts
 - Phase 4: ascension component docs/validation wording aligned to shared composition + status contracts
+- Phase 4/ongoing: add suppression-aware ascension reconciliation so chosen rewards remain permanent while live effects can be safely disabled where allowed
 - Phase 5: mutator runtime must satisfy composition + performance budget contracts (`COMPOSITION_AND_STACKING.md`, `PERFORMANCE_BUDGETS.md`)
+- Phase 5: preserve strict ownership boundaries so mutator and reward application reconcile only World Awakened-owned state, use WA-owned carriers where needed, and fail closed when external capabilities, hooks, or carrier classes are unavailable
 - Phase 6: rule-event and spawn guardrails must satisfy performance budget and debug-observability contracts
 - Phase 7-9: downstream systems (loot/invasion/compat) must preserve bounded evaluation and traceable rejection diagnostics
 - Phase 10: web authoring validation must surface composition/performance contract warnings with canonical diagnostics mapping
@@ -3492,10 +3974,18 @@ Phase impact expectations:
 Outcome rule:
 - all future systems must extend these shared contracts instead of defining subsystem-specific condition/action/scope/composition/status variants
 
+Cross-phase quality gate:
+- no phase may remove, wipe, normalize, or broadly rebuild third-party player/entity modifiers, effects, visuals, or runtime state outside explicitly documented World Awakened-owned identities
+
 ### Phase 5 - Mutators and Pools
 - implement mutation component-type registry and v1 behavior set
 - implement mutation pool matching and weighted selection
 - apply mutators at spawn-time with stacking/exclusivity enforcement
+- implement command-driven verification surfaces for mutators/spawn:
+  - inspect: `/wa mob inspect`
+  - evaluate: `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
+  - force: `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`, `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
+  - controlled live test: `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
 - implement optional mutation component budget enforcement (`component_budget` plus registered component costs)
 - implement spawn-time performance budgets from [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md):
   - `max_mutators_per_spawn`
@@ -3503,6 +3993,8 @@ Outcome rule:
   - deterministic overflow handling (truncate or reject by policy)
 - persist entity metadata for provenance and debugging
 - compile selector definitions into cached matchers
+- implement safe spawn-hook coexistence rules so World Awakened mutates only surviving eligible spawn events and never reintroduces denied upstream spawns
+- respect optional runtime-surface dependencies for mutator components and fail closed branch-only when compat-sensitive surfaces such as extra slot systems, custom combat hooks, boss-runtime metadata, or custom attributes are unavailable
 
 Exit criteria:
 - eligible spawns can receive mutators from matching pools
@@ -3511,7 +4003,12 @@ Exit criteria:
 - spawn-time mutator/component count budgets are enforced deterministically
 - budget overflow paths emit structured diagnostics and do not trigger unbounded rerolls
 - `/wa mob inspect` shows source pool, active mutators, and stat deltas
+- `/wa mob inspect` also shows resolved-vs-missing mutator definitions and failed-closed mutator component reasons
 - mutator rerolls remain bounded and rejected candidates are inspectable
+- command-driven evaluate/force/spawn-test outputs expose candidate narrowing, rejection reasons, selected mutators, component composition, and budget outcomes
+- World Awakened coexists safely with upstream spawn denial/transformation hooks and does not retry or recreate denied spawns
+- missing entity capabilities/hooks/runtime surfaces fail closed with branch-level diagnostics and do not rewrite foreign entity state
+- compat-sensitive mutator branches fail closed with structured diagnostics when optional runtime surfaces are unavailable, without mutating unrelated foreign state
 
 ### Phase 6 - Spawn Pressure Controls
 - implement conservative spawn pressure scalars and category modifiers
@@ -3523,6 +4020,11 @@ Exit criteria:
   - `maximum_rules_evaluated_per_event`
   - `maximum_actions_per_rule`
   - diagnostics-first enforcement policy
+- implement command-driven verification surfaces for pressure/difficulty/challenge:
+  - inspect: `/wa debug difficulty scalar [player]`
+  - evaluate: `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
+  - force/override: `/wa difficulty global set <value>`, `/wa difficulty global reset`, `/wa difficulty personal set <value>`, `/wa difficulty world set <value>`, `/wa difficulty vote yes|no`
+  - controlled live test: policy-gated difficulty updates followed by real spawn/rule-path verification
 - implement hard safety caps and loop guards
 - support dimension and stage-conditioned pressure adjustments
 
@@ -3532,6 +4034,7 @@ Exit criteria:
 - dimension baseline composition order is deterministic and precedes global/challenge/integration scalar layers
 - effective scalar composition is deterministic and consistently applied across World Awakened-owned numeric difficulty outputs
 - out-of-bounds or unauthorized difficulty/challenge changes are rejected with diagnostics
+- pressure and scalar debug commands expose base values, challenge/global layers, integration inputs, and final resolved outputs
 - per-event rule and per-rule action budgets are enforced with deterministic outcomes and diagnostics
 - no uncontrolled spawn loops under malformed data
 - peaceful mode is respected and category restrictions are obeyed when exposed by the hook; otherwise modifiers fail closed
@@ -3542,10 +4045,16 @@ Exit criteria:
 - implement mutated mob bonus drop path and profile-based scaling
 - apply replace, remove, and inject semantics in the documented assembly order
 - enforce additive composition rules for Apotheosis-sensitive targets when compat is active
+- implement command-driven verification surfaces for loot:
+  - inspect: loot debug inspect output
+  - evaluate: `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
+  - force: `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+  - controlled live test: profile-enabled real loot hook path on a bounded target context
 
 Exit criteria:
 - targeted chest tables receive profile-driven changes as configured
 - replace/inject modes obey config restrictions
+- debug loot evaluate/force commands expose candidate profiles, operation decisions, compat-safety decisions, and final assembled outcomes
 - unsafe loot modes against Apotheosis-sensitive targets are blocked, downgraded, or disabled with structured diagnostics
 - broken loot profiles are isolated and logged without global failure
 
@@ -3554,10 +4063,16 @@ Exit criteria:
 - ship at least one robust trigger mode (`random_periodic` + `command_forced`)
 - implement wave spawning, warning window, and reward profile output
 - separate scheduler phase from wave spawn phase and guard both against stuck-active failures
+- implement command-driven verification surfaces for invasions:
+  - inspect: invasion inspect output
+  - evaluate: `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
+  - force: `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
+  - controlled live test: `/wa invasion start <profile>` and `/wa invasion stop`
 
 Exit criteria:
 - `/wa invasion start <profile>` and `/wa invasion stop` operate reliably
 - warning and wave cadence follow profile configuration
+- invasion evaluate/force outputs expose scheduler eligibility, cooldown/cap gates, wave composition, and safe-zone outcomes
 - invasion entity cap and safe-zone guards are enforced
 
 ### Phase 9 - Compatibility Framework and Apotheosis
@@ -3568,12 +4083,18 @@ Exit criteria:
 - support ascension offer triggers from compatible external tier providers where configured
 - support mapping modes (`independent`, `derived_stage`, `scalar`, `hybrid`)
 - keep dedicated boss/mob mod compat additive; do not move generic entity-based support behind compat modules
+- implement command-driven verification surfaces for compat and external scalar providers:
+  - inspect: `/wa compat list`, `/wa apotheosis tier inspect`
+  - evaluate: `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
+  - force/override: provider selection through `/wa debug scalar provider <provider_key> [player] [entity] [dimension]` with policy-bounded context overrides only
+  - controlled live test: run compat-gated rule/loot/invasion paths with inspect/debug provenance
 
 Exit criteria:
 - no hard dependency crash when Apotheosis is missing
 - Apotheosis-specific objects are safely skipped or evaluate false when inactive
 - Apotheosis-managed tier-gated loot behavior is preserved on sensitive targets while World Awakened additive rewards still apply
 - external tier integrations can feed rule and ascension eligibility safely when enabled
+- compat/scalar debug commands expose loaded-mod/config/profile/provider gates and explain fail-closed results
 - `/wa compat list` and `/wa apotheosis tier inspect` are functional
 
 ### Phase 10 - Web Authoring Tool (Browser Companion)
@@ -3619,7 +4140,7 @@ Exit criteria:
 
 ### Cross-Phase Quality Gates
 - each phase ends with successful compile/build and server startup smoke test
-- each phase includes at least one command-driven verification path
+- each runtime-heavy phase (especially Phases 5 through 9) includes inspect and evaluate command paths and, where safe, force and controlled live-test paths
 - each phase adds or updates automated coverage in at least one relevant test category when behavior changes
 - each phase updates docs for any schema/behavior change
 - debug-enabled evaluation paths should expose a stable per-pass trace ID for correlation across logs and command output

@@ -3,7 +3,7 @@
 Plain-language explanation of how World Awakened thinks about progression, triggers, rules, and ascension.
 
 - Document status: Active human-friendly concept guide
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Mental model for operators and datapack authors
 
 ---
@@ -156,6 +156,42 @@ Why the commands use `instance_id` for selection:
 - one offer template can theoretically exist more than once over time
 - choosing by template ID becomes ambiguous
 - choosing by runtime instance ID is precise and operator-safe
+
+## Owned Carriers vs Shared Vanilla Effects
+
+This distinction matters whenever World Awakened needs to refresh or remove a long-lived effect later.
+
+### Shared vanilla or modded effect slots
+
+These are the normal Minecraft effect containers.
+
+They are shared.
+That means World Awakened cannot safely assume it is the only thing using them.
+
+If World Awakened directly owned one of those shared slots and later removed it, it could accidentally wipe an effect that came from vanilla, a potion, armor, or another mod.
+
+### World Awakened-owned carriers
+
+These are World Awakened's own runtime entries keyed by stable WA-owned keys.
+
+World Awakened can safely:
+- add them
+- refresh them
+- remove them
+- inspect them
+
+There are 2 common carrier shapes now:
+- server runtime carriers: for gameplay behavior like fire resistance
+- client visual carriers: for player-facing visuals like passive night vision, including local-player lightmap-backed rendering when needed for vanilla parity
+
+The important part is the ownership model, not whether the final behavior is gameplay or visual.
+World Awakened still owns the state and can safely refresh or revoke it later without wiping unrelated vanilla or modded effects.
+
+because it owns that state completely.
+
+Current practical rule:
+- stable attribute modifiers and owned carriers are safe for long-lived refreshable behavior
+- shared vanilla/modded effect slots are only safe for one-shot additive actions that do not need later cleanup
 
 ## Persistence Buckets
 

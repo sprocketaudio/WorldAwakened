@@ -6,10 +6,22 @@
   "icon": { "item": "minecraft:feather" },
   "enabled": true,
   "components": [
-    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": 0.08 } },
+    {
+      "type": "worldawakened:movement_speed_bonus",
+      "parameters": { "amount": 0.08 },
+      "suppressible_individually": true,
+      "suppression_policy": "grouped",
+      "suppression_group": "mobility_vision_bundle"
+    },
     { "type": "worldawakened:step_height_bonus", "parameters": { "amount": 0.5 } },
+    {
+      "type": "worldawakened:night_vision_passive",
+      "suppressible_individually": true,
+      "suppression_policy": "grouped",
+      "suppression_group": "mobility_vision_bundle"
+    },
     { "type": "worldawakened:fall_damage_reduction", "parameters": { "amount": 0.3 } },
-    { "type": "worldawakened:night_vision_passive" }
+    { "type": "worldawakened:knockback_resistance_bonus", "parameters": { "amount": 0.1 } }
   ],
   "rarity": "uncommon",
   "tags": ["ascension:tier1", "theme:exploration", "archetype:mobility"],

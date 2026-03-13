@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
@@ -28,6 +29,10 @@ final class WorldAwakenedAscensionStateEditor {
         state.forfeitedAscensionRewardsByOffer().clear();
         state.ascensionRewardUnlockTimestamps().clear();
         state.ascensionRewardSources().clear();
+        state.suppressedAscensionRewards().clear();
+        state.suppressedAscensionComponentsByReward().clear();
+        state.ascensionRewardSuppressionTimestamps().clear();
+        state.ascensionComponentSuppressionTimestamps().clear();
 
         if (pending > 0 || resolved > 0 || chosen > 0 || forfeited > 0) {
             state.markDirty();
@@ -56,6 +61,11 @@ final class WorldAwakenedAscensionStateEditor {
         boolean removedLooseReward = state.chosenAscensionRewards().remove(rewardId);
         state.ascensionRewardUnlockTimestamps().remove(rewardId);
         state.ascensionRewardSources().remove(rewardId);
+        state.suppressedAscensionRewards().remove(rewardId);
+        state.suppressedAscensionComponentsByReward().remove(rewardId);
+        state.ascensionRewardSuppressionTimestamps().remove(rewardId);
+        state.ascensionComponentSuppressionTimestamps().keySet().removeIf(target ->
+                target.startsWith("component|" + rewardId + "|"));
 
         for (String instanceId : resolvedKeys) {
             state.resolvedAscensionOfferInstances().remove(instanceId);
@@ -142,6 +152,33 @@ final class WorldAwakenedAscensionStateEditor {
 
         state.ascensionRewardUnlockTimestamps().keySet().removeIf(rewardId -> !state.chosenAscensionRewards().contains(rewardId));
         state.ascensionRewardSources().keySet().removeIf(rewardId -> !state.chosenAscensionRewards().contains(rewardId));
+        state.suppressedAscensionRewards().retainAll(state.chosenAscensionRewards());
+        state.suppressedAscensionComponentsByReward().keySet().removeIf(rewardId -> !state.chosenAscensionRewards().contains(rewardId));
+        state.suppressedAscensionComponentsByReward().values().forEach(keys -> keys.removeIf(key -> key == null || key.isBlank()));
+        state.suppressedAscensionComponentsByReward().entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        state.ascensionRewardSuppressionTimestamps().keySet().removeIf(rewardId -> !state.chosenAscensionRewards().contains(rewardId));
+        state.ascensionComponentSuppressionTimestamps().keySet().removeIf(target -> {
+            if (target == null || target.isBlank()) {
+                return true;
+            }
+            if (target.startsWith("reward|")) {
+                ResourceLocation rewardId = ResourceLocation.tryParse(target.substring("reward|".length()));
+                return rewardId == null || !state.chosenAscensionRewards().contains(rewardId);
+            }
+            if (target.startsWith("component|")) {
+                int divider = target.indexOf('|', "component|".length());
+                if (divider <= "component|".length()) {
+                    return true;
+                }
+                ResourceLocation rewardId = ResourceLocation.tryParse(target.substring("component|".length(), divider));
+                String componentKey = target.substring(divider + 1);
+                if (rewardId == null || componentKey.isBlank()) {
+                    return true;
+                }
+                return !state.suppressedAscensionComponentsByReward().getOrDefault(rewardId, Set.of()).contains(componentKey);
+            }
+            return true;
+        });
     }
 
     private static void prependPending(

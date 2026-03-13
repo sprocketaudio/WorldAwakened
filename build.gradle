@@ -140,6 +140,8 @@ dependencies {
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.7.1"
+    testImplementation "org.mockito:mockito-core:5.2.0"
+    testImplementation "org.mockito:mockito-inline:5.2.0"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
@@ -190,6 +192,8 @@ tasks.named('test', Test).configure {
     // Keep JUnit XML/binary outputs on explicit paths to avoid stale lock contention on default locations.
     reports.junitXml.outputLocation = layout.buildDirectory.dir("test-results/junit-xml")
     binaryResultsDirectory = layout.buildDirectory.dir("test-results/junit-binary")
+    // Mockito 5.2.0 bundles Byte Buddy with experimental Java 21 support behind this flag.
+    jvmArgs '-Dnet.bytebuddy.experimental=true'
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

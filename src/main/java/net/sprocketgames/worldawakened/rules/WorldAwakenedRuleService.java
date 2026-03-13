@@ -1,6 +1,5 @@
 package net.sprocketgames.worldawakened.rules;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -55,7 +54,7 @@ public final class WorldAwakenedRuleService {
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedAscensionService ascensionService;
-    private final AtomicReference<CachedCompiledRules> cache = new AtomicReference<>(new CachedCompiledRules(Instant.EPOCH, List.of()));
+    private final AtomicReference<CachedCompiledRules> cache = new AtomicReference<>(new CachedCompiledRules(0L, List.of()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
 
     public WorldAwakenedRuleService(
@@ -257,12 +256,12 @@ public final class WorldAwakenedRuleService {
     private List<WorldAwakenedRuleEngine.CompiledRule> compiledRules() {
         WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
         CachedCompiledRules cached = cache.get();
-        if (cached.loadedAt().equals(snapshot.loadedAt())) {
+        if (cached.generation() == snapshot.generation()) {
             return cached.rules();
         }
 
         List<WorldAwakenedRuleEngine.CompiledRule> compiled = WorldAwakenedRuleEngine.compile(snapshot.data().rules().values());
-        cache.set(new CachedCompiledRules(snapshot.loadedAt(), compiled));
+        cache.set(new CachedCompiledRules(snapshot.generation(), compiled));
         return compiled;
     }
 
@@ -495,7 +494,7 @@ public final class WorldAwakenedRuleService {
     }
 
     private record CachedCompiledRules(
-            Instant loadedAt,
+            long generation,
             List<WorldAwakenedRuleEngine.CompiledRule> rules) {
     }
 

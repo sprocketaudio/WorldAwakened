@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:starter_path",
+  "display_name": "WA Test Starter Path",
+  "description": "Primary command-driven ascension offer for Phase 4 testing.",
+  "enabled": true,
+  "trigger_conditions": [
+    {
+      "type": "worldawakened:stage_unlocked",
+      "parameters": {
+        "stage": "wa_test:phase4_gate"
+      }
+    }
+  ],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "wa_test:tempered_core",
+    "wa_test:ember_heart",
+    "wa_test:grave_step"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 10,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

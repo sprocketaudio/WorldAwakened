@@ -51,6 +51,13 @@ Because that is the v1 design.
 
 Shared world progression can make a player eligible for an ascension offer, but the offer, choice, and reward remain owned by that player.
 
+## Does Suppressing A Reward Let Players Re-Choose Or Undo Ownership?
+
+No.
+
+Suppression is only a live-effect toggle for already owned rewards/components.
+Ownership, exclusivity, and forfeiture history stay permanent.
+
 ## When Should I Use `world`-Scoped Triggers?
 
 Use them when:
@@ -102,6 +109,13 @@ If you do not care about the exact runtime key, use:
 
 That command resolves the currently active pending offer for you.
 
+## What Is The Difference Between `revoke` And `suppress`?
+
+- `revoke`: removes the chosen reward ownership and reopens/rewrites offer history paths.
+- `suppress`: keeps ownership permanent and only pauses live application.
+
+Use suppression first when the player wants a temporary pause.
+
 ## Why Do Some Command Outputs Look Clean While Others Look Dense?
 
 Because the command surface is layered on purpose.
@@ -114,6 +128,23 @@ If `general.debug_logging = true`, normal operator commands may append an extra 
 
 That setting should add detail to operator output.
 It should not turn ordinary gameplay notifications into debug spam.
+
+## Why Did A Passive Reward Component Validate But Not Apply Live?
+
+Because ascension reconciliation is additive-first.
+
+World Awakened only clears and reapplies World Awakened-owned player modifiers/effects.
+It does not wipe or normalize shared vanilla or modded player effects just to make a reward fit.
+
+If a component has a WA-owned carrier implementation, World Awakened uses that owned carrier instead.
+If it does not, the component fails closed and logs a diagnostic instead of touching unrelated player state.
+
+Current examples:
+- `fire_resistance_passive` uses a WA-owned server runtime carrier
+- `night_vision_passive` uses a WA-owned client visual carrier
+
+The night-vision path is important: World Awakened does not inject the vanilla `NIGHT_VISION` effect just to get the visuals.
+It keeps the state on a WA-owned carrier and drives the owning client's lightmap and fog visuals directly instead.
 
 ## Why Does The Framework Ship Without Built-In Gameplay Content?
 

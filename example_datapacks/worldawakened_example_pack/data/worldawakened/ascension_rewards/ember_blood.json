@@ -6,8 +6,9 @@
   "icon": { "item": "minecraft:blaze_powder" },
   "enabled": true,
   "components": [
-    { "type": "worldawakened:fire_resistance_passive" },
+    { "type": "worldawakened:armor_toughness_bonus", "parameters": { "amount": 1.0 } },
     { "type": "worldawakened:attack_damage_bonus", "parameters": { "amount": 1.0 } },
+    { "type": "worldawakened:fire_resistance_passive" },
     { "type": "worldawakened:debuff_resistance", "parameters": { "amount": 0.12 } },
     { "type": "worldawakened:healing_efficiency_bonus", "parameters": { "amount": 0.1 } }
   ],

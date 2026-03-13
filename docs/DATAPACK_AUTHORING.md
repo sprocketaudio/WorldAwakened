@@ -3,7 +3,7 @@
 Datapack format and content contract for user-created progression/content packs.
 
 - Document status: Draft for implementation
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Applies to: Minecraft 1.21.1 + NeoForge + World Awakened (`worldawakened`)
 
 ---
@@ -889,6 +889,10 @@ Authoring model:
 - addon mods may register additional mutation component types in future extension APIs; unknown types fail validation when unavailable
 - shared composition semantics apply (`conflicts_with`, `stacking_group`, `duplicate_policy`, `max_instances`, `composition_priority`, companion requirements)
 - incompatible component compositions fail validation; runtime does not silently improvise stacking behavior
+- mutator components that require entity capabilities/hooks/runtime surfaces unavailable in the current modpack fail closed branch-only with diagnostics; they must not rewrite foreign entity state as fallback
+- compat-sensitive components should document required optional runtime surfaces (for example extra slot systems, custom combat hooks, boss-runtime metadata, custom attributes, or visual channels) so operators can gate content per modpack
+- missing mutator definitions referenced by persisted provenance remain inspectable and non-fatal; World Awakened does not auto-substitute another definition
+- use `/wa mob inspect` during testing to verify resolved mutator branches, failed-closed component branches, and missing-definition provenance state
 
 Example mutation component type IDs currently registered by core:
 - `worldawakened:max_health_bonus`
@@ -1316,15 +1320,19 @@ Example:
       }
     },
     {
-      "type": "worldawakened:fire_resistance_passive"
+      "type": "worldawakened:movement_speed_bonus",
+      "parameters": {
+        "amount": 0.08
+      },
+      "suppressible_individually": true,
+      "suppression_policy": "grouped",
+      "suppression_group": "mobility_visual_package"
     },
     {
-      "type": "worldawakened:healing_efficiency_bonus",
-      "parameters": {
-        "amount": 0.12
-      },
-      "conditions": [],
-      "conflicts_with": []
+      "type": "worldawakened:night_vision_passive",
+      "suppressible_individually": true,
+      "suppression_policy": "grouped",
+      "suppression_group": "mobility_visual_package"
     }
   ],
   "rarity": "rare",
@@ -1354,11 +1362,25 @@ Reward rules:
 - `components[]` is the authored composition evaluated by the engine
 - rewards are permanent once chosen
 - rewards should be safe to reapply on login and respawn
+- live reward reconciliation is additive-first and only manages World Awakened-owned modifiers/effects
+- World Awakened will not clear or normalize third-party vanilla/modded player effects just to make a reward fit
+- refreshable or revocable non-attribute effects must be backed by a WA-owned runtime carrier, not by direct ownership of shared vanilla/modded effect slots
+- visual-only passive rewards must use WA-owned client visual carriers driven from synced WA-owned state; they must not mutate player options or inject/remove shared vanilla effect instances to simulate ownership, and they should use the closest owned render/lightmap path available for vanilla parity
+- `fire_resistance_passive` and `night_vision_passive` are implemented examples of carrier-backed passive reward components
+- stateless one-shot action payloads may still apply shared vanilla/modded effects when no later ownership or revoke path is required, but those paths must remain additive and must never clear external state
+- if a reward component depends on an external attribute/effect carrier that cannot yet be safely owned during reconciliation, that component fails closed with diagnostics instead of mutating unrelated player state
 - `unique_group` can be used to prevent similar future picks
 - `offer_weight` is used when selecting rewards within a concrete offer candidate set
 - `tier_weight` is used only for higher-level tier or pool-driven reward generation when that generation mode exists
 - optional shipped example-pack presets and user-authored presets coexist; neither is privileged at runtime
 - shared component composition semantics are mandatory; duplicate/stack/conflict behavior must be explicit
+- optional suppression metadata may be authored per component entry:
+  - `suppressible_individually` (default `false`)
+  - `suppression_policy` (`reward_only | independent | grouped`, default `reward_only`)
+  - `suppression_group` (required when `suppression_policy = grouped`)
+- component-level suppression is allowed only when component type metadata and authored component metadata both allow it
+- component-level `suppression_policy` values (`independent` or `grouped`) require `suppressible_individually=true`
+- grouped suppression must resolve to all linked components in the same `suppression_group`
 
 Field defaults:
 - `schema_version`: `1`
@@ -1378,6 +1400,11 @@ Field defaults:
 - `forbidden_conditions`: `[]`
 - `ui_style`: `{}`
 - `max_rank`: `1`
+
+Component entry defaults for `ascension_rewards.components[]`:
+- `suppressible_individually`: `false`
+- `suppression_policy`: `reward_only`
+- `suppression_group`: absent
 
 Recommended v1 ascension component types:
 - `worldawakened:max_health_bonus`
@@ -1468,7 +1495,8 @@ Offer rules:
 Runtime identity note:
 - the offer `id` identifies the reusable template
 - the per-player runtime instance identity is resolved by the engine, not authored directly in the datapack
-- v1 runtime grant identity is canonicalized as `(player UUID, offer ID, source progression key)`; player scope is implied by save ownership, and per-player persisted instance keys use `offer_id|source_key`
+- v1 duplicate-prevention identity is canonicalized as `(player UUID, offer ID, source progression key)`; player scope is implied by save ownership
+- runtime `instance_id` values are separate short opaque command-safe IDs generated by the engine
 - datapack authors must not try to manually encode runtime offer instance identities in object IDs, fields, or generated references
 
 Field defaults:
@@ -1593,6 +1621,9 @@ On reload, World Awakened should validate and report:
 - invalid mutation component parameters
 - invalid ascension component parameters
 - incompatible component combinations or explicit component conflicts
+- invalid suppression metadata on ascension components
+- grouped suppression policy conflicts within one suppression package
+- component-level suppression paths that violate grouped suppression requirements
 - component compositions with no valid runtime result (for example all components disabled)
 - mutation component compositions over `component_budget` when budget is set
 - performance threshold exceedance:
@@ -1688,14 +1719,16 @@ Suggested flow:
 3. Use `/wa trigger fire <id> player <player> [dimension <dimension_id>]` or `/wa trigger fire <id> global [dimension <dimension_id>]` for trigger testing; use the optional dimension override when validating dimension-dependent conditions from a controlled operator path
 4. Use `/wa stage unlock <id> player <player>`, `/wa stage lock <id> player <player>`, or the corresponding `global` forms for rule-gating checks and operator rollback
 5. Use `/wa ascension grant_offer <player> <offer_id>`, `/wa ascension open <player>`, `/wa ascension inspect <player>`, `/wa ascension choose <player> <instance_id> <reward_id>`, or `/wa ascension active <player> <reward_id>` for ascension testing
-6. Use `/wa ascension revoke <player> <reward_id>`, `/wa ascension reopen <player> <instance_id>`, `/wa ascension clear <player> <instance_id>`, and `/wa debug reset player <player> ascension` when testing recovery or rollback behavior
-7. Runtime ascension `instance_id` values are opaque command-safe IDs; inspect/debug output exposes `offer_id` and `source_key` separately when you need provenance
-8. Operator-facing ascension outputs should provide copy/suggest actions where the client supports clickable chat; authored IDs remain the canonical support/debug identity even when operators use the friendly shortcuts
-9. Use `/wa invasion start <profile>` for invasion profiles
-10. Use `/wa mob inspect` on mutated entities for provenance
-11. Use `/wa dump active_rules player <player> [dimension <dimension_id>]` or `/wa dump active_rules global [dimension <dimension_id>]` to confirm rule activation set; use the dimension override when validating dimension-sensitive rule context
-12. Use `/wa apotheosis tier inspect` if Apotheosis rules are used
-13. If enabled by server policy, use `/wa difficulty global get` and `/wa difficulty personal get` to confirm active scalar context while tuning pack behavior
+6. Use `/wa ascension suppress reward <player> <reward_id>`, `/wa ascension unsuppress reward <player> <reward_id>`, `/wa ascension suppress component <player> <reward_id> <component_key>`, `/wa ascension unsuppress component <player> <reward_id> <component_key>`, and `/wa ascension reconcile <player>` when testing suppression and re-enable flows
+   - `component_key` uses canonical `index|namespace:component_type` keys (example: `0|worldawakened:movement_speed_bonus`) and also accepts index-only shorthand like `0`
+7. Use `/wa ascension revoke <player> <reward_id>`, `/wa ascension reopen <player> <instance_id>`, `/wa ascension clear <player> <instance_id>`, and `/wa debug reset player <player> ascension` when testing recovery or rollback behavior
+8. Runtime ascension `instance_id` values are opaque command-safe IDs; inspect/debug output exposes `offer_id` and `source_key` separately when you need provenance
+9. Operator-facing ascension outputs should provide copy/suggest actions where the client supports clickable chat; authored IDs remain the canonical support/debug identity even when operators use the friendly shortcuts
+10. Use `/wa invasion start <profile>` for invasion profiles
+11. Use `/wa mob inspect` on mutated entities for provenance
+12. Use `/wa dump active_rules player <player> [dimension <dimension_id>]` or `/wa dump active_rules global [dimension <dimension_id>]` to confirm rule activation set; use the dimension override when validating dimension-sensitive rule context
+13. Use `/wa apotheosis tier inspect` if Apotheosis rules are used
+14. If enabled by server policy, use `/wa difficulty global get` and `/wa difficulty personal get` to confirm active scalar context while tuning pack behavior
 
 Debug payload contract note:
 - canonical trace/rejection/provenance output shape is defined in [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)

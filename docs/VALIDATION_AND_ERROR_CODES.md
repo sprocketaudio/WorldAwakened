@@ -3,7 +3,7 @@
 Canonical reference for structured diagnostic code families, severity semantics, and publication rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Validation and diagnostics contracts across runtime, commands, and tooling
 
 ---
@@ -229,6 +229,18 @@ Common cases:
 - spawn mutator/component counts exceed configured safe bounds
 - action-chain depth violates single-pass guardrails
 
+### L. Debug/Test Command Surfaces
+
+Primary families:
+- `WA_DEBUG_*`
+
+Common cases:
+- invalid command target or missing context for evaluate/force/live-test surfaces
+- requested definition/profile/provider not found
+- dry-run-only command invoked in live mode
+- policy blocked live-test request
+- command-path output diverges from equivalent live runtime pipeline
+
 ## 7. Per-Code Entry Template
 
 Each published code entry should define:
@@ -309,6 +321,11 @@ Publication labels used below:
 | `WA_ASCENSION_COMPONENT_PARAM_INVALID` | published | ascension component | error | validation | yes | Ascension component parameter invalid. | Disable owning reward object. | Fix parameter values/schema. | Component reference recommended family. |
 | `WA_ASCENSION_COMPONENT_CONFLICT` | published | ascension component composition | error | validation | yes | Ascension component conflict/companion violation. | Disable owning reward object. | Resolve conflict metadata or composition order. | Component reference recommended family. |
 | `WA_ASCENSION_COMPOSITION_EMPTY` | published | ascension component composition | error | validation | yes | Ascension `components[]` empty. | Disable owning reward object. | Add at least one valid component entry. | Component reference recommended family. |
+| `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE` | implemented | ascension suppression metadata | error | validation/runtime | branch-level | Component-level suppression requested or authored for a component type that does not support independent suppression. | Reject suppression branch or disable invalid reward object path. | Use reward-level suppression only or author supported suppressible component types. | Emitted by ascension component validation and suppression runtime guards. |
+| `WA_ASC_SUPPRESSION_GROUP_REQUIRED` | implemented | ascension suppression grouping | error | validation/runtime | branch-level | Grouped suppression policy is missing `suppression_group` metadata. | Reject the suppression branch/object. | Add a valid `suppression_group` or switch to a legal suppression policy. | Used for both authored metadata validation and runtime request rejection. |
+| `WA_ASC_SUPPRESSION_INVALID_PARTIAL` | implemented | ascension suppression grouping | error | validation/runtime | branch-level | Suppression metadata or request would leave a grouped/companion package in an invalid partial state. | Reject partial suppression and keep ownership unchanged. | Align grouped component policies and apply full-group suppression only. | Canonical code for partial-group rejection. |
+| `WA_ASC_SUPPRESSION_TARGET_UNKNOWN` | implemented | ascension suppression targeting | error | runtime/commands | branch-level | Suppression request references unknown reward or component target key. | Reject request with no state mutation. | Use valid chosen reward IDs and inspect-derived component keys. | Command/runtime guard code for bad suppression targets. |
+| `WA_ASC_SUPPRESSED_DEFINITION_MISSING` | implemented | ascension suppression reconcile | warning | runtime/debug | branch-level | Persisted suppressed reward/component reference no longer resolves to current datapack definitions. | Preserve suppression record, skip missing branch projection, continue reconcile. | Restore definitions or clear stale suppression keys intentionally. | Keeps ownership and suppression history inspectable across datapack changes. |
 
 ### 7E. References, Pools, Integration, and Compat Safety
 
@@ -327,10 +344,52 @@ Publication labels used below:
 | Code | Publication | Domain | Severity | Lifecycle | Blocking? | Typical causes | Fallback behavior | Fix guidance | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_RULE_RECURSION_BLOCKED` | published | runtime recursion guard | warning | runtime | branch-level | Recursive rule execution or max recursion depth hit. | Abort recursive branch only; continue remaining pass. | Remove cyclic action chains and unsafe self-trigger loops. | Listed in spec canonical examples. |
+| `WA_SPAWN_SKIPPED_UPSTREAM_CANCEL` | published | spawn coexistence guard | info or warning | runtime/debug | branch-level | Upstream hook/mod already cancelled or denied the spawn event before World Awakened mutation processing. | Early-exit spawn mutation path; do not retry/recreate denied spawn. | Verify external spawn-controller rules and intended priority ordering. | Canonical coexistence code for additive-first spawn behavior. |
+| `WA_SPAWN_CONTEXT_INVALIDATED` | published | spawn coexistence guard | warning | runtime/debug | branch-level | Spawn context became invalid (entity removed/replaced/unusable) before mutation evaluation completed. | Abort mutation branch safely and continue server tick flow. | Audit hook-chain ordering and validate context guards. | Must never force invalidated spawn context back into processing. |
+| `WA_SPAWN_REENTRY_BLOCKED` | published | spawn recursion guard | warning | runtime guard | branch-level | Re-entry attempt detected for redirected or follow-up spawn not marked compat-safe. | Block re-entrant mutation branch; continue non-recursive processing. | Remove unsafe follow-up spawn loops or mark compat-safe path explicitly when supported. | Complements `WA_RULE_RECURSION_BLOCKED` for spawn path. |
+| `WA_SPAWN_EXTERNAL_TRANSFORM_DETECTED` | published | spawn coexistence telemetry | info | runtime/debug | no | Upstream hook/mod transformed/replaced spawn context before World Awakened evaluation. | Continue using final surviving context only. | Confirm transformed entity context remains eligible for intended pools/mutators. | Supports mixed-mod observability for spawn hook chains. |
+| `WA_ASCENSION_RECONCILE_COMPONENT_PARAM_INVALID` | implemented | ascension reconcile | warning | runtime/debug | branch-level | Chosen reward component is missing required runtime parameters during player reward reconciliation. | Skip that component only; continue reconciling the rest of the reward set. | Fix the component payload or reward definition so the live handler receives valid parameters. | Emitted as structured reconcile-skip diagnostics. |
+| `WA_ASCENSION_RECONCILE_ATTRIBUTE_MISSING` | canonical-target | ascension reconcile | warning | runtime/debug | branch-level | The required attribute instance is unavailable on the current player/entity during reward reconciliation. | Skip that component only; continue reconciling unrelated reward effects. | Verify the target attribute exists in the current environment and that the component is compatible with the runtime target. | Use the player/entity surface-specific canonical code (`WA_PLAYER_ATTRIBUTE_SURFACE_MISSING`) where available. |
+| `WA_ASCENSION_RECONCILE_UNSAFE_SHARED_EFFECT` | canonical-target | ascension reconcile safety | warning | runtime/debug | branch-level | Reward component would require ownership of a shared vanilla/modded effect carrier that World Awakened cannot safely clear or normalize. | Skip that component only; do not touch unrelated player effect state. | Route the component through a WA-owned runtime or client-visual carrier implementation instead of a shared external effect slot. | Canonical additive-first safety code for unsupported shared-effect ownership paths. |
+| `WA_PLAYER_FOREIGN_MODIFIER_PRESERVED` | canonical-target | ownership/reconcile | info | runtime/debug | no | World Awakened found a foreign modifier on a WA-managed attribute surface and intentionally left it untouched. | Preserve foreign modifier and continue owned-state reconciliation only. | None required unless unexpected interaction needs a compat contract. | Use to make additive-first preservation explicit in inspect/debug output. |
+| `WA_PLAYER_ATTRIBUTE_SURFACE_MISSING` | implemented | ownership/reconcile | warning | runtime/debug | branch-level | Reward component needs a player attribute surface that is unavailable in the current environment. | Skip that component only; keep saved reward ownership and unrelated state intact. | Verify the attribute exists in the modpack/runtime and that the component is valid for the target. | Preferred canonical code for missing player attribute surfaces. |
+| `WA_PLAYER_EFFECT_SURFACE_MISSING` | canonical-target | ownership/reconcile | warning | runtime/debug | branch-level | Reward component expected an external effect channel that is unavailable. | Skip that component only; preserve foreign state. | Verify the target effect surface exists or route the behavior through a WA-owned carrier. | Use when a non-attribute effect surface is absent. |
+| `WA_REWARD_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE` | implemented | reward runtime surface | warning | runtime/debug | branch-level | Component has no safe currently available WA-owned runtime application surface. | Skip that component only. | Add a safe WA-owned carrier or compatible runtime surface. | General fail-closed code for unsupported live application surfaces. |
+| `WA_REWARD_CARRIER_TYPE_MISSING` | implemented | reward carrier | warning | runtime/debug | branch-level | Component requires a WA-owned carrier type that does not exist yet for that behavior class. | Skip that component only; preserve saved ownership state. | Implement the missing gameplay/visual carrier type or stop authoring the component in active content. | Stronger specialization of unavailable-surface failures for passive/carrying behavior classes. |
+| `WA_REWARD_CARRIER_REFRESH_FAILED` | canonical-target | reward carrier | warning | runtime/debug | branch-level | A WA-owned carrier should have been refreshed or rebuilt but could not be projected cleanly. | Keep ownership state; mark the carrier branch degraded. | Inspect the owning stable key, carrier type, and runtime surface. | Use when the carrier type exists but the runtime projection is missing. |
+| `WA_GAMEPLAY_CARRIER_UNAVAILABLE` | implemented | reward carrier | warning | runtime/debug | branch-level | Required WA-owned gameplay/passive carrier is unavailable. | Skip the affected component branch only. | Verify the gameplay carrier exists and is registered in the current runtime. | Applies to server-authoritative passive carriers. |
+| `WA_VISUAL_CARRIER_UNAVAILABLE` | implemented | reward carrier | warning | runtime/debug | branch-level | Required WA-owned visual/client carrier is unavailable. | Skip the affected component branch only. | Verify the visual carrier exists for the current client/runtime path. | Applies to ownership-safe client-facing passives such as night vision. |
+| `WA_ASC_SUPPRESSION_APPLIED` | implemented | ascension suppression | info | runtime/commands | no | Reward/component suppression operation succeeded. | Reconcile WA-owned state with suppression active. | None; informational audit code. | Operator/debug visibility code for suppression-on events. |
+| `WA_ASC_SUPPRESSION_REMOVED` | implemented | ascension suppression | info | runtime/commands | no | Reward/component suppression operation was removed successfully. | Reconcile WA-owned state with suppression disabled. | None; informational audit code. | Operator/debug visibility code for suppression-off events. |
+| `WA_RUNTIME_SURFACE_OPTIONAL_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Compat-sensitive component branch requires an optional runtime surface that is unavailable in the active modpack/runtime. | Skip only the affected branch or component. | Verify optional compat surfaces and integrations, or gate/remove the affected component for this environment. | Optional-surface absence is expected in mixed-mod packs and is not a framework-integrity failure by itself. |
+| `WA_EXTRA_SLOT_SURFACE_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required extra equipment-slot runtime surface (for example Curios-style) is unavailable. | Skip only the affected branch or component. | Ensure the slot provider is installed/active or gate the authored component. | Use when behavior depends on non-vanilla slot surfaces. |
+| `WA_COMBAT_HOOK_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required custom combat/damage hook is unavailable. | Skip only the affected branch or component. | Verify compat hook/provider availability or remove/gate the hook-dependent behavior. | Applies to Better Combat-style or similar hook surfaces. |
+| `WA_CUSTOM_ATTRIBUTE_SURFACE_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required custom/non-vanilla attribute surface is unavailable. | Skip only the affected branch or component. | Verify the custom attribute exists and is available for the runtime target. | More specific alternative to generic missing-surface diagnostics. |
+| `WA_BOSS_RUNTIME_SURFACE_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required boss-runtime metadata/classification surface is unavailable or incompatible. | Skip only the affected branch or component. | Verify the boss-runtime provider or classification surface in the current integration set. | Supports boss-sensitive mutator/reward branches. |
+| `WA_CLIENT_VISUAL_CHANNEL_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required client visual presentation channel is unavailable for the ownership-safe branch. | Skip only the affected branch or component. | Route through an available WA-owned visual carrier/channel or disable the authored branch. | Complements `WA_VISUAL_CARRIER_UNAVAILABLE` for broader visual-channel constraints. |
+| `WA_COMPAT_BRANCH_SKIPPED_SURFACE_UNAVAILABLE` | canonical-target | compat branch status | warning | runtime/debug | branch-level | A compat-sensitive branch was intentionally skipped due to optional runtime-surface unavailability. | Preserve foreign state and continue evaluating unrelated branches. | Inspect required surface diagnostics and active integration/provider state. | Useful umbrella code when a branch has multiple optional-surface dependencies. |
+| `WA_ENTITY_RUNTIME_SURFACE_MISSING` | canonical-target | entity runtime surface | warning | runtime/debug | branch-level | Mutator or entity branch expected a runtime capability/hook/channel that is not present. | Skip only the affected branch or component. | Verify the entity capability/hook exists in the current environment. | Entity equivalent of missing player runtime surfaces. |
+| `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE` | canonical-target | mutator runtime surface | warning | runtime/debug | branch-level | Mutator component has no safe available runtime surface for application. | Skip only the affected mutator component or branch. | Add a compat-safe runtime surface or remove the authored component. | Required for future Phase 5 ownership-safe mutation application. |
+| `WA_RUNTIME_INSTANCE_MISSING_DEFINITION` | implemented | migration/runtime | warning | runtime/debug | branch-level | Saved runtime state references a definition that no longer exists after reload or datapack changes. | Preserve the saved instance/provenance record; do not auto-substitute. | Restore the definition or accept the degraded historical state. | Applies to saved rewards, offer instances, future mutator provenance, and similar runtime references. |
+| `WA_COMPILED_GRAPH_MIXED_STATE_BLOCKED` | implemented | reload/runtime cache | error | runtime guard | branch-level or subsystem-level | Runtime attempted to observe a mixed old/new compiled graph state during reload. | Abort the mixed branch and continue on a stable compiled graph only. | Audit reload atomicity and snapshot replacement logic. | Ownership-safe reloads must use old-or-new compiled graphs only. |
+| `WA_FOREIGN_STATE_PRESERVATION_REQUIRED` | canonical-target | ownership safety | info or warning | runtime/debug | no (by itself) | World Awakened intentionally preserved foreign state because the branch was not owned by WA. | Preserve the foreign state and continue owned-state work only. | Add explicit compat only when safe and documented. | Useful when explaining why a foreign effect/modifier was not removed. |
+| `WA_RECONCILE_OWNERSHIP_VIOLATION` | canonical-target | ownership safety | error | runtime/debug | branch-level | Reconcile detected that a required WA-owned projection/key was missing or mismatched, indicating an ownership boundary bug. | Abort or degrade the affected WA-owned branch only; do not touch foreign state. | Fix the owned-key generation or reconcile projection logic. | Ownership violations are high-severity implementation bugs. |
 | `WA_DEPRECATED_FIELD_USED` | canonical-target | migration/deprecation | warning | migration/validation | no | Deprecated field appears in authored content. | Continue with compatibility behavior where supported. | Migrate to replacement field/schema. | Use with migration target note when known. |
 | `WA_MIGRATION_STAGE_PRESERVED_INACTIVE` | canonical-target | migration | info or warning | migration | no | Removed stage ID remains in persisted data. | Preserve saved ID inactive; do not auto-map unless alias exists. | Add `aliases` or migration guidance in pack updates. | Mirrors save-compat expectations in authoring docs/spec. |
 | `WA_MIGRATION_VALUE_CLAMPED` | canonical-target | migration/config safety | warning | migration/runtime guard | branch-level | Persisted/config value out of bounds and clamped to safe range. | Clamp value and continue safely. | Correct persisted/config bounds to eliminate clamp. | Prefer explicit clamp details in message. |
 | `WA_MIGRATION_REWARD_MISSING` | canonical-target | migration/ascension | warning | migration/runtime | branch-level | Saved chosen ascension reward definition removed. | Keep saved ID, stop applying missing effect, no auto-substitution. | Restore reward definition or accept inert historical record. | Mirrors ascension reconciliation rules in spec/docs. |
+
+Policy guidance:
+- ownership violations are high-severity implementation bugs
+- missing optional runtime surfaces or carrier classes should disable only the affected branch/component and emit structured diagnostics
+- optional runtime-surface absence is not a framework-integrity failure by itself
+- optional runtime-surface diagnostics should fail closed for the affected branch/component and remain inspectable
+- optional runtime-surface diagnostics should stay stable and explicit enough for operators to identify mixed-mod compatibility limits
+- removed-definition references should be inspectable and non-fatal unless startup integrity is impossible
+- invalid suppression metadata on components is a validation error
+- conflicting suppression policies inside one grouped package are a validation error
+- component-level suppression policies (`independent`/`grouped`) require `suppressible_individually=true` on the authored component entry
+- component-level suppression paths that violate grouped/companion suppression constraints must be rejected
 
 ### 7G. Performance Budgets and Hot-Path Guardrails
 
@@ -362,6 +421,35 @@ Canonical granular codes referenced above and reserved for future emitters/tooli
 - `WA_CONDITION_SCOPE_INVALID`
 - `WA_ACTION_SCOPE_INVALID`
 
+### 7I. Debug/Test Command Surfaces
+
+| Code | Publication | Domain | Severity | Lifecycle | Blocking? | Typical causes | Fallback behavior | Fix guidance | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `WA_DEBUG_TARGET_INVALID` | published | debug target resolution | error | debug/runtime guard | command-level | Invalid target identifier for inspect/evaluate/force command. | Reject command with no runtime mutation. | Provide valid target IDs and command argument order. | Shared debug/test target code. |
+| `WA_DEBUG_CONTEXT_INVALID` | published | debug context | error | debug/runtime guard | command-level | Required context (player/entity/dimension/position) missing or incompatible. | Reject command with no runtime mutation. | Supply a valid context tuple for the command surface. | Shared debug/test context code. |
+| `WA_DEBUG_DEFINITION_NOT_FOUND` | published | debug definition resolution | error | debug/runtime guard | command-level | Referenced definition ID does not exist in current compiled graph. | Reject command path; keep systems unchanged. | Reload/fix datapack and verify object ID. | Shared missing-definition code. |
+| `WA_DEBUG_DRY_RUN_ONLY` | published | debug policy | error | debug/runtime guard | command-level | Command surface supports dry-run only but live mode was requested. | Enforce dry-run and report rejection. | Use supported dry-run mode or approved live-test command. | Shared dry-run-only guard code. |
+| `WA_DEBUG_LIVE_TEST_BLOCKED` | published | debug policy | warning or error | debug/runtime guard | command-level | Live test request blocked by policy/config/permissions/safety gate. | Reject live mutation path; keep inspection output. | Adjust policy/permissions or use evaluate/force first. | Shared live-test gate code. |
+| `WA_DEBUG_PIPELINE_MISMATCH` | published | debug pipeline parity | error | debug/runtime regression | branch-level | Command path and equivalent live runtime path produced mismatched candidate/selection outcomes. | Fail regression path; retain trace output for analysis. | Investigate compiled-graph reuse and command-to-live parity. | Pipeline mismatch is a regression-class failure. |
+| `WA_DEBUG_MUTATOR_TARGET_INVALID` | published | debug mutator surface | error | debug/runtime guard | command-level | Mutator evaluate/force target entity is invalid or unsupported. | Reject mutator debug command. | Use a valid entity ID and context. | Phase 5-specific target validation code. |
+| `WA_DEBUG_POOL_NOT_FOUND` | published | debug mutation pool | error | debug/runtime guard | command-level | Requested mutation pool ID not found. | Reject pool-force command. | Use valid pool ID from loaded runtime state. | Phase 5 pool-force code. |
+| `WA_DEBUG_MUTATOR_NOT_FOUND` | published | debug mutator definition | error | debug/runtime guard | command-level | Requested mutator ID not found. | Reject mutator-force command. | Use valid mutator ID from loaded runtime state. | Phase 5 mutator-force code. |
+| `WA_DEBUG_PRESSURE_CONTEXT_INVALID` | published | debug pressure context | error | debug/runtime guard | command-level | Pressure evaluation context is incomplete or unsupported. | Reject pressure-evaluate command. | Provide dimension/location/player context expected by policy. | Phase 6 pressure-evaluate code. |
+| `WA_DEBUG_DIFFICULTY_SCOPE_INVALID` | published | debug difficulty scope | error | debug/runtime guard | command-level | Difficulty operation requested for unsupported or disallowed scope combination. | Reject command and preserve current values. | Use a legal scope path and permissions. | Phase 6 difficulty command code. |
+| `WA_DEBUG_LOOT_TARGET_INVALID` | published | debug loot target | error | debug/runtime guard | command-level | Loot debug target type/ID/context is invalid. | Reject loot debug command. | Use a supported target type and valid ID. | Phase 7 loot target validation code. |
+| `WA_DEBUG_LOOT_PROFILE_NOT_FOUND` | published | debug loot profile | error | debug/runtime guard | command-level | Forced loot profile ID not found. | Reject force-profile command. | Use a valid loaded loot profile ID. | Phase 7 force-profile code. |
+| `WA_DEBUG_INVASION_PROFILE_NOT_FOUND` | published | debug invasion profile | error | debug/runtime guard | command-level | Referenced invasion profile does not exist. | Reject invasion evaluate/force command. | Use a valid invasion profile ID. | Phase 8 invasion profile code. |
+| `WA_DEBUG_WAVE_INDEX_INVALID` | published | debug invasion wave | error | debug/runtime guard | command-level | Requested wave index is out of bounds or incompatible with profile shape. | Reject force-wave command. | Use a valid wave index for the selected profile. | Phase 8 force-wave code. |
+| `WA_DEBUG_COMPAT_NOT_FOUND` | published | debug compat integration | error | debug/runtime guard | command-level | Requested integration ID is unknown. | Reject compat evaluate command. | Use a valid integration ID from `/wa compat list`. | Phase 9 compat-evaluate code. |
+| `WA_DEBUG_SCALAR_PROVIDER_NOT_FOUND` | published | debug scalar provider | error | debug/runtime guard | command-level | Requested scalar provider key is unknown/unavailable. | Reject scalar-provider command. | Use a valid provider key in the active runtime. | Phase 9 provider-inspect code. |
+
+Policy guidance:
+- invalid debug/test command usage must not crash the server
+- forced command paths must still report normal eligibility failures rather than silently succeeding
+- debug/test command diagnostics must remain structured and inspectable
+- debug command surfaces should prefer the same candidate/rejection reason categories used by live runtime evaluation
+- pipeline mismatch between command path and live path should be treated as a regression and surfaced explicitly
+
 ## 9. Fallback Behavior Rules
 
 Expected fallback patterns:
@@ -371,6 +459,7 @@ Expected fallback patterns:
 - Runtime recursion/re-entry protection aborts only the recursive branch.
 - Runtime failures in World Awakened hot paths should fail closed for the affected World Awakened branch and should not crash unrelated systems.
 - Integration-specific failures (for example compat disabled) skip/disable only integration-specific behavior.
+- Invalid debug/test command inputs must fail safely with structured diagnostics and no unintended world mutation.
 - `fatal` is reserved for framework-integrity/startup failures only.
 
 ## 10. Validation Mode Notes
@@ -403,6 +492,11 @@ When introducing or changing published diagnostics:
 | `WA_COMPONENT_COMPOSITION_INVALID` | error | components | yes |
 | `WA_COMPONENT_ARRAY_EMPTY` | error | components | yes |
 | `WA_COMPONENT_BUDGET_EXCEEDED` | error | components | yes |
+| `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE` | error | ascension suppression | branch-level |
+| `WA_ASC_SUPPRESSION_GROUP_REQUIRED` | error | ascension suppression | branch-level |
+| `WA_ASC_SUPPRESSION_INVALID_PARTIAL` | error | ascension suppression | branch-level |
+| `WA_ASC_SUPPRESSION_TARGET_UNKNOWN` | error | ascension suppression | branch-level |
+| `WA_ASC_SUPPRESSED_DEFINITION_MISSING` | warning | ascension suppression | branch-level |
 | `WA_CONDITION_SCOPE_INVALID` | error | condition/scope | yes |
 | `WA_ACTION_SCOPE_INVALID` | error | action/scope | yes |
 | `WA_ACTION_TYPE_UNKNOWN` | error | action | yes |
@@ -418,4 +512,8 @@ When introducing or changing published diagnostics:
 | `WA_PERF_RULE_ACTION_COUNT_EXCEEDED` | warning or error | performance/action budget | object-level |
 | `WA_PERF_MUTATOR_COUNT_EXCEEDED` | warning | performance/spawn mutators | branch-level |
 | `WA_PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED` | warning | performance/spawn components | object-level |
+| `WA_DEBUG_TARGET_INVALID` | error | debug command targeting | command-level |
+| `WA_DEBUG_DRY_RUN_ONLY` | error | debug command policy | command-level |
+| `WA_DEBUG_LIVE_TEST_BLOCKED` | warning or error | debug command policy | command-level |
+| `WA_DEBUG_PIPELINE_MISMATCH` | error | debug/live parity | branch-level |
 | `WA_PERF_ACTION_CHAIN_DEPTH_EXCEEDED` | warning or error | performance/action chain | branch-level |

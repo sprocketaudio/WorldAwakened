@@ -19,7 +19,7 @@ Repository/distribution note:
 
 ## Status
 Phase 4 core complete.  
-Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn reward reconciliation, operator-friendly ascension selection/reversal controls (`choose`, `active`, `reopen`, `clear`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery.
+Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery.
 Architecture baseline correction is applied: mutation definitions and ascension reward definitions are component-based authored objects, and the framework jar remains content-empty until a datapack is installed.
 Current active milestone is Phase 5 (Mutators and Pools runtime).
 The browser-based web authoring tool is part of v1 scope and is planned as a late-phase companion deliverable after core runtime systems stabilize.
@@ -83,11 +83,13 @@ Based on current `gradle.properties`:
 - Optional world-context rule conditions (for example world day and player distance from spawn) as datapack inputs, not core progression drivers
 - Player-scoped Ascension Choice offers with permanent exclusive rewards
 - Component-based ascension reward definitions (`components[]`) with authored reward IDs
+- Suppression-aware ascension reconciliation so chosen rewards remain permanent while live effects can be temporarily disabled
 - Shared component stacking/conflict semantics (explicit duplicates, conflict sets, deterministic ordering)
 - Shared status taxonomy (`implemented | planned | reserved | deprecated`) across docs, validation, and tooling
 - Deterministic conflict resolution and bounded runtime evaluation
 - Operator-controlled global World Awakened difficulty modifier for baseline intensity tuning
 - Optional bounded challenge modifier layer (player/world scoped by policy) for accessibility and opt-in escalation
+- Command-driven inspect/evaluate/force/live-test verification surfaces for Phases 5-9 runtime systems
 - Spawn-time mutation definitions (`mob_mutators`) composed from mutation components
 - Loot evolution through profile-driven injection/replacement rules
 - Apotheosis loot compatibility that composes additively and preserves Apotheosis-owned tier-gated loot behavior when integration is active
@@ -126,6 +128,7 @@ Based on current `gradle.properties`:
 - Keep mutation and ascension behavior Java-defined at the component-type layer; keep named presets/data compositions datapack-authored.
 - Keep all condition/action/scope semantics on the shared framework contracts; do not create subsystem-specific variants.
 - Keep component composition semantics explicit (duplicate/conflict/order/companion requirements); do not rely on accidental stacking.
+- Keep long-lived refreshable/revocable player or entity effects on WA-owned attribute keys or WA-owned runtime carriers, including client-visual carriers where needed; do not clear shared vanilla/modded effect state during reconcile.
 - Support unknown future boss/mob mods generically through entity IDs/tags first; add dedicated compat only when a mod needs custom hooks or APIs.
 - Runtime evaluation is snapshot-based and single-pass in v1; newly unlocked stages affect subsequent events, not the currently running pass.
 - Global/challenge modifiers are bounded scalar layers for World Awakened-owned numeric difficulty outputs only; they do not alter stage unlocks or trigger eligibility.

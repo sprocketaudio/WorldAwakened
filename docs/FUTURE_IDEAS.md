@@ -3,7 +3,7 @@
 Deferred and long-term feature backlog for World Awakened.
 
 - Document status: Non-normative backlog
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Purpose: Record future feature ideas without expanding MVP scope
 
 ---
@@ -245,6 +245,127 @@ Examples:
 
 Goal:
 Add narrative flavor to progression.
+
+### 1.11 Future: Ownership-Safe Mutator Runtime Surfaces
+
+Concept:
+Expand the mutator runtime after v1 so advanced mutation behaviors can run against explicitly modeled runtime surfaces instead of ad-hoc compat handling.
+
+Relationship to v1:
+- v1 recognizes optional compat-sensitive runtime surfaces and requires branch-local fail-closed behavior when they are unavailable
+- post-v1 work may formalize those surfaces into richer registries, support maps, and projection models
+- this section does not make a runtime-surface registry a v1 requirement
+
+Motivation:
+- support more advanced mutator behavior without weakening ownership boundaries
+- make compat-sensitive mutator support more explicit and inspectable
+- reduce ambiguity around which runtime surfaces are safe for advanced components
+- improve support for mixed-mod packs as mutation behavior becomes deeper
+
+Examples of future runtime surfaces:
+- extra equipment-slot surfaces
+- advanced combat/damage pipeline hooks
+- custom attribute families
+- boss-runtime metadata and boss-capability channels
+- AI/goal-manipulation surfaces
+- projectile behavior and hit-processing surfaces
+- richer client-visual or presentation surfaces
+
+Possible post-v1 pieces:
+- runtime-surface capability registry for mutator handlers (required hooks/capabilities/channels)
+- mutator projection identity catalog for long-lived WA-owned entity projections
+- explicit compat profiles that mark component support as available, unavailable, degraded, or redirected per integration/runtime surface
+- richer `/wa mob inspect` diagnostics grouping for ownership, failed-closed branches, degraded branches, and foreign-state-preserved markers
+- formal support metadata on mutator component types describing required and optional runtime surfaces
+
+Design guardrails:
+- no broad rewrite of foreign entity state as compatibility fallback
+- unavailable surfaces continue to fail closed branch-only
+- degraded branches remain inspectable and traceable with stable diagnostics
+- advanced runtime-surface support must extend v1 ownership and fail-closed contracts rather than replacing them
+
+Goal:
+Increase mutator feature depth after v1 without weakening ownership, additive-first behavior, or fail-closed safety contracts.
+
+Recommended status:
+- future idea / deferred
+- not active v1 scope
+- should only be promoted when multiple concrete advanced mutator families justify formalizing shared runtime surfaces
+
+---
+
+## Rare Ascension Reoffer / Respec Item
+
+Concept:
+A rare consumable item or tightly controlled gameplay mechanic may let a player reopen one previously resolved ascension runtime offer instance and choose again from that original offer.
+
+Core design goals:
+- preserve the importance of permanent exclusive ascension choices
+- provide an emergency correction path for regretted or disruptive choices
+- avoid turning ascension into free unlimited respeccing
+
+Hard future design rules:
+- respec operates on a resolved runtime offer instance, not an abstract offer definition
+- respec remains server-authoritative
+- the original chosen reward from that instance must be fully removed before replacement is applied
+- only the original candidate set for that same runtime offer instance is valid for re-choice
+- no newly generated reward list is created during reoffer
+- respec must not affect unrelated offers or unrelated chosen rewards
+- respec must preserve inspect/debug auditability
+
+Canonical target identity:
+- runtime `instance_id`, not only `offer_id`
+
+Recommended future flow:
+1. player uses a rare respec item or approved mechanic
+2. system targets one resolved runtime offer instance
+3. current chosen reward from that instance is marked for removal
+4. forfeited-state lockout for that same instance is temporarily reopened
+5. original candidate list for that instance becomes selectable again
+6. player selects one new reward
+7. instance returns to resolved state
+8. item/mechanic consumption and audit metadata are persisted
+
+Recommended restrictions:
+- rare or expensive acquisition
+- optional server config gate
+- optional once-per-player or limited-use policy
+- optional blacklist for non-respecable offers or rewards
+- no use while the player has unresolved pending offers unless explicitly allowed
+- no use when the targeted runtime instance is missing required definition history
+
+Persistence expectations:
+- keep a full audit trail:
+  - original chosen reward
+  - replacement reward
+  - respec timestamp
+  - respec source item/mechanic
+  - targeted runtime `instance_id`
+
+Failure behavior:
+- if the original runtime instance history is incomplete or missing, fail closed
+- if prior reward removal cannot be safely reconciled, fail closed
+- never auto-fallback to a newly rolled offer
+- no effect on unrelated chosen rewards
+
+Recommended future command/debug support:
+- `/wa ascension reoffer <player> <instance_id>`
+- `/wa ascension inspect <player>`
+
+Inspect output should show:
+- original instance ID
+- original candidate set
+- original chosen reward
+- replacement chosen reward if respec occurred
+- respec audit history
+
+Design warning:
+- unrestricted respec would undermine the permanence fantasy of ascension choices
+- this mechanic should stay rare, costly, admin-gated, or heavily policy-controlled
+
+Recommended status:
+- future idea / deferred
+- not active v1 scope
 
 ---
 

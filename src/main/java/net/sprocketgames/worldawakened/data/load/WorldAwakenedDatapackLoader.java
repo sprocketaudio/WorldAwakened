@@ -516,6 +516,7 @@ public final class WorldAwakenedDatapackLoader {
         }
 
         return new WorldAwakenedDatapackSnapshot(
+                0L,
                 Instant.now(),
                 new WorldAwakenedCompiledData(
                         Map.copyOf(stages),
@@ -689,6 +690,9 @@ public final class WorldAwakenedDatapackLoader {
                 case INCOMPATIBLE_COMPONENT_COMPOSITION -> WorldAwakenedDiagnosticCodes.COMPONENT_COMPOSITION_INVALID;
                 case NO_RUNTIME_RESULT -> WorldAwakenedDiagnosticCodes.COMPONENT_NO_RUNTIME_RESULT;
                 case DUPLICATE_COMPONENT_TYPE -> WorldAwakenedDiagnosticCodes.COMPONENT_DUPLICATE_UNSUPPORTED;
+                case COMPONENT_NOT_SUPPRESSIBLE -> WorldAwakenedDiagnosticCodes.ASC_COMPONENT_NOT_SUPPRESSIBLE;
+                case SUPPRESSION_GROUP_REQUIRED -> WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_GROUP_REQUIRED;
+                case SUPPRESSION_INVALID_PARTIAL -> WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_INVALID_PARTIAL;
             };
             collector.addDiagnostic(new WorldAwakenedDiagnostic(
                     WorldAwakenedDiagnosticSeverity.ERROR,

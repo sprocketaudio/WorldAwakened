@@ -3,7 +3,7 @@
 Deferred future design for an in-game/admin runtime-facing inspection and authoring interface.
 
 - Document status: Non-normative future feature
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Post-v1 only
 
 ---
@@ -163,6 +163,12 @@ Runtime inspection should show:
 - player ascension state
 - selected mutators on inspected entities
 - recently triggered rules if debugging is enabled
+
+Ownership/fail-closed visibility should include:
+- WA-owned vs foreign-state-preserved markers on inspected player/entity surfaces where relevant
+- failed-closed mutator branch reasons for unavailable runtime surfaces/capabilities/hooks
+- persisted runtime-provenance entries that reference removed/missing definitions
+- canonical diagnostic code display for ownership and fail-closed outcomes (not just free-form text)
 
 Value:
 This phase delivers high usability without taking on the complexity of full authoring.

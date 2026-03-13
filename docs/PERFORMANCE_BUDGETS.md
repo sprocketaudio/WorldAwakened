@@ -3,7 +3,7 @@
 Canonical contract for hot-path runtime limits, indexing guarantees, and evaluation guardrails.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Rule engine and spawn-time mutation performance contracts
 
 ---
@@ -36,6 +36,8 @@ Update rule:
 - Runtime evaluation must never perform unbounded scans across full rule sets for hot-path events.
 - Hot-path evaluators must operate on precompiled structures produced during datapack reload.
 - Runtime performance protections must fail closed per object/branch rather than destabilizing unrelated systems.
+- Owned runtime carrier executors for damage, tick, render, or other hot-path surfaces must use keyed WA-owned state and typed handler logic; they must not parse raw JSON on every event.
+- Client visual carrier handlers must stay local-player-only and constant-time per frame; they may read synced WA-owned state and feed the owning client's render/lightmap hooks, but they must not scan world entities or rebuild authored data during render/tick hooks.
 
 ---
 
@@ -113,6 +115,70 @@ Budget handling contract:
 - no budget overflow path may trigger unbounded retries.
 
 ---
+
+## External Spawn Controller Coexistence Guardrail
+
+Spawn-path performance and safety must account for other mods that also modify spawn outcomes.
+
+Hard requirements:
+- World Awakened must not perform expensive mutation-pool evaluation on spawn events that are already cancelled or invalidated
+- World Awakened must exit early when upstream hooks have denied the spawn
+- World Awakened must evaluate only the final surviving spawn context made available by the hook chain
+- World Awakened must not perform recursive mutation processing for redirected or replacement spawns unless explicitly marked safe by policy
+
+Performance/safety goal:
+- avoid wasted hot-path work on spawns that another mod has already blocked
+- avoid duplicate processing when multiple mods share the same spawn hook chain
+- avoid recursive spawn explosions caused by indirect entity creation during mutation application
+
+Recommended diagnostics:
+- `WA_SPAWN_SKIPPED_UPSTREAM_CANCEL`
+- `WA_SPAWN_CONTEXT_INVALIDATED`
+- `WA_SPAWN_REENTRY_BLOCKED`
+- `WA_SPAWN_EXTERNAL_TRANSFORM_DETECTED`
+
+Recommended observability:
+Future `/wa debug mutators` and `/wa debug perf` outputs should expose:
+- spawn events skipped due to upstream cancellation
+- external-transform detection count
+- re-entry blocks
+- mutation evaluations avoided by early-exit checks
+
+## Ownership-Safe Reconciliation and Carrier Guardrail
+
+Runtime reconciliation must remain bounded, event-driven, and ownership-scoped.
+
+Hard requirements:
+- player reward reconciliation must target World Awakened-owned identifiers only
+- carrier rebuilds must be event-driven, not broad per-tick rescans
+- reconciliation must not scan or rewrite arbitrary third-party modifier/effect/visual collections beyond what is necessary to locate World Awakened-owned contributions
+- removed or missing definition handling must not trigger repeated expensive rebuild loops
+- degraded branches must fail once per reconcile/event path with bounded diagnostics behavior
+- client visual carrier sync must be change-driven, not tick-spammed
+
+Performance/safety goal:
+- avoid broad attribute/effect rewrites
+- avoid repeated failed reconciliation churn
+- preserve compatibility while keeping login/respawn/reconcile cost bounded
+- keep carrier systems cheap by treating them as derived cached state, not a per-tick simulation engine
+
+## Ownership-Safe Mutator Application Guardrail
+
+Spawn-time mutator application must remain bounded, ownership-scoped, and fail-closed on unavailable runtime surfaces.
+
+Hard requirements:
+- mutator application must target World Awakened-owned runtime identities/projections only
+- mutator handlers must not broadly rewrite foreign entity modifier/effect/capability surfaces to force compatibility
+- unavailable entity capabilities/hooks/runtime surfaces must fail closed once per relevant branch/event path with bounded diagnostics behavior
+- removed-definition provenance checks must not trigger repeated expensive retries during the same spawn/event path
+- degraded mutator branches must not cause recursive spawn reprocessing or repeated rebuild loops
+
+Performance/safety goal:
+- keep spawn evaluation deterministic and cheap even in incompatible mixed-mod environments
+- preserve third-party entity state while still reporting actionable reasons for skipped mutator branches
+- avoid churn from repeatedly reattempting the same unavailable runtime surface in one spawn path
+
+--- 
 
 ## 5. Action Chain Depth
 

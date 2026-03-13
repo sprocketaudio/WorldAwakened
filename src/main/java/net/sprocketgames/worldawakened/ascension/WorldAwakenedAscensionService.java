@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.SplittableRandom;
@@ -30,15 +31,20 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.WorldAwakenedConstants;
+import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentRegistry;
+import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentType;
+import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
+import net.sprocketgames.worldawakened.data.definition.AscensionComponentSuppressionPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferMode;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardRepeatPolicy;
@@ -47,6 +53,7 @@ import net.sprocketgames.worldawakened.data.definition.ExecutionScope;
 import net.sprocketgames.worldawakened.data.definition.RuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
+import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
@@ -74,6 +81,18 @@ public final class WorldAwakenedAscensionService {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.rewardEffects = new WorldAwakenedAscensionRewardEffects();
+    }
+
+    public int reconcileAllOnlinePlayers(MinecraftServer server, String reason) {
+        if (server == null || !WorldAwakenedFeatureGates.ascensionEnabled()) {
+            return 0;
+        }
+        int reconciled = 0;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            reconcilePlayerRewards(player.serverLevel(), player, reason);
+            reconciled++;
+        }
+        return reconciled;
     }
 
     public int grantEligibleOffersForStageUnlock(ServerLevel level, ServerPlayer player, ResourceLocation stageId) {
@@ -251,6 +270,129 @@ public final class WorldAwakenedAscensionService {
                 summary.forfeitedRewards());
     }
 
+    public SuppressionMutationResult suppressReward(ServerLevel level, ServerPlayer player, ResourceLocation rewardId) {
+        if (player == null || rewardId == null) {
+            return new SuppressionMutationResult(false, "invalid_request", WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN, rewardId, Set.of());
+        }
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        if (!state.chosenAscensionRewards().contains(rewardId)) {
+            return new SuppressionMutationResult(
+                    false,
+                    "reward_not_owned",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN,
+                    rewardId,
+                    Set.of());
+        }
+        if (!state.suppressedAscensionRewards().add(rewardId)) {
+            return new SuppressionMutationResult(
+                    false,
+                    "reward_already_suppressed",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_APPLIED,
+                    rewardId,
+                    Set.of());
+        }
+        long now = System.currentTimeMillis();
+        state.ascensionRewardSuppressionTimestamps().put(rewardId, now);
+        state.markDirty();
+        reconcilePlayerRewards(level, player, "ascension_suppress_reward");
+        return new SuppressionMutationResult(
+                true,
+                "suppression_applied",
+                WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_APPLIED,
+                rewardId,
+                Set.of());
+    }
+
+    public SuppressionMutationResult unsuppressReward(ServerLevel level, ServerPlayer player, ResourceLocation rewardId) {
+        if (player == null || rewardId == null) {
+            return new SuppressionMutationResult(false, "invalid_request", WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN, rewardId, Set.of());
+        }
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        if (!state.chosenAscensionRewards().contains(rewardId)) {
+            return new SuppressionMutationResult(
+                    false,
+                    "reward_not_owned",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN,
+                    rewardId,
+                    Set.of());
+        }
+        if (!state.suppressedAscensionRewards().remove(rewardId)) {
+            return new SuppressionMutationResult(
+                    false,
+                    "reward_not_suppressed",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_REMOVED,
+                    rewardId,
+                    Set.of());
+        }
+        state.ascensionRewardSuppressionTimestamps().remove(rewardId);
+        state.markDirty();
+        reconcilePlayerRewards(level, player, "ascension_unsuppress_reward");
+        return new SuppressionMutationResult(
+                true,
+                "suppression_removed",
+                WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_REMOVED,
+                rewardId,
+                Set.of());
+    }
+
+    public SuppressionMutationResult suppressComponent(
+            ServerLevel level,
+            ServerPlayer player,
+            ResourceLocation rewardId,
+            String requestedComponentKey) {
+        return mutateComponentSuppression(level, player, rewardId, requestedComponentKey, true);
+    }
+
+    public SuppressionMutationResult unsuppressComponent(
+            ServerLevel level,
+            ServerPlayer player,
+            ResourceLocation rewardId,
+            String requestedComponentKey) {
+        return mutateComponentSuppression(level, player, rewardId, requestedComponentKey, false);
+    }
+
+    public RewardSuppressionView inspectRewardSuppression(
+            ServerLevel level,
+            ServerPlayer player,
+            ResourceLocation rewardId) {
+        if (player == null || rewardId == null) {
+            return RewardSuppressionView.unknown(rewardId);
+        }
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        return resolveRewardSuppression(snapshot, state, rewardId);
+    }
+
+    public List<String> suppressibleComponentKeys(ServerLevel level, ServerPlayer player, ResourceLocation rewardId) {
+        if (player == null || rewardId == null) {
+            return List.of();
+        }
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        if (!state.chosenAscensionRewards().contains(rewardId)) {
+            return List.of();
+        }
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        if (rewardDefinition == null) {
+            return List.of();
+        }
+        return buildComponentSuppressionEntries(rewardDefinition).stream()
+                .filter(entry -> entry.component().enabled())
+                .filter(entry -> entry.componentLevelSupported())
+                .map(ComponentSuppressionEntry::componentKey)
+                .toList();
+    }
+
+    public List<String> suppressedComponentKeys(ServerLevel level, ServerPlayer player, ResourceLocation rewardId) {
+        if (player == null || rewardId == null) {
+            return List.of();
+        }
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        return state.suppressedAscensionComponentsByReward().getOrDefault(rewardId, Set.of()).stream()
+                .sorted()
+                .toList();
+    }
+
     public void reconcilePlayerRewards(ServerLevel level, ServerPlayer player, String reason) {
         if (player == null || !WorldAwakenedFeatureGates.ascensionEnabled()) {
             return;
@@ -261,6 +403,16 @@ public final class WorldAwakenedAscensionService {
         for (ResourceLocation rewardId : state.chosenAscensionRewards()) {
             AscensionRewardDefinition reward = snapshot.data().ascensionRewards().get(rewardId);
             if (reward == null) {
+                if (state.suppressedAscensionRewards().contains(rewardId)
+                        || state.suppressedAscensionComponentsByReward().containsKey(rewardId)) {
+                    WorldAwakenedLog.warn(
+                            LOGGER,
+                            WorldAwakenedLogCategory.PIPELINE,
+                            "Suppressed ascension reference missing definition: code={} player={} reward={}",
+                            WorldAwakenedDiagnosticCodes.ASC_SUPPRESSED_DEFINITION_MISSING,
+                            player.getGameProfile().getName(),
+                            rewardId);
+                }
                 WorldAwakenedLog.warn(
                         LOGGER,
                         WorldAwakenedLogCategory.DATA_LOAD,
@@ -269,15 +421,44 @@ public final class WorldAwakenedAscensionService {
                         rewardId);
                 continue;
             }
-            rewardEffects.apply(player, reward);
+            RewardSuppressionView suppressionView = resolveRewardSuppression(snapshot, state, rewardId);
+            if (!suppressionView.missingSuppressedComponentKeys().isEmpty()) {
+                WorldAwakenedLog.warn(
+                        LOGGER,
+                        WorldAwakenedLogCategory.PIPELINE,
+                        "Suppressed ascension component key missing from definition: code={} player={} reward={} component_keys={}",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSED_DEFINITION_MISSING,
+                        player.getGameProfile().getName(),
+                        rewardId,
+                        suppressionView.missingSuppressedComponentKeys());
+            }
+            if (suppressionView.liveState() == RewardLiveState.SUPPRESSED) {
+                continue;
+            }
+            Set<String> effectiveSuppressedComponentKeys = suppressionView.effectiveSuppressedComponentKeys();
+            if (suppressionView.liveState() == RewardLiveState.SUPPRESSION_REJECTED_INVALID_GROUP_STATE
+                    || suppressionView.liveState() == RewardLiveState.SUPPRESSION_REJECTED_NOT_INDEPENDENTLY_SUPPORTED) {
+                WorldAwakenedLog.warn(
+                        LOGGER,
+                        WorldAwakenedLogCategory.PIPELINE,
+                        "Skipped ascension reward due invalid suppression state: code={} player={} reward={} detail={}",
+                        suppressionView.rejectionCode(),
+                        player.getGameProfile().getName(),
+                        rewardId,
+                        suppressionView.rejectionDetail());
+                effectiveSuppressedComponentKeys = Set.of();
+            }
+            rewardEffects.apply(player, reward, effectiveSuppressedComponentKeys);
         }
+        WorldAwakenedOwnedCarrierService.syncOwnedCarriers(player);
         WorldAwakenedLog.debug(
                 LOGGER,
                 WorldAwakenedLogCategory.PIPELINE,
-                "Reconciled ascension rewards for {} reason={} chosen={}",
+                "Reconciled ascension rewards for {} reason={} chosen={} suppressed_rewards={}",
                 player.getGameProfile().getName(),
                 reason,
-                state.chosenAscensionRewards().size());
+                state.chosenAscensionRewards().size(),
+                state.suppressedAscensionRewards().size());
     }
 
     public ChooseResult chooseReward(ServerLevel level, ServerPlayer player, String instanceId, ResourceLocation rewardId, String source) {
@@ -303,9 +484,10 @@ public final class WorldAwakenedAscensionService {
         if (offer == null || reward == null || !reward.enabled()) {
             return new ChooseResult(ChooseStatus.REJECTED, "offer_or_reward_missing");
         }
-        if (!rewardStillEligible(level, player, offer, reward, state)) {
+        if (!rewardStillEligible(level, player, offer, reward, state, snapshot.data().ascensionRewards())) {
             return new ChooseResult(ChooseStatus.REJECTED, "reward_ineligible");
         }
+        snapshot = datapackService.pinSnapshot(snapshot, "ascension.choose_reward");
 
         Set<ResourceLocation> forfeitedRewards = runtime.candidateRewards().stream()
                 .filter(candidate -> !candidate.equals(rewardId))
@@ -328,7 +510,7 @@ public final class WorldAwakenedAscensionService {
 
         Optional<WorldAwakenedAscensionOfferRuntime> nextPending = activePendingRuntime(state);
         if (nextPending.isPresent() && WorldAwakenedCommonConfig.REMIND_PENDING_OFFERS.get()) {
-            notifyOfferAvailable(player, nextPending.get().offerId(), true);
+            notifyOfferAvailable(player, nextPending.get().offerId(), true, snapshot);
         }
 
         WorldAwakenedLog.debug(
@@ -340,6 +522,344 @@ public final class WorldAwakenedAscensionService {
                 rewardId,
                 source);
         return new ChooseResult(ChooseStatus.ACCEPTED, "selected");
+    }
+
+    private SuppressionMutationResult mutateComponentSuppression(
+            ServerLevel level,
+            ServerPlayer player,
+            ResourceLocation rewardId,
+            String requestedComponentKey,
+            boolean suppress) {
+        if (player == null || rewardId == null || requestedComponentKey == null || requestedComponentKey.isBlank()) {
+            return new SuppressionMutationResult(
+                    false,
+                    "invalid_request",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN,
+                    rewardId,
+                    Set.of());
+        }
+
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
+        if (!state.chosenAscensionRewards().contains(rewardId)) {
+            return new SuppressionMutationResult(
+                    false,
+                    "reward_not_owned",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN,
+                    rewardId,
+                    Set.of());
+        }
+
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        if (rewardDefinition == null) {
+            return new SuppressionMutationResult(
+                    false,
+                    "suppressed_definition_missing",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSED_DEFINITION_MISSING,
+                    rewardId,
+                    Set.of());
+        }
+
+        ComponentSuppressionResolution resolution = resolveComponentSuppressionTargets(rewardDefinition, requestedComponentKey);
+        if (!resolution.accepted()) {
+            return new SuppressionMutationResult(
+                    false,
+                    resolution.detail(),
+                    resolution.code(),
+                    rewardId,
+                    Set.of());
+        }
+
+        Set<String> requestedKeys = resolution.componentKeys();
+        long now = System.currentTimeMillis();
+        boolean changed;
+        if (suppress) {
+            Set<String> current = state.suppressedAscensionComponentsByReward()
+                    .computeIfAbsent(rewardId, ignored -> new LinkedHashSet<>());
+            changed = current.addAll(requestedKeys);
+            if (!changed) {
+                return new SuppressionMutationResult(
+                        false,
+                        "component_already_suppressed",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_APPLIED,
+                        rewardId,
+                        requestedKeys);
+            }
+            requestedKeys.forEach(componentKey -> state.ascensionComponentSuppressionTimestamps()
+                    .put(componentTimestampTarget(rewardId, componentKey), now));
+        } else {
+            Set<String> current = state.suppressedAscensionComponentsByReward().get(rewardId);
+            if (current == null || current.isEmpty()) {
+                return new SuppressionMutationResult(
+                        false,
+                        "component_not_suppressed",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_REMOVED,
+                        rewardId,
+                        requestedKeys);
+            }
+            changed = current.removeAll(requestedKeys);
+            if (!changed) {
+                return new SuppressionMutationResult(
+                        false,
+                        "component_not_suppressed",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_REMOVED,
+                        rewardId,
+                        requestedKeys);
+            }
+            requestedKeys.forEach(componentKey -> state.ascensionComponentSuppressionTimestamps()
+                    .remove(componentTimestampTarget(rewardId, componentKey)));
+            if (current.isEmpty()) {
+                state.suppressedAscensionComponentsByReward().remove(rewardId);
+            }
+        }
+
+        state.markDirty();
+        reconcilePlayerRewards(level, player, suppress ? "ascension_suppress_component" : "ascension_unsuppress_component");
+        return new SuppressionMutationResult(
+                true,
+                suppress ? "suppression_applied" : "suppression_removed",
+                suppress ? WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_APPLIED : WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_REMOVED,
+                rewardId,
+                requestedKeys);
+    }
+
+    private static ComponentSuppressionResolution resolveComponentSuppressionTargets(
+            AscensionRewardDefinition rewardDefinition,
+            String requestedComponentKey) {
+        List<ComponentSuppressionEntry> entries = buildComponentSuppressionEntries(rewardDefinition);
+        Optional<ComponentSuppressionEntry> exact = entries.stream()
+                .filter(entry -> entry.componentKey().equals(requestedComponentKey))
+                .findFirst();
+        Optional<ComponentSuppressionEntry> byIndex = Optional.empty();
+        if (exact.isEmpty()) {
+            OptionalInt requestedIndex = WorldAwakenedAscensionComponentKeys.parseIndex(requestedComponentKey);
+            if (requestedIndex.isPresent()) {
+                byIndex = entries.stream()
+                        .filter(entry -> entry.index() == requestedIndex.getAsInt())
+                        .findFirst();
+            }
+        }
+        Optional<ComponentSuppressionEntry> resolved = exact.isPresent() ? exact : byIndex;
+        ComponentSuppressionEntry target = resolved.orElse(null);
+        if (target == null || !target.component().enabled()) {
+            return ComponentSuppressionResolution.rejected(
+                    "component_target_unknown",
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_TARGET_UNKNOWN);
+        }
+        if (!target.componentLevelSupported()) {
+            return ComponentSuppressionResolution.rejected(
+                    "component_not_suppressible",
+                    WorldAwakenedDiagnosticCodes.ASC_COMPONENT_NOT_SUPPRESSIBLE);
+        }
+        if (target.effectivePolicy() == AscensionComponentSuppressionPolicy.GROUPED) {
+            if (target.normalizedGroup().isEmpty()) {
+                return ComponentSuppressionResolution.rejected(
+                        "suppression_group_required",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_GROUP_REQUIRED);
+            }
+            String group = target.normalizedGroup().get();
+            List<ComponentSuppressionEntry> groupedEntries = entries.stream()
+                    .filter(entry -> entry.component().enabled())
+                    .filter(entry -> entry.normalizedGroup().isPresent() && entry.normalizedGroup().get().equals(group))
+                    .toList();
+            if (groupedEntries.isEmpty()) {
+                return ComponentSuppressionResolution.rejected(
+                        "suppression_invalid_partial",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_INVALID_PARTIAL);
+            }
+            if (groupedEntries.stream().anyMatch(entry -> entry.effectivePolicy() != AscensionComponentSuppressionPolicy.GROUPED)) {
+                return ComponentSuppressionResolution.rejected(
+                        "suppression_invalid_partial",
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_INVALID_PARTIAL);
+            }
+            if (groupedEntries.stream().anyMatch(entry -> !entry.componentLevelSupported())) {
+                return ComponentSuppressionResolution.rejected(
+                        "component_not_suppressible",
+                        WorldAwakenedDiagnosticCodes.ASC_COMPONENT_NOT_SUPPRESSIBLE);
+            }
+            Set<String> componentKeys = groupedEntries.stream()
+                    .map(ComponentSuppressionEntry::componentKey)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            return ComponentSuppressionResolution.accepted(componentKeys, true);
+        }
+        return ComponentSuppressionResolution.accepted(Set.of(target.componentKey()), false);
+    }
+
+    private RewardSuppressionView resolveRewardSuppression(
+            WorldAwakenedDatapackSnapshot snapshot,
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            ResourceLocation rewardId) {
+        boolean owned = state.chosenAscensionRewards().contains(rewardId);
+        Set<String> configuredSuppressedComponentKeys = new LinkedHashSet<>(
+                state.suppressedAscensionComponentsByReward().getOrDefault(rewardId, Set.of()));
+        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        if (rewardDefinition == null) {
+            return new RewardSuppressionView(
+                    rewardId,
+                    owned,
+                    state.suppressedAscensionRewards().contains(rewardId),
+                    RewardLiveState.MISSING_DEFINITION,
+                    Set.copyOf(configuredSuppressedComponentKeys),
+                    Set.of(),
+                    Set.copyOf(configuredSuppressedComponentKeys),
+                    WorldAwakenedDiagnosticCodes.ASC_SUPPRESSED_DEFINITION_MISSING,
+                    "suppressed_definition_missing",
+                    false);
+        }
+
+        if (state.suppressedAscensionRewards().contains(rewardId)) {
+            return new RewardSuppressionView(
+                    rewardId,
+                    owned,
+                    true,
+                    RewardLiveState.SUPPRESSED,
+                    Set.copyOf(configuredSuppressedComponentKeys),
+                    Set.of(),
+                    Set.of(),
+                    "",
+                    "",
+                    false);
+        }
+
+        List<ComponentSuppressionEntry> entries = buildComponentSuppressionEntries(rewardDefinition).stream()
+                .filter(entry -> entry.component().enabled())
+                .toList();
+        if (configuredSuppressedComponentKeys.isEmpty()) {
+            return new RewardSuppressionView(
+                    rewardId,
+                    owned,
+                    false,
+                    RewardLiveState.ACTIVE,
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    "",
+                    "",
+                    false);
+        }
+
+        Set<String> knownComponentKeys = entries.stream()
+                .map(ComponentSuppressionEntry::componentKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> missingKeys = configuredSuppressedComponentKeys.stream()
+                .filter(key -> !knownComponentKeys.contains(key))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> effectiveKeys = configuredSuppressedComponentKeys.stream()
+                .filter(knownComponentKeys::contains)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        for (ComponentSuppressionEntry entry : entries) {
+            if (!effectiveKeys.contains(entry.componentKey())) {
+                continue;
+            }
+            if (!entry.componentLevelSupported()) {
+                return new RewardSuppressionView(
+                        rewardId,
+                        owned,
+                        false,
+                        RewardLiveState.SUPPRESSION_REJECTED_NOT_INDEPENDENTLY_SUPPORTED,
+                        Set.copyOf(configuredSuppressedComponentKeys),
+                        Set.of(),
+                        Set.copyOf(missingKeys),
+                        WorldAwakenedDiagnosticCodes.ASC_COMPONENT_NOT_SUPPRESSIBLE,
+                        "component_not_suppressible",
+                        false);
+            }
+        }
+
+        Map<String, List<ComponentSuppressionEntry>> groupedEntries = new LinkedHashMap<>();
+        for (ComponentSuppressionEntry entry : entries) {
+            if (entry.effectivePolicy() != AscensionComponentSuppressionPolicy.GROUPED) {
+                continue;
+            }
+            if (entry.normalizedGroup().isEmpty()) {
+                return new RewardSuppressionView(
+                        rewardId,
+                        owned,
+                        false,
+                        RewardLiveState.SUPPRESSION_REJECTED_INVALID_GROUP_STATE,
+                        Set.copyOf(configuredSuppressedComponentKeys),
+                        Set.of(),
+                        Set.copyOf(missingKeys),
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_GROUP_REQUIRED,
+                        "suppression_group_required",
+                        false);
+            }
+            groupedEntries.computeIfAbsent(entry.normalizedGroup().get(), ignored -> new ArrayList<>()).add(entry);
+        }
+
+        boolean groupedActive = false;
+        Set<String> groupedSuppressedKeys = new LinkedHashSet<>();
+        for (Map.Entry<String, List<ComponentSuppressionEntry>> entry : groupedEntries.entrySet()) {
+            List<ComponentSuppressionEntry> group = entry.getValue();
+            long suppressedCount = group.stream()
+                    .filter(component -> effectiveKeys.contains(component.componentKey()))
+                    .count();
+            if (suppressedCount == 0) {
+                continue;
+            }
+            if (suppressedCount != group.size()) {
+                return new RewardSuppressionView(
+                        rewardId,
+                        owned,
+                        false,
+                        RewardLiveState.SUPPRESSION_REJECTED_INVALID_GROUP_STATE,
+                        Set.copyOf(configuredSuppressedComponentKeys),
+                        Set.of(),
+                        Set.copyOf(missingKeys),
+                        WorldAwakenedDiagnosticCodes.ASC_SUPPRESSION_INVALID_PARTIAL,
+                        "suppression_invalid_partial",
+                        false);
+            }
+            groupedActive = true;
+            groupedSuppressedKeys.addAll(group.stream().map(ComponentSuppressionEntry::componentKey).toList());
+        }
+
+        RewardLiveState liveState;
+        if (effectiveKeys.isEmpty()) {
+            liveState = RewardLiveState.ACTIVE;
+        } else if (groupedActive && groupedSuppressedKeys.containsAll(effectiveKeys)) {
+            liveState = RewardLiveState.SUPPRESSED_GROUP;
+        } else {
+            liveState = RewardLiveState.PARTIALLY_SUPPRESSED;
+        }
+        return new RewardSuppressionView(
+                rewardId,
+                owned,
+                false,
+                liveState,
+                Set.copyOf(configuredSuppressedComponentKeys),
+                Set.copyOf(effectiveKeys),
+                Set.copyOf(missingKeys),
+                "",
+                "",
+                groupedActive);
+    }
+
+    private static List<ComponentSuppressionEntry> buildComponentSuppressionEntries(AscensionRewardDefinition rewardDefinition) {
+        List<ComponentSuppressionEntry> entries = new ArrayList<>();
+        for (int index = 0; index < rewardDefinition.components().size(); index++) {
+            AscensionComponentDefinition component = rewardDefinition.components().get(index);
+            Optional<WorldAwakenedAscensionComponentType> type = WorldAwakenedAscensionComponentRegistry.lookup(component.type());
+            boolean typeAllowsComponentSuppression = type.map(WorldAwakenedAscensionComponentType::suppressibleIndividually).orElse(false);
+            AscensionComponentSuppressionPolicy effectivePolicy = component.effectiveSuppressionPolicy();
+            boolean componentMetadataAllowsComponentSuppression = component.suppressibleIndividually()
+                    && effectivePolicy != AscensionComponentSuppressionPolicy.REWARD_ONLY;
+            boolean componentLevelSupported = componentMetadataAllowsComponentSuppression
+                    && typeAllowsComponentSuppression;
+            entries.add(new ComponentSuppressionEntry(
+                    index,
+                    component,
+                    WorldAwakenedAscensionComponentKeys.componentKey(index, component),
+                    effectivePolicy,
+                    component.normalizedSuppressionGroup(),
+                    componentLevelSupported));
+        }
+        return List.copyOf(entries);
+    }
+
+    private static String componentTimestampTarget(ResourceLocation rewardId, String componentKey) {
+        return "component|" + rewardId + "|" + componentKey;
     }
 
     private GrantResult grantOfferInternal(
@@ -377,6 +897,7 @@ public final class WorldAwakenedAscensionService {
         if (selection.candidates().isEmpty()) {
             return new GrantResult(offerId, "", GrantStatus.REJECTED, selection.detail());
         }
+        snapshot = datapackService.pinSnapshot(snapshot, "ascension.grant_offer_internal");
 
         boolean alreadyPending = !state.pendingAscensionOfferInstances().isEmpty();
         String instanceId = nextRuntimeInstanceId(state);
@@ -391,7 +912,7 @@ public final class WorldAwakenedAscensionService {
         state.markDirty();
 
         if (!alreadyPending || WorldAwakenedCommonConfig.REMIND_PENDING_OFFERS.get()) {
-            notifyOfferAvailable(player, offerId, alreadyPending);
+            notifyOfferAvailable(player, offerId, alreadyPending, snapshot);
         }
 
         WorldAwakenedLog.debug(
@@ -406,11 +927,16 @@ public final class WorldAwakenedAscensionService {
         return new GrantResult(offerId, instanceId, GrantStatus.GRANTED, selection.detail());
     }
 
-    private void notifyOfferAvailable(ServerPlayer player, ResourceLocation offerId, boolean queued) {
+    private void notifyOfferAvailable(
+            ServerPlayer player,
+            ResourceLocation offerId,
+            boolean queued,
+            WorldAwakenedDatapackSnapshot pinnedSnapshot) {
         if (!WorldAwakenedCommonConfig.SHOW_ASCENSION_NOTIFICATIONS.get()) {
             return;
         }
-        AscensionOfferDefinition offer = datapackService.currentSnapshot().data().ascensionOffers().get(offerId);
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.pinSnapshot(pinnedSnapshot, "ascension.notify_offer");
+        AscensionOfferDefinition offer = snapshot.data().ascensionOffers().get(offerId);
         MutableComponent offerTitle = offer == null
                 ? Component.literal(offerId.toString())
                 : displayComponent(offer.displayName(), player.serverLevel(), offer.id().toString());
@@ -438,7 +964,7 @@ public final class WorldAwakenedAscensionService {
 
         List<AscensionRewardDefinition> eligible = new ArrayList<>();
         for (AscensionRewardDefinition reward : pool) {
-            if (rewardStillEligible(level, player, offer, reward, state)) {
+            if (rewardStillEligible(level, player, offer, reward, state, rewardDefinitions)) {
                 eligible.add(reward);
             }
         }
@@ -477,7 +1003,8 @@ public final class WorldAwakenedAscensionService {
             ServerPlayer player,
             AscensionOfferDefinition offer,
             AscensionRewardDefinition reward,
-            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state) {
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            Map<ResourceLocation, AscensionRewardDefinition> rewardDefinitions) {
         if (!reward.enabled()) {
             return false;
         }
@@ -488,7 +1015,7 @@ public final class WorldAwakenedAscensionService {
         if (reward.uniqueGroup().isPresent()) {
             String uniqueGroup = reward.uniqueGroup().get();
             for (ResourceLocation chosenRewardId : state.chosenAscensionRewards()) {
-                AscensionRewardDefinition chosen = datapackService.currentSnapshot().data().ascensionRewards().get(chosenRewardId);
+                AscensionRewardDefinition chosen = rewardDefinitions.get(chosenRewardId);
                 if (chosen != null && chosen.uniqueGroup().isPresent() && uniqueGroup.equals(chosen.uniqueGroup().get())) {
                     return false;
                 }
@@ -497,7 +1024,7 @@ public final class WorldAwakenedAscensionService {
 
         if (!reward.exclusionTags().isEmpty()) {
             Set<String> chosenTags = state.chosenAscensionRewards().stream()
-                    .map(id -> datapackService.currentSnapshot().data().ascensionRewards().get(id))
+                    .map(rewardDefinitions::get)
                     .filter(java.util.Objects::nonNull)
                     .flatMap(definition -> definition.tags().stream())
                     .map(tag -> tag.toLowerCase(Locale.ROOT))
@@ -907,5 +1434,74 @@ public final class WorldAwakenedAscensionService {
     public enum ChooseStatus {
         ACCEPTED,
         REJECTED
+    }
+
+    public record SuppressionMutationResult(
+            boolean changed,
+            String detail,
+            String diagnosticCode,
+            ResourceLocation rewardId,
+            Set<String> componentKeys) {
+    }
+
+    public enum RewardLiveState {
+        ACTIVE,
+        SUPPRESSED,
+        PARTIALLY_SUPPRESSED,
+        SUPPRESSED_GROUP,
+        SUPPRESSION_REJECTED_INVALID_GROUP_STATE,
+        SUPPRESSION_REJECTED_NOT_INDEPENDENTLY_SUPPORTED,
+        MISSING_DEFINITION,
+        UNKNOWN
+    }
+
+    public record RewardSuppressionView(
+            ResourceLocation rewardId,
+            boolean owned,
+            boolean rewardSuppressed,
+            RewardLiveState liveState,
+            Set<String> configuredSuppressedComponentKeys,
+            Set<String> effectiveSuppressedComponentKeys,
+            Set<String> missingSuppressedComponentKeys,
+            String rejectionCode,
+            String rejectionDetail,
+            boolean groupedSuppressionActive) {
+        static RewardSuppressionView unknown(ResourceLocation rewardId) {
+            return new RewardSuppressionView(
+                    rewardId,
+                    false,
+                    false,
+                    RewardLiveState.UNKNOWN,
+                    Set.of(),
+                    Set.of(),
+                    Set.of(),
+                    "",
+                    "",
+                    false);
+        }
+    }
+
+    private record ComponentSuppressionEntry(
+            int index,
+            AscensionComponentDefinition component,
+            String componentKey,
+            AscensionComponentSuppressionPolicy effectivePolicy,
+            Optional<String> normalizedGroup,
+            boolean componentLevelSupported) {
+    }
+
+    private record ComponentSuppressionResolution(
+            boolean accepted,
+            String detail,
+            String code,
+            Set<String> componentKeys,
+            boolean groupedSuppression) {
+        static ComponentSuppressionResolution accepted(Set<String> componentKeys, boolean groupedSuppression) {
+            return new ComponentSuppressionResolution(true, "", "", Set.copyOf(componentKeys), groupedSuppression);
+        }
+
+        static ComponentSuppressionResolution rejected(String detail, String code) {
+            return new ComponentSuppressionResolution(false, detail, code, Set.of(), false);
+        }
     }
 }

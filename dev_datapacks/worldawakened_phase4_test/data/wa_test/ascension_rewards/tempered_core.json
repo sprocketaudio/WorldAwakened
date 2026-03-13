@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:tempered_core",
+  "display_name": "Tempered Core",
+  "description": "Health and armor baseline reward for Phase 4 testing.",
+  "icon": {
+    "item": "minecraft:iron_chestplate"
+  },
+  "enabled": true,
+  "components": [
+    {
+      "type": "worldawakened:max_health_bonus",
+      "parameters": {
+        "amount": 4.0
+      }
+    },
+    {
+      "type": "worldawakened:armor_bonus",
+      "parameters": {
+        "amount": 2.0
+      }
+    }
+  ],
+  "rarity": "rare",
+  "tags": [
+    "wa_test:phase4",
+    "wa_test:defense"
+  ],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

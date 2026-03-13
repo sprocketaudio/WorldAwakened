@@ -76,6 +76,8 @@ class WorldAwakenedAscensionStateEditorTest {
         assertEquals(2, state.pendingAscensionOfferInstances().size());
         assertFalse(state.chosenAscensionRewards().contains(reward));
         assertTrue(state.forfeitedAscensionRewards().isEmpty());
+        assertFalse(state.suppressedAscensionRewards().contains(reward));
+        assertFalse(state.suppressedAscensionComponentsByReward().containsKey(reward));
     }
 
     @Test
@@ -97,6 +99,14 @@ class WorldAwakenedAscensionStateEditorTest {
         WorldAwakenedAscensionStateEditor.rebuildSummarySets(state);
         state.ascensionRewardUnlockTimestamps().put(reward, 10L);
         state.ascensionRewardSources().put(reward, "stage:test");
+        state.suppressedAscensionRewards().add(reward);
+        state.suppressedAscensionComponentsByReward().put(
+                reward,
+                new java.util.LinkedHashSet<>(Set.of("0|worldawakened:max_health_bonus")));
+        state.ascensionRewardSuppressionTimestamps().put(reward, 12L);
+        state.ascensionComponentSuppressionTimestamps().put(
+                "component|" + reward + "|0|worldawakened:max_health_bonus",
+                12L);
 
         WorldAwakenedAscensionStateEditor.ResetSummary summary = WorldAwakenedAscensionStateEditor.resetAll(state);
 
@@ -105,6 +115,10 @@ class WorldAwakenedAscensionStateEditorTest {
         assertTrue(state.resolvedAscensionOfferInstances().isEmpty());
         assertTrue(state.chosenAscensionRewards().isEmpty());
         assertTrue(state.forfeitedAscensionRewards().isEmpty());
+        assertTrue(state.suppressedAscensionRewards().isEmpty());
+        assertTrue(state.suppressedAscensionComponentsByReward().isEmpty());
+        assertTrue(state.ascensionRewardSuppressionTimestamps().isEmpty());
+        assertTrue(state.ascensionComponentSuppressionTimestamps().isEmpty());
     }
 
     private static ResourceLocation id(String value) {

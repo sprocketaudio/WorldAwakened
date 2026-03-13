@@ -53,7 +53,7 @@ Hard rule:
 | Stages/progression | `/wa stage list`, `/wa stage inspect` | stage ID, scope key | unlocked/locked, source, aliases resolution | `implemented`/`planned` |
 | Trigger engine | `/wa trigger fire`, trigger inspect output | trigger ID, trigger type, scope | matched/rejected, cooldown, one-shot, rejection reason | `implemented` |
 | Rule engine | `/wa dump active_rules` | rule ID, scope, priority | eligible/rejected, cooldown, consumed, reason category | `implemented` |
-| Ascension | `/wa ascension inspect` | player UUID, offer ID, reward IDs, source key | pending/resolved state, forfeits, grant/reconcile outcome | `implemented` |
+| Ascension | `/wa ascension inspect` | player UUID, offer ID, reward IDs, source key, active owned carriers | pending/resolved state, forfeits, suppression state, grant/reconcile outcome | `implemented` |
 | Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID | applied/rejected components, budget/conflict outcomes | `planned` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
 | Loot profiles | loot debug output | profile ID, loot target | matched/rejected, compat safety outcome, applied operations | `planned` |
@@ -91,6 +91,11 @@ Current baseline command surface:
 - `/wa ascension inspect <player>`
 - `/wa ascension choose <player> <instance_id> <reward_id>`
 - `/wa ascension active <player> <reward_id>`
+- `/wa ascension suppress reward <player> <reward_id>`
+- `/wa ascension unsuppress reward <player> <reward_id>`
+- `/wa ascension suppress component <player> <reward_id> <component_key>`
+- `/wa ascension unsuppress component <player> <reward_id> <component_key>`
+- `/wa ascension reconcile <player>`
 - `/wa ascension reopen <player> <instance_id>`
 - `/wa ascension clear <player> <instance_id>`
 - `/wa debug reset global <stages|triggers|rules|all>`
@@ -104,6 +109,9 @@ Notes:
 - `global` means the shared save-wide progression bucket, not a second Minecraft world.
 - `dimension <dimension_id>` overrides only the world-context evaluation dimension for the command pass; it does not change the targeted player/global persistence bucket.
 - ascension runtime `instance_id` values are generated as short opaque command-safe IDs such as `wao_ab12cd34`; `offer_id` and `source_key` remain the inspect/debug provenance fields
+- ascension suppression `component_key` values use canonical `index|namespace:component_type` form (for example `0|worldawakened:movement_speed_bonus`); index-only shorthand (for example `0`) is accepted
+- inspect output must surface active owned carriers separately from chosen rewards so operators can see both the stable owned key and the carrier type ID
+- client-visual carriers such as `worldawakened:night_vision_passive` belong in inspect/debug output the same way as server-owned carriers; only the execution layer differs, including whether the carrier is feeding a lightmap-backed client render path
 - operator-facing ascension command output should expose clickable copy and suggest-command actions for runtime IDs and common next actions where the client supports chat click events
 - operator command arguments that target loaded authored objects or pending runtime instances should provide Brigadier suggestions from the current loaded runtime state
 - the `/wa debug` tree is registered only when `general.enable_debug_commands = true`
@@ -116,6 +124,22 @@ Planned minimum additions as systems complete:
 - `/wa invasion inspect <profile|active>`
 - `/wa loot inspect <target>`
 - `/wa debug trace <trace_id>`
+- `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
+- `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
+- `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
+- `/wa debug difficulty scalar [player]`
+- `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+- `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
+- `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
+- `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
+- `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
+- `/wa difficulty global get|set|reset`
+- `/wa difficulty personal get|set`
+- `/wa difficulty world get|set`
+- `/wa difficulty vote yes|no`
 
 Performance-debug payload minimums:
 - scope bucket sizes
@@ -137,6 +161,83 @@ Operator/debug split:
 - when `general.debug_logging = true`, keep the concise operator line and add the raw-detail line or suffix after it; do not replace the operator layer with dense-only output
 - new command surfaces must not duplicate player-facing action prompts inside normal gameplay notifications when the same action is already present in the intended player-facing UX
 - when `general.enable_debug_commands = false`, the debug tree must not be available
+
+---
+
+## 3A. Phase 5+ Evaluate/Force Output Contract
+
+All Phase 5+ debug verification commands must emit a shared minimum payload contract.
+
+Applies to command modes:
+- `inspect`
+- `evaluate`
+- `force`
+- `live_test`
+
+Required common output fields:
+- trace ID
+- command mode (`inspect`, `evaluate`, `force`, `live_test`)
+- target context summary
+- active stage context
+- relevant external scalars
+- config gates
+- integration gates
+- candidate objects
+- rejected objects and rejection reasons
+- selected/final objects
+- whether randomness or scheduling was bypassed
+- whether the run was dry-run or live
+- final outcome summary
+
+Required subsystem-specific output:
+
+Mutators/spawn:
+- selector narrowing summary
+- candidate pools
+- rejected pools
+- candidate mutators
+- rejected mutators
+- selected components
+- composition results
+- budget results
+
+Pressure/difficulty:
+- base values
+- dimension baseline
+- global difficulty modifier
+- challenge modifier
+- integration scalar inputs
+- final effective scalar
+- policy rejection reasons
+
+Loot:
+- candidate profiles
+- `replace`/`inject`/`remove`/`add_bonus_pool` decisions
+- compat safety restrictions
+- fallback action taken
+- final assembled loot outcome summary
+
+Invasions:
+- scheduler eligibility
+- cooldown/cap checks
+- selected profile
+- wave composition
+- mutator application to invasion units
+- entity cap and safe-zone outcomes
+
+Compat/integrations:
+- mod loaded state
+- config enabled state
+- profile enabled state
+- provider available/unavailable
+- compat branch active/inactive reason
+- fail-closed reason when applicable
+
+Command-path behavior rules:
+- `evaluate` is dry-run by default and does not mutate gameplay state
+- `force` may bypass randomness or scheduling uncertainty but must still enforce composition, ownership, compatibility safety, and policy gates
+- `live_test` must stay bounded and explicit; it must not become an uncontrolled world-modification path
+- when command-path and live-path outcomes diverge, both outputs should include enough candidate/rejection detail to isolate pipeline mismatch regressions
 
 ---
 
@@ -211,10 +312,48 @@ Required rejection categories:
 - no-op result
 - invalid reference
 - safe-zone/cap restriction
+- upstream spawn cancelled
+- upstream spawn transformed
+- spawn context invalidated
+- spawn re-entry blocked by coexistence policy
 
 Reason categories must map to canonical code families in [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md).
 
----
+## 5A. Ownership-Safe Reconcile and Degraded-State Reasons
+
+Player / reward reconciliation surfaces should be able to explain these outcomes where relevant:
+- foreign modifier preserved
+- WA-owned modifier refreshed
+- WA-owned modifier missing and reapplied
+- third-party modifier untouched
+- WA-owned carrier refreshed
+- WA-owned carrier missing and rebuilt
+- reward component failed closed due to missing carrier type
+- gameplay carrier unavailable
+- visual carrier unavailable
+- external attribute missing
+- external effect channel missing
+- reward component skipped due to unavailable runtime surface
+- foreign visual/effect surface preserved
+
+Mutator / entity application surfaces should be able to explain these outcomes where relevant:
+- required entity capability missing
+- required hook unavailable
+- component skipped due to incompatible entity runtime surface
+- branch disabled due to removed definition
+- runtime instance references missing definition
+
+Mutator / reward compatibility surfaces should be able to explain these outcomes where relevant:
+- optional runtime surface unavailable
+- extra equipment slot surface unavailable
+- custom combat hook unavailable
+- custom attribute surface unavailable
+- boss-runtime surface unavailable
+- client visual channel unavailable
+- compat-sensitive branch skipped
+- foreign state preserved by ownership policy
+
+--- 
 
 ## 6. Trace ID Propagation Rules
 
@@ -245,6 +384,12 @@ When an entity is mutated, inspect output must show:
 - rejected candidates with reason
 - budget/conflict/duplicate outcomes
 
+When an eligible spawn is not mutated due to coexistence policy, inspect/debug output should still show:
+- upstream-cancel skip reason when present
+- external-transform detection marker when present
+- spawn-context invalidation reason when present
+- re-entry-blocked reason when present
+
 ### 7.2 Rule Provenance
 
 For rule execution:
@@ -263,6 +408,14 @@ For ascension events:
 - selected reward
 - forfeited rewards
 - reconciliation status on login/respawn
+- active WA-owned runtime carrier IDs and stable keys when those carriers are part of the reconciled reward set
+- saved reward ownership state
+- live-applied WA-owned modifier/effect state
+- suppression state (`active`, `suppressed`, `partially_suppressed`, `suppressed_group`)
+- suppression rejection state (`suppression_rejected_invalid_group_state`, `suppression_rejected_not_independently_supported`)
+- failed-closed reward component state
+- foreign state intentionally preserved
+- debug/runtime diagnostics should include component-level reconcile skip codes and details when a reward effect fails closed for safety
 - operator/debug reset outcome when an offer is reopened or cleared
 
 ### 7.4 Loot/Invasion Provenance
@@ -335,7 +488,7 @@ Hard rule:
 ## 11. Phase Alignment (MVP Roadmap)
 
 This contract aligns to future implementation phases as follows:
-- Phase 5: `mob inspect` provenance and mutation-budget visibility
+- Phase 5: `mob inspect` provenance, mutation-budget visibility, and ownership-safe mutator fail-closed diagnostics
 - Phase 6: rule-event guardrail diagnostics and deeper runtime observability
 - Phase 7-9: loot/invasion/compat inspection surfaces and rejection-path visibility
 - Phase 10: tooling-facing validation/debug payload alignment for authoring workflows
@@ -343,6 +496,34 @@ This contract aligns to future implementation phases as follows:
 
 Roadmap sync rule:
 - if a phase adds or changes inspect/debug surfaces, update this file and `SPECIFICATION.md` together.
+
+Inspect/debug expectation notes:
+- `/wa ascension inspect` should distinguish saved reward ownership, WA-owned carrier state, live WA-owned modifier/effect state, failed-closed component state, and foreign state intentionally preserved
+- `/wa ascension inspect` should also surface suppression diagnostics such as:
+  - `WA_ASC_SUPPRESSION_APPLIED`
+  - `WA_ASC_SUPPRESSION_REMOVED`
+  - `WA_ASC_SUPPRESSION_INVALID_PARTIAL`
+  - `WA_ASC_SUPPRESSION_GROUP_REQUIRED`
+  - `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE`
+  - `WA_ASC_SUPPRESSED_DEFINITION_MISSING`
+- `/wa mob inspect` should distinguish persisted mutation provenance, currently resolvable definition state, and failed-closed mutator component state where relevant
+- `/wa mob inspect` should also surface mutator ownership-safe branch diagnostics where relevant:
+  - `WA_ENTITY_RUNTIME_SURFACE_MISSING`
+  - `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
+  - `WA_RUNTIME_SURFACE_OPTIONAL_UNAVAILABLE`
+  - `WA_COMPAT_BRANCH_SKIPPED_SURFACE_UNAVAILABLE`
+  - `WA_EXTRA_SLOT_SURFACE_UNAVAILABLE`
+  - `WA_COMBAT_HOOK_UNAVAILABLE`
+  - `WA_CUSTOM_ATTRIBUTE_SURFACE_UNAVAILABLE`
+  - `WA_BOSS_RUNTIME_SURFACE_UNAVAILABLE`
+  - `WA_CLIENT_VISUAL_CHANNEL_UNAVAILABLE`
+  - `WA_RUNTIME_INSTANCE_MISSING_DEFINITION`
+  - `WA_FOREIGN_STATE_PRESERVATION_REQUIRED`
+- `/wa mob inspect` should clearly indicate when World Awakened intentionally preserved foreign entity state instead of mutating it
+- `/wa mob inspect` should be able to show when a mutator branch was skipped because a required optional runtime surface was unavailable
+- `/wa ascension inspect` should be able to show when a reward component failed closed because a required runtime surface or carrier class was unavailable
+- trace output should distinguish selector/config/condition rejection, composition rejection, optional runtime-surface unavailability, and ownership-policy preservation of foreign state
+- debug traces should clearly indicate when World Awakened intentionally preserved foreign state instead of mutating it
 
 ---
 

@@ -122,6 +122,10 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private static final String KEY_FORFEITED_ASCENSION_REWARDS_BY_OFFER = "forfeited_ascension_rewards_by_offer";
         private static final String KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS = "ascension_reward_unlock_timestamps";
         private static final String KEY_ASCENSION_REWARD_SOURCES = "ascension_reward_sources";
+        private static final String KEY_SUPPRESSED_ASCENSION_REWARDS = "suppressed_ascension_rewards";
+        private static final String KEY_SUPPRESSED_ASCENSION_COMPONENTS = "suppressed_ascension_components";
+        private static final String KEY_ASCENSION_REWARD_SUPPRESSION_TIMESTAMPS = "ascension_reward_suppression_timestamps";
+        private static final String KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS = "ascension_component_suppression_timestamps";
 
         private final WorldAwakenedPlayerProgressionSavedData owner;
 
@@ -146,6 +150,10 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private final Map<String, Set<ResourceLocation>> forfeitedAscensionRewardsByOffer = new LinkedHashMap<>();
         private final Map<ResourceLocation, Long> ascensionRewardUnlockTimestamps = new LinkedHashMap<>();
         private final Map<ResourceLocation, String> ascensionRewardSources = new LinkedHashMap<>();
+        private final Set<ResourceLocation> suppressedAscensionRewards = new LinkedHashSet<>();
+        private final Map<ResourceLocation, Set<String>> suppressedAscensionComponentsByReward = new LinkedHashMap<>();
+        private final Map<ResourceLocation, Long> ascensionRewardSuppressionTimestamps = new LinkedHashMap<>();
+        private final Map<String, Long> ascensionComponentSuppressionTimestamps = new LinkedHashMap<>();
 
         private PlayerStageState(WorldAwakenedPlayerProgressionSavedData owner) {
             this.owner = owner;
@@ -172,6 +180,10 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             forfeitedAscensionRewardsByOffer.clear();
             ascensionRewardUnlockTimestamps.clear();
             ascensionRewardSources.clear();
+            suppressedAscensionRewards.clear();
+            suppressedAscensionComponentsByReward.clear();
+            ascensionRewardSuppressionTimestamps.clear();
+            ascensionComponentSuppressionTimestamps.clear();
 
             unlockedStages.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_UNLOCKED_STAGES));
             unlockTimestamps.putAll(WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_UNLOCK_TIMESTAMPS));
@@ -224,6 +236,12 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
 
             ascensionRewardUnlockTimestamps.putAll(WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS));
             ascensionRewardSources.putAll(WorldAwakenedProgressionNbt.readStageStringMap(tag, KEY_ASCENSION_REWARD_SOURCES));
+            suppressedAscensionRewards.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_SUPPRESSED_ASCENSION_REWARDS));
+            suppressedAscensionComponentsByReward.putAll(readSuppressedComponents(tag, KEY_SUPPRESSED_ASCENSION_COMPONENTS));
+            ascensionRewardSuppressionTimestamps.putAll(
+                    WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_ASCENSION_REWARD_SUPPRESSION_TIMESTAMPS));
+            ascensionComponentSuppressionTimestamps.putAll(
+                    WorldAwakenedProgressionNbt.readStringLongMap(tag, KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS));
 
             if (pendingAscensionOfferInstances.isEmpty() && !pendingAscensionOffers.isEmpty()) {
                 for (ResourceLocation offerId : pendingAscensionOffers) {
@@ -330,6 +348,41 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             return WorldAwakenedAscensionOfferRuntime.stableOpaqueInstanceId(offerId + "|" + suffix);
         }
 
+        private static Map<ResourceLocation, Set<String>> readSuppressedComponents(CompoundTag tag, String key) {
+            Map<ResourceLocation, Set<String>> values = new LinkedHashMap<>();
+            ListTag entries = tag.getList(key, Tag.TAG_COMPOUND);
+            for (Tag raw : entries) {
+                if (!(raw instanceof CompoundTag entry)) {
+                    continue;
+                }
+                ResourceLocation rewardId = ResourceLocation.tryParse(entry.getString("reward_id"));
+                if (rewardId == null) {
+                    continue;
+                }
+                Set<String> componentKeys = WorldAwakenedProgressionNbt.readStringSet(entry, "component_keys");
+                if (!componentKeys.isEmpty()) {
+                    values.put(rewardId, componentKeys);
+                }
+            }
+            return values;
+        }
+
+        private static void writeSuppressedComponents(CompoundTag tag, String key, Map<ResourceLocation, Set<String>> values) {
+            ListTag entries = new ListTag();
+            values.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> {
+                        if (entry.getValue().isEmpty()) {
+                            return;
+                        }
+                        CompoundTag value = new CompoundTag();
+                        value.putString("reward_id", entry.getKey().toString());
+                        WorldAwakenedProgressionNbt.writeStringSet(value, "component_keys", entry.getValue());
+                        entries.add(value);
+                    });
+            tag.put(key, entries);
+        }
+
         private void writeToTag(CompoundTag tag) {
             rebuildAscensionSummarySets();
             WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_UNLOCKED_STAGES, unlockedStages);
@@ -369,6 +422,16 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
 
             WorldAwakenedProgressionNbt.writeStageLongMap(tag, KEY_ASCENSION_REWARD_UNLOCK_TIMESTAMPS, ascensionRewardUnlockTimestamps);
             WorldAwakenedProgressionNbt.writeStageStringMap(tag, KEY_ASCENSION_REWARD_SOURCES, ascensionRewardSources);
+            WorldAwakenedProgressionNbt.writeResourceLocationSet(tag, KEY_SUPPRESSED_ASCENSION_REWARDS, suppressedAscensionRewards);
+            writeSuppressedComponents(tag, KEY_SUPPRESSED_ASCENSION_COMPONENTS, suppressedAscensionComponentsByReward);
+            WorldAwakenedProgressionNbt.writeStageLongMap(
+                    tag,
+                    KEY_ASCENSION_REWARD_SUPPRESSION_TIMESTAMPS,
+                    ascensionRewardSuppressionTimestamps);
+            WorldAwakenedProgressionNbt.writeStringLongMap(
+                    tag,
+                    KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS,
+                    ascensionComponentSuppressionTimestamps);
         }
 
         private void rebuildAscensionSummarySets() {
@@ -378,6 +441,7 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             }
 
             resolvedAscensionOffers.clear();
+            chosenAscensionRewards.clear();
             for (WorldAwakenedAscensionOfferRuntime runtime : resolvedAscensionOfferInstances.values()) {
                 resolvedAscensionOffers.add(runtime.offerId());
                 runtime.chosenRewardId().ifPresent(chosenAscensionRewards::add);
@@ -387,6 +451,38 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             forfeitedAscensionRewardsByOffer.values().forEach(mergedForfeited::addAll);
             forfeitedAscensionRewards.clear();
             forfeitedAscensionRewards.addAll(mergedForfeited);
+
+            ascensionRewardUnlockTimestamps.keySet().removeIf(rewardId -> !chosenAscensionRewards.contains(rewardId));
+            ascensionRewardSources.keySet().removeIf(rewardId -> !chosenAscensionRewards.contains(rewardId));
+            suppressedAscensionRewards.retainAll(chosenAscensionRewards);
+            suppressedAscensionComponentsByReward.keySet().removeIf(rewardId -> !chosenAscensionRewards.contains(rewardId));
+            suppressedAscensionComponentsByReward.values().forEach(keys -> keys.removeIf(key -> key == null || key.isBlank()));
+            suppressedAscensionComponentsByReward.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+            ascensionRewardSuppressionTimestamps.keySet().removeIf(rewardId -> !chosenAscensionRewards.contains(rewardId));
+            ascensionComponentSuppressionTimestamps.keySet().removeIf(this::suppressionTimestampTargetMissing);
+        }
+
+        private boolean suppressionTimestampTargetMissing(String target) {
+            if (target == null || target.isBlank()) {
+                return true;
+            }
+            if (target.startsWith("reward|")) {
+                ResourceLocation rewardId = ResourceLocation.tryParse(target.substring("reward|".length()));
+                return rewardId == null || !chosenAscensionRewards.contains(rewardId);
+            }
+            if (target.startsWith("component|")) {
+                int divider = target.indexOf('|', "component|".length());
+                if (divider <= "component|".length()) {
+                    return true;
+                }
+                ResourceLocation rewardId = ResourceLocation.tryParse(target.substring("component|".length(), divider));
+                String componentKey = target.substring(divider + 1);
+                if (rewardId == null || componentKey.isBlank()) {
+                    return true;
+                }
+                return !suppressedAscensionComponentsByReward.getOrDefault(rewardId, Set.of()).contains(componentKey);
+            }
+            return true;
         }
 
         @Override
@@ -475,6 +571,22 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
 
         public Map<ResourceLocation, String> ascensionRewardSources() {
             return ascensionRewardSources;
+        }
+
+        public Set<ResourceLocation> suppressedAscensionRewards() {
+            return suppressedAscensionRewards;
+        }
+
+        public Map<ResourceLocation, Set<String>> suppressedAscensionComponentsByReward() {
+            return suppressedAscensionComponentsByReward;
+        }
+
+        public Map<ResourceLocation, Long> ascensionRewardSuppressionTimestamps() {
+            return ascensionRewardSuppressionTimestamps;
+        }
+
+        public Map<String, Long> ascensionComponentSuppressionTimestamps() {
+            return ascensionComponentSuppressionTimestamps;
         }
 
         @Override

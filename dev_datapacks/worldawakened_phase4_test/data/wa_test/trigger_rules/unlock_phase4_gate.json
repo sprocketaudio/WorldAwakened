@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "wa_test:unlock_phase4_gate",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:manual_debug",
+  "source_scope": "player",
+  "conditions": [],
+  "actions": [
+    {
+      "type": "worldawakened:unlock_stage",
+      "parameters": {
+        "stage": "wa_test:phase4_gate"
+      }
+    }
+  ],
+  "one_shot": false
+}

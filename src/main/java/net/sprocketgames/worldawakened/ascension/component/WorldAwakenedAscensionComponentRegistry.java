@@ -18,7 +18,7 @@ public final class WorldAwakenedAscensionComponentRegistry {
         register(type("armor_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("armor_toughness_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("attack_damage_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
-        register(type("movement_speed_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
+        register(type("movement_speed_bonus", true, WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("knockback_resistance_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("luck_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("fire_resistance_passive"));
@@ -31,7 +31,7 @@ public final class WorldAwakenedAscensionComponentRegistry {
         register(type("sprint_efficiency", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("jump_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
         register(type("water_mobility_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
-        register(type("night_vision_passive"));
+        register(type("night_vision_passive", true));
         register(type("hostile_wall_sense"));
         register(type("loot_detection"));
         register(type("crit_bonus", WorldAwakenedAscensionComponentRegistry::requireAmount));
@@ -74,23 +74,36 @@ public final class WorldAwakenedAscensionComponentRegistry {
     }
 
     private static WorldAwakenedAscensionComponentType type(String path) {
-        return type(path, false, Set.of(), parameters -> Optional.empty());
+        return type(path, false, false, Set.of(), parameters -> Optional.empty());
+    }
+
+    private static WorldAwakenedAscensionComponentType type(String path, boolean suppressibleIndividually) {
+        return type(path, false, suppressibleIndividually, Set.of(), parameters -> Optional.empty());
     }
 
     private static WorldAwakenedAscensionComponentType type(
             String path,
             WorldAwakenedAscensionComponentType.ParameterValidator validator) {
-        return type(path, false, Set.of(), validator);
+        return type(path, false, false, Set.of(), validator);
+    }
+
+    private static WorldAwakenedAscensionComponentType type(
+            String path,
+            boolean suppressibleIndividually,
+            WorldAwakenedAscensionComponentType.ParameterValidator validator) {
+        return type(path, false, suppressibleIndividually, Set.of(), validator);
     }
 
     private static WorldAwakenedAscensionComponentType type(
             String path,
             boolean allowDuplicates,
+            boolean suppressibleIndividually,
             Set<ResourceLocation> incompatibleWith,
             WorldAwakenedAscensionComponentType.ParameterValidator validator) {
         return new WorldAwakenedAscensionComponentType(
                 id(path),
                 allowDuplicates,
+                suppressibleIndividually,
                 Set.copyOf(incompatibleWith),
                 validator);
     }

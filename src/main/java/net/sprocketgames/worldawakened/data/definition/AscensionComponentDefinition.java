@@ -1,6 +1,7 @@
 package net.sprocketgames.worldawakened.data.definition;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -17,7 +18,10 @@ public record AscensionComponentDefinition(
         JsonObject parameters,
         List<JsonElement> conditions,
         List<ResourceLocation> exclusions,
-        List<ResourceLocation> conflictsWith) {
+        List<ResourceLocation> conflictsWith,
+        boolean suppressibleIndividually,
+        Optional<String> suppressionGroup,
+        AscensionComponentSuppressionPolicy suppressionPolicy) {
     public static final Codec<AscensionComponentDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             WorldAwakenedJsonCodecs.RESOURCE_LOCATION.fieldOf("type").forGetter(AscensionComponentDefinition::type),
             Codec.BOOL.optionalFieldOf("enabled", true).forGetter(AscensionComponentDefinition::enabled),
@@ -25,6 +29,21 @@ public record AscensionComponentDefinition(
             WorldAwakenedJsonCodecs.JSON_OBJECT.optionalFieldOf("parameters", new JsonObject()).forGetter(AscensionComponentDefinition::parameters),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.listOf().optionalFieldOf("conditions", List.of()).forGetter(AscensionComponentDefinition::conditions),
             WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.optionalFieldOf("exclusions", List.of()).forGetter(AscensionComponentDefinition::exclusions),
-            WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.optionalFieldOf("conflicts_with", List.of()).forGetter(AscensionComponentDefinition::conflictsWith))
+            WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.optionalFieldOf("conflicts_with", List.of()).forGetter(AscensionComponentDefinition::conflictsWith),
+            Codec.BOOL.optionalFieldOf("suppressible_individually", false).forGetter(AscensionComponentDefinition::suppressibleIndividually),
+            Codec.STRING.optionalFieldOf("suppression_group").forGetter(AscensionComponentDefinition::suppressionGroup),
+            AscensionComponentSuppressionPolicy.codec().optionalFieldOf(
+                    "suppression_policy",
+                    AscensionComponentSuppressionPolicy.REWARD_ONLY).forGetter(AscensionComponentDefinition::suppressionPolicy))
             .apply(instance, AscensionComponentDefinition::new));
+
+    public AscensionComponentSuppressionPolicy effectiveSuppressionPolicy() {
+        return suppressionPolicy;
+    }
+
+    public Optional<String> normalizedSuppressionGroup() {
+        return suppressionGroup
+                .map(String::trim)
+                .filter(value -> !value.isEmpty());
+    }
 }

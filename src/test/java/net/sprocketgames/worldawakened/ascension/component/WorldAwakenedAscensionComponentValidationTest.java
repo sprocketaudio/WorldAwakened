@@ -3,6 +3,7 @@ package net.sprocketgames.worldawakened.ascension.component;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
@@ -10,6 +11,7 @@ import com.google.gson.JsonObject;
 
 import net.minecraft.resources.ResourceLocation;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
+import net.sprocketgames.worldawakened.data.definition.AscensionComponentSuppressionPolicy;
 
 class WorldAwakenedAscensionComponentValidationTest {
     @Test
@@ -62,12 +64,105 @@ class WorldAwakenedAscensionComponentValidationTest {
         assertHasIssue(result, WorldAwakenedAscensionComponentValidation.IssueKind.NO_RUNTIME_RESULT);
     }
 
+    @Test
+    void rejectsGroupedSuppressionWithoutGroup() {
+        AscensionComponentDefinition grouped = component(
+                "worldawakened:movement_speed_bonus",
+                true,
+                params("amount", 0.1D),
+                List.of(),
+                List.of(),
+                true,
+                Optional.empty(),
+                AscensionComponentSuppressionPolicy.GROUPED);
+        WorldAwakenedAscensionComponentValidation.Result result =
+                WorldAwakenedAscensionComponentValidation.validate(List.of(grouped));
+        assertHasIssue(result, WorldAwakenedAscensionComponentValidation.IssueKind.SUPPRESSION_GROUP_REQUIRED);
+    }
+
+    @Test
+    void rejectsIndependentSuppressionOnUnsupportedComponentType() {
+        AscensionComponentDefinition unsupported = component(
+                "worldawakened:max_health_bonus",
+                true,
+                params("amount", 2.0D),
+                List.of(),
+                List.of(),
+                true,
+                Optional.empty(),
+                AscensionComponentSuppressionPolicy.INDEPENDENT);
+        WorldAwakenedAscensionComponentValidation.Result result =
+                WorldAwakenedAscensionComponentValidation.validate(List.of(unsupported));
+        assertHasIssue(result, WorldAwakenedAscensionComponentValidation.IssueKind.COMPONENT_NOT_SUPPRESSIBLE);
+    }
+
+    @Test
+    void rejectsComponentLevelSuppressionWhenMetadataFlagIsNotEnabled() {
+        AscensionComponentDefinition missingMetadataFlag = component(
+                "worldawakened:movement_speed_bonus",
+                true,
+                params("amount", 0.2D),
+                List.of(),
+                List.of(),
+                false,
+                Optional.empty(),
+                AscensionComponentSuppressionPolicy.INDEPENDENT);
+        WorldAwakenedAscensionComponentValidation.Result result =
+                WorldAwakenedAscensionComponentValidation.validate(List.of(missingMetadataFlag));
+        assertHasIssue(result, WorldAwakenedAscensionComponentValidation.IssueKind.COMPONENT_NOT_SUPPRESSIBLE);
+    }
+
+    @Test
+    void rejectsConflictingSuppressionPoliciesInOneGroup() {
+        AscensionComponentDefinition grouped = component(
+                "worldawakened:movement_speed_bonus",
+                true,
+                params("amount", 0.15D),
+                List.of(),
+                List.of(),
+                false,
+                Optional.of("mobility_package"),
+                AscensionComponentSuppressionPolicy.GROUPED);
+        AscensionComponentDefinition independentWithGroup = component(
+                "worldawakened:movement_speed_bonus",
+                true,
+                params("amount", 0.2D),
+                List.of(),
+                List.of(),
+                true,
+                Optional.of("mobility_package"),
+                AscensionComponentSuppressionPolicy.INDEPENDENT);
+        WorldAwakenedAscensionComponentValidation.Result result =
+                WorldAwakenedAscensionComponentValidation.validate(List.of(grouped, independentWithGroup));
+        assertHasIssue(result, WorldAwakenedAscensionComponentValidation.IssueKind.SUPPRESSION_INVALID_PARTIAL);
+    }
+
     private static AscensionComponentDefinition component(
             String type,
             boolean enabled,
             JsonObject parameters,
             List<ResourceLocation> exclusions,
             List<ResourceLocation> conflictsWith) {
+        return component(
+                type,
+                enabled,
+                parameters,
+                exclusions,
+                conflictsWith,
+                false,
+                Optional.empty(),
+                AscensionComponentSuppressionPolicy.REWARD_ONLY);
+    }
+
+    private static AscensionComponentDefinition component(
+            String type,
+            boolean enabled,
+            JsonObject parameters,
+            List<ResourceLocation> exclusions,
+            List<ResourceLocation> conflictsWith,
+            boolean suppressibleIndividually,
+            Optional<String> suppressionGroup,
+            AscensionComponentSuppressionPolicy suppressionPolicy) {
         return new AscensionComponentDefinition(
                 ResourceLocation.parse(type),
                 enabled,
@@ -75,7 +170,10 @@ class WorldAwakenedAscensionComponentValidationTest {
                 parameters,
                 List.of(),
                 exclusions,
-                conflictsWith);
+                conflictsWith,
+                suppressibleIndividually,
+                suppressionGroup,
+                suppressionPolicy);
     }
 
     private static JsonObject params() {

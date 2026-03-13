@@ -3,7 +3,7 @@
 Canonical reference for mutation and ascension component IDs, schemas, statuses, and composition rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Runtime component contracts and authoring/tooling alignment
 
 ---
@@ -45,6 +45,9 @@ Terminology:
 Phase 4 runtime application note:
 - Ascension reward reconciliation now reapplies selected reward effects on login and respawn.
 - Current live player-effect handlers are wired for: `max_health_bonus`, `armor_bonus`, `armor_toughness_bonus`, `attack_damage_bonus`, `movement_speed_bonus`, `knockback_resistance_bonus`, `luck_bonus`, `fire_resistance_passive`, and `night_vision_passive`.
+- Reconciliation is additive-first and only clears World Awakened-owned attribute modifiers keyed under the `worldawakened:ascension/...` namespace/path contract.
+- Refreshable/revocable non-attribute effects must route through WA-owned runtime carriers keyed by stable WA-owned source keys; shared vanilla/modded effect carriers are not normalized or cleared during reconciliation.
+- `fire_resistance_passive` is backed by a WA-owned server runtime carrier; `night_vision_passive` is backed by a WA-owned client visual carrier driven from synced owned-carrier state and the client lightmap path.
 - Other ascension component IDs listed as implemented remain valid/validated authored types, but may still be inert until their dedicated runtime handlers are added in later phases.
 
 ## 2. Shared Authoring Rules
@@ -106,6 +109,9 @@ Common conceptual entry fields:
 - `composition_priority` (optional conceptual field)
 - `requires_component_types` (optional conceptual field)
 - `forbidden_component_types` (optional conceptual field)
+- `suppressible_individually` (optional ascension metadata; default `false`)
+- `suppression_policy` (optional ascension metadata; `reward_only | independent | grouped`, default `reward_only`)
+- `suppression_group` (optional ascension metadata; required when `suppression_policy=grouped`)
 
 Current v1 codec note:
 - Mutation/ascension component entries currently encode gating/conflicts with `conditions`, `exclusions`, and `conflicts_with`.
@@ -2161,6 +2167,16 @@ Ascension components are reusable permanent player-benefit packages used inside 
 A reward may combine multiple compatible components.
 Live effects are reconciled from saved chosen reward definitions.
 
+Ascension suppression metadata (v1):
+- reward-level suppression is always allowed
+- component-level suppression requires both:
+  - component type metadata support in the registry
+  - authored component metadata support (`suppressible_individually` / `suppression_policy`)
+- component-level suppression policies (`independent` / `grouped`) require `suppressible_individually=true`
+- grouped suppression requires `suppression_policy=grouped` plus a shared `suppression_group`
+- grouped suppression resolves and applies as all-linked-components together
+- invalid partial suppression states are rejected
+
 ### Core stats
 
 ## `max_health_bonus`
@@ -2375,6 +2391,10 @@ Applies `fire_resistance_passive` behavior to a named ascension reward definitio
 **Parameters:**
 - No required parameters in current validators.
 
+**Runtime Notes:**
+- Implemented through a WA-owned server runtime carrier keyed by a stable WA-owned source key.
+- Reconcile may refresh or remove this carrier without touching shared vanilla or other-mod effect slots.
+
 **Defaults / Notes:**
 - **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
@@ -2382,6 +2402,7 @@ Applies `fire_resistance_passive` behavior to a named ascension reward definitio
 
 **Compatibility Notes:**
 - Duplicates are rejected unless the component type explicitly allows duplicates.
+- Current live reconciliation routes this component through a WA-owned runtime carrier that blocks fire-tagged incoming damage without touching shared vanilla/modded effect state.
 
 **Example Snippet:**
 ```json
@@ -2684,6 +2705,11 @@ Applies `night_vision_passive` behavior to a named ascension reward definition i
 **Parameters:**
 - No required parameters in current validators.
 
+**Runtime Notes:**
+- Implemented through a WA-owned client visual carrier keyed by a stable WA-owned source key and synced to the owning client.
+- Uses a WA-owned lightmap-backed night-vision scale path plus the matching fog-color lift instead of injecting the vanilla `NIGHT_VISION` mob effect.
+- Yields when the client already has real vanilla/modded `NIGHT_VISION` so the WA-owned carrier does not double-stack the viewport path and instead reuses the vanilla lightmap scale.
+
 **Defaults / Notes:**
 - **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
@@ -2691,6 +2717,7 @@ Applies `night_vision_passive` behavior to a named ascension reward definition i
 
 **Compatibility Notes:**
 - Duplicates are rejected unless the component type explicitly allows duplicates.
+- Current live reconciliation applies this component through a WA-owned client visual carrier and lightmap hook rather than the shared vanilla `NIGHT_VISION` effect slot.
 
 **Example Snippet:**
 ```json
@@ -3377,6 +3404,9 @@ Recommended error code families:
 - `WA_ASCENSION_COMPONENT_PARAM_INVALID`
 - `WA_ASCENSION_COMPONENT_CONFLICT`
 - `WA_ASCENSION_COMPOSITION_EMPTY`
+- `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE`
+- `WA_ASC_SUPPRESSION_GROUP_REQUIRED`
+- `WA_ASC_SUPPRESSION_INVALID_PARTIAL`
 
 Current implementation note:
 - Runtime diagnostics currently use shared component codes such as `WA_COMPONENT_TYPE_UNKNOWN`, `WA_COMPONENT_PARAMETERS_INVALID`, `WA_COMPONENT_COMPOSITION_INVALID`, `WA_COMPONENT_ARRAY_EMPTY`, and `WA_COMPONENT_BUDGET_EXCEEDED`.
@@ -3393,8 +3423,8 @@ Mutation preset examples:
 - `summoner_juggernaut` -> `reinforcement_summon` + `summon_cooldown` + `max_health_multiplier` + `armor_bonus` (conceptual hybrid example).
 
 Ascension preset examples:
-- `ember_blood` -> `max_health_bonus` + `fire_resistance_passive` + `healing_efficiency_bonus` (shipped external example-pack content).
-- `grave_stride` -> `step_height_bonus` + `night_vision_passive` + `fall_damage_reduction` (conceptual example).
+- `ember_blood` -> `armor_toughness_bonus` + `attack_damage_bonus` + `fire_resistance_passive` + `healing_efficiency_bonus` (shipped external example-pack content).
+- `grave_stride` -> `movement_speed_bonus` + `step_height_bonus` + `night_vision_passive` + `fall_damage_reduction` + `knockback_resistance_bonus` (shipped external example-pack content).
 - `predator_sense` -> `hostile_wall_sense` + `loot_detection` + `crit_bonus` (conceptual example).
 - `unyielding_will` -> `extra_revival_buffer` + `debuff_resistance` + `mutation_resistance_bonus` (conceptual example).
 

@@ -157,6 +157,7 @@ What these tell you:
 - which stages are unlocked
 - which rules are currently active or blocked
 - whether the player has pending or resolved ascension instances
+- which WA-owned carriers are currently active on the player, including client-visual carriers such as passive night vision that now drive a lightmap-backed client render path
 
 ## 4. Baseline Mutation Commands
 
@@ -189,6 +190,11 @@ Use these when you want to test the authored trigger path rather than forcing st
 /wa ascension open Dev
 /wa ascension choose Dev <instance_id> <reward_id>
 /wa ascension active Dev <reward_id>
+/wa ascension suppress reward Dev <reward_id>
+/wa ascension unsuppress reward Dev <reward_id>
+/wa ascension suppress component Dev <reward_id> <component_key>
+/wa ascension unsuppress component Dev <reward_id> <component_key>
+/wa ascension reconcile Dev
 /wa ascension revoke Dev <reward_id>
 /wa ascension reopen Dev <instance_id>
 /wa ascension clear Dev <instance_id>
@@ -212,6 +218,24 @@ Runtime `instance_id` values are short opaque command-safe IDs such as `wao_ab12
 ### `active`
 
 Use when you want to resolve the currently active pending offer without typing the runtime `instance_id`.
+
+### `suppress reward` / `unsuppress reward`
+
+Use when a player should keep ownership of a chosen reward but temporarily stop or re-enable its live effects.
+
+### `suppress component` / `unsuppress component`
+
+Use when a reward component is explicitly authored as component-suppressible and you want partial suppression without disabling the whole reward.
+
+Notes:
+- component keys come from `/wa ascension inspect <player>` and command suggestions
+- inspect/suggestions emit canonical component keys in `index|namespace:component_type` form (example: `0|worldawakened:movement_speed_bonus`); index-only shorthand like `0` is also accepted
+- component-level suppression policy must be authored with `suppressible_individually=true`
+- grouped suppression metadata can cause one component command to affect multiple linked component keys
+
+### `reconcile`
+
+Use when you want to force a fresh ascension projection pass immediately (for example after datapack reload or suppression changes).
 
 This is the fastest operator path in v1.
 
@@ -305,6 +329,16 @@ Use when the player should be able to choose again.
 ```
 
 Use when the instance should disappear instead of being reopened.
+
+### Temporarily disable one owned reward without revoking ownership
+
+```text
+/wa ascension suppress reward Dev <reward_id>
+/wa ascension inspect Dev
+/wa ascension unsuppress reward Dev <reward_id>
+```
+
+Use when the player should keep the reward choice permanently but pause live effects.
 
 ### Clean-room development reset
 

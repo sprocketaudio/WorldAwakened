@@ -64,6 +64,14 @@ class WorldAwakenedPlayerProgressionSavedDataTest {
                 new java.util.LinkedHashSet<>(List.of(id("testpack:reward_2"))));
         state.ascensionRewardUnlockTimestamps().put(chosenReward, 1000L);
         state.ascensionRewardSources().put(chosenReward, "stage:testpack:baseline");
+        state.suppressedAscensionRewards().add(chosenReward);
+        state.suppressedAscensionComponentsByReward().put(
+                chosenReward,
+                new java.util.LinkedHashSet<>(List.of("0|worldawakened:max_health_bonus")));
+        state.ascensionRewardSuppressionTimestamps().put(chosenReward, 1500L);
+        state.ascensionComponentSuppressionTimestamps().put(
+                "component|" + chosenReward + "|0|worldawakened:max_health_bonus",
+                1500L);
 
         CompoundTag encoded = data.toTag();
         WorldAwakenedPlayerProgressionSavedData decoded = WorldAwakenedPlayerProgressionSavedData.fromTag(encoded);
@@ -87,6 +95,15 @@ class WorldAwakenedPlayerProgressionSavedDataTest {
         assertTrue(decodedState.forfeitedAscensionRewardsByOffer().containsKey(pendingInstanceId));
         assertEquals(1000L, decodedState.ascensionRewardUnlockTimestamps().get(chosenReward));
         assertEquals("stage:testpack:baseline", decodedState.ascensionRewardSources().get(chosenReward));
+        assertTrue(decodedState.suppressedAscensionRewards().contains(chosenReward));
+        assertEquals(
+                new java.util.LinkedHashSet<>(List.of("0|worldawakened:max_health_bonus")),
+                decodedState.suppressedAscensionComponentsByReward().get(chosenReward));
+        assertEquals(1500L, decodedState.ascensionRewardSuppressionTimestamps().get(chosenReward));
+        assertEquals(
+                1500L,
+                decodedState.ascensionComponentSuppressionTimestamps()
+                        .get("component|" + chosenReward + "|0|worldawakened:max_health_bonus"));
     }
 
     @Test

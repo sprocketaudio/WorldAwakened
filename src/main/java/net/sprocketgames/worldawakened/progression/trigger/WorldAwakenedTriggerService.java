@@ -98,14 +98,15 @@ public final class WorldAwakenedTriggerService {
     }
 
     public WorldAwakenedTriggerRunResult onEntityKilled(ServerLevel level, ServerPlayer killer, Entity killedEntity) {
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
         ResourceLocation entityId = BuiltInRegistries.ENTITY_TYPE.getKey(killedEntity.getType());
         Set<ResourceLocation> entityTags = collectEntityTags(killedEntity);
-        boolean mappedBoss = datapackService.currentSnapshot()
+        boolean mappedBoss = snapshot
                 .data()
                 .bossClassifier()
                 .isBoss(new EntityContext(entityId, entityTags, mobCategory(killedEntity)));
 
-        WorldAwakenedTriggerRunResult entityKilledResult = evaluateAndApply(new TriggerEventContext(
+        WorldAwakenedTriggerRunResult entityKilledResult = evaluateAndApply(snapshot, new TriggerEventContext(
                 WorldAwakenedTriggerTypes.ENTITY_KILLED,
                 level,
                 killer,
@@ -119,7 +120,7 @@ public final class WorldAwakenedTriggerService {
                 Optional.empty(),
                 true);
 
-        WorldAwakenedTriggerRunResult bossKilledResult = evaluateAndApply(new TriggerEventContext(
+        WorldAwakenedTriggerRunResult bossKilledResult = evaluateAndApply(snapshot, new TriggerEventContext(
                 WorldAwakenedTriggerTypes.BOSS_KILLED,
                 level,
                 killer,
@@ -204,7 +205,17 @@ public final class WorldAwakenedTriggerService {
             TriggerEventContext eventContext,
             Optional<ResourceLocation> targetedRuleId,
             boolean runRules) {
-        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        return evaluateAndApply(datapackService.currentSnapshot(), eventContext, targetedRuleId, runRules);
+    }
+
+    private WorldAwakenedTriggerRunResult evaluateAndApply(
+            WorldAwakenedDatapackSnapshot pinnedSnapshot,
+            TriggerEventContext eventContext,
+            Optional<ResourceLocation> targetedRuleId,
+            boolean runRules) {
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.pinSnapshot(
+                pinnedSnapshot,
+                "trigger.evaluate_and_apply:" + eventContext.triggerType());
 
         long nowMillis = System.currentTimeMillis();
         StageSnapshots stageSnapshots = readStageSnapshots(eventContext.level(), eventContext.player());

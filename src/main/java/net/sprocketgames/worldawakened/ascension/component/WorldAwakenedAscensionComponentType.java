@@ -10,6 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 public record WorldAwakenedAscensionComponentType(
         ResourceLocation id,
         boolean allowDuplicates,
+        boolean suppressibleIndividually,
         Set<ResourceLocation> incompatibleWith,
         ParameterValidator parameterValidator) {
     @FunctionalInterface

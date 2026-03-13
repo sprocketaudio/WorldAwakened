@@ -3,7 +3,7 @@
 Reference catalog for higher-level authored presets and templates built from shared framework primitives.
 
 - Document status: Active reference catalog
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: Preset/template composition patterns and shipped/example status taxonomy
 
 ---
@@ -104,7 +104,7 @@ Compact index:
 | `hunters_instinct` | Ascension reward | example-only | Tracking/crit hunter identity |
 | `unyielding` | Ascension reward | conceptual | Mitigation/survival identity |
 | `treasure_sense` | Ascension reward | example-only | Loot utility identity |
-| `ember_blood` (`worldawakened:ember_blood`) | Ascension reward | shipped | Fire-sustain hybrid |
+| `ember_blood` (`worldawakened:ember_blood`) | Ascension reward | shipped | Durable sustain hybrid |
 | `predator_sense` | Ascension reward | example-only | Elite tracking/offense utility |
 | `unyielding_will` | Ascension reward | conceptual | Late survivability anchor |
 | `early_overworld_elite_pool` | Mutation pool | shipped | Early controlled elite intro |
@@ -284,13 +284,13 @@ Each entry follows this format:
 ### `ember_blood` (`worldawakened:ember_blood`)
 - **Category:** Ascension reward preset
 - **Source Status:** `shipped`
-- **Design Intent:** Fire-resilient sustain/offense hybrid for early to mid progression.
-- **Composition Summary:** Passive fire resistance with small offense and resilience package.
-- **Key Components:** `worldawakened:fire_resistance_passive`, `worldawakened:attack_damage_bonus`, `worldawakened:debuff_resistance`, `worldawakened:healing_efficiency_bonus`.
+- **Design Intent:** Durable sustain/offense hybrid for early to mid progression.
+- **Composition Summary:** Armor-toughness, offense, and resilience package.
+- **Key Components:** `worldawakened:armor_toughness_bonus`, `worldawakened:attack_damage_bonus`, `worldawakened:fire_resistance_passive`, `worldawakened:debuff_resistance`, `worldawakened:healing_efficiency_bonus`.
 - **Key Conditions:** None in reward object.
 - **Related Objects:** Offers: `worldawakened:starter_adaptation`, `worldawakened:survival_path`; rules: `player_starter_offer_cycle`, `player_survival_offer_cycle`.
-- **Example Use Case:** Reliable first ascension choice for players entering hostile biomes or fire-heavy encounters.
-- **Notes:** Permanent benefit profile: balanced offense/survival baseline. Player fantasy: fire-touched survivor. Synergy: `tempered_steel` paths and sustain combat builds. File reference: `example_datapacks/worldawakened_example_pack/data/worldawakened/ascension_rewards/ember_blood.json`.
+- **Example Use Case:** Reliable first ascension choice for players entering sustained combat or attrition-heavy encounters.
+- **Notes:** Permanent benefit profile: balanced offense/survival baseline. Player fantasy: hardened survivor. Synergy: `tempered_steel` paths and sustain combat builds. File reference: `example_datapacks/worldawakened_example_pack/data/worldawakened/ascension_rewards/ember_blood.json`.
 
 ### `predator_sense`
 - **Category:** Ascension reward preset
@@ -369,7 +369,7 @@ Each entry follows this format:
 - **Source Status:** `shipped`
 - **Design Intent:** Defensive/tank reward choice set for survivability-focused players.
 - **Composition Summary:** Explicit 3-choice/1-selection offer built from defensive rewards.
-- **Key Components:** Via reward refs: `armor_bonus`, `armor_toughness_bonus`, `max_health_bonus`, `extra_revival_buffer`, `damage_type_resistance`, `debuff_resistance`.
+- **Key Components:** Via reward refs: `armor_bonus`, `armor_toughness_bonus`, `max_health_bonus`, `extra_revival_buffer`, `damage_type_resistance`, `debuff_resistance`, `fire_resistance_passive`.
 - **Key Conditions:** Offer `trigger_conditions` with `worldawakened:world_day_gte` (16), plus rule-side `worldawakened:random_chance` and cooldown.
 - **Related Objects:** Offer `worldawakened:survival_path`; rule `worldawakened:ascension/player_survival_offer_cycle`; rewards `tempered_steel`, `void_resilience`, `ember_blood`.
 - **Example Use Case:** Survival-first progression where death tolerance matters more than burst output.
@@ -391,7 +391,7 @@ Each entry follows this format:
 - **Source Status:** `shipped`
 - **Design Intent:** Mobility and utility progression path.
 - **Composition Summary:** Explicit-list offer emphasizing movement, traversal, and loot utility.
-- **Key Components:** Via reward refs: `movement_speed_bonus`, `step_height_bonus`, `night_vision_passive`, `loot_detection`, `luck_bonus`.
+- **Key Components:** Via reward refs: `movement_speed_bonus`, `step_height_bonus`, `night_vision_passive`, `knockback_resistance_bonus`, `loot_detection`, `luck_bonus`.
 - **Key Conditions:** Offer `worldawakened:world_day_gte` (12) and rule-side chance/cooldown controls.
 - **Related Objects:** Offer `worldawakened:explorer_path`; rule `worldawakened:ascension/player_explorer_offer_cycle`; rewards `grave_stride`, `storm_chaser`, `arcane_luck`.
 - **Example Use Case:** Exploration-heavy packs with broad world traversal loops.

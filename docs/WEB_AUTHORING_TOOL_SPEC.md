@@ -3,7 +3,7 @@
 Browser-based datapack authoring and validation companion for World Awakened.
 
 - Document status: Active v1 companion spec
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Scope: v1 required deliverable (late-phase implementation)
 
 ---
@@ -160,6 +160,7 @@ Must support:
 Must support:
 - component registry selection
 - parameter editing
+- ascension suppression metadata editing (`suppressible_individually`, `suppression_policy`, `suppression_group`)
 - deterministic ordering controls
 - conflict detection
 - duplicate/conflict/order resolution preview against canonical rules
@@ -177,6 +178,8 @@ Must display:
 - incompatible components
 - invalid schema shape
 - unsupported feature usage
+- suppression validation diagnostics (`WA_ASC_COMPONENT_NOT_SUPPRESSIBLE`, `WA_ASC_SUPPRESSION_GROUP_REQUIRED`, `WA_ASC_SUPPRESSION_INVALID_PARTIAL`)
+- optional runtime-surface compatibility diagnostics for compat-sensitive component branches (`WA_RUNTIME_SURFACE_OPTIONAL_UNAVAILABLE` and specialized surface-unavailable codes)
 - reason-code category mapping aligned with runtime diagnostics
 - performance-budget warnings (rule bucket sizes, actions-per-rule, mutator/component hot-path thresholds)
 
@@ -269,6 +272,8 @@ Three required validation layers:
 - incompatible components
 - invalid condition payloads
 - missing required companion components
+- invalid suppression metadata (`suppression_policy`, `suppression_group`, component-level suppressibility)
+- reject `suppression_policy=independent|grouped` unless `suppressible_individually=true`
 
 3. Cross-object validation
 - missing references
@@ -379,6 +384,10 @@ Feature labels:
 - implemented
 - planned
 - deprecated
+
+Carrier-backed component note:
+- implemented component labels must reflect owned-carrier support, not just schema validity
+- for example `fire_resistance_passive` and `night_vision_passive` are `implemented` because the runtime owns their refresh/revoke path through WA-owned server/client carriers rather than shared vanilla effect slots; the night-vision carrier is lightmap-backed on the owning client instead of borrowing the vanilla effect slot
 
 Importing older datapacks:
 - allowed when schema compatibility exists

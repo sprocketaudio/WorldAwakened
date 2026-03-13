@@ -10,6 +10,7 @@ import java.util.Set;
 
 import net.minecraft.resources.ResourceLocation;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
+import net.sprocketgames.worldawakened.data.definition.AscensionComponentSuppressionPolicy;
 
 public final class WorldAwakenedAscensionComponentValidation {
     private WorldAwakenedAscensionComponentValidation() {
@@ -25,6 +26,8 @@ public final class WorldAwakenedAscensionComponentValidation {
         LinkedHashSet<ResourceLocation> activeTypeIds = new LinkedHashSet<>();
         Map<ResourceLocation, Integer> activeCounts = new LinkedHashMap<>();
         Map<Integer, WorldAwakenedAscensionComponentType> activeTypesByIndex = new LinkedHashMap<>();
+        Map<String, AscensionComponentSuppressionPolicy> suppressionPolicyByGroup = new LinkedHashMap<>();
+        Map<String, Integer> firstGroupIndex = new LinkedHashMap<>();
 
         for (int index = 0; index < components.size(); index++) {
             AscensionComponentDefinition component = components.get(index);
@@ -36,11 +39,19 @@ public final class WorldAwakenedAscensionComponentValidation {
                 continue;
             }
 
+            WorldAwakenedAscensionComponentType resolvedType = type.get();
+            validateSuppressionMetadata(
+                    component,
+                    resolvedType,
+                    index,
+                    suppressionPolicyByGroup,
+                    firstGroupIndex,
+                    issues);
+
             if (!component.enabled()) {
                 continue;
             }
 
-            WorldAwakenedAscensionComponentType resolvedType = type.get();
             int componentIndex = index;
             Optional<String> parameterError = resolvedType.parameterValidator().validate(component.parameters());
             parameterError.ifPresent(error -> issues.add(new Issue(
@@ -107,13 +118,75 @@ public final class WorldAwakenedAscensionComponentValidation {
         return List.copyOf(deduplicated);
     }
 
+    private static void validateSuppressionMetadata(
+            AscensionComponentDefinition component,
+            WorldAwakenedAscensionComponentType type,
+            int index,
+            Map<String, AscensionComponentSuppressionPolicy> suppressionPolicyByGroup,
+            Map<String, Integer> firstGroupIndex,
+            List<Issue> issues) {
+        AscensionComponentSuppressionPolicy policy = component.effectiveSuppressionPolicy();
+        Optional<String> suppressionGroup = component.normalizedSuppressionGroup();
+
+        if (component.suppressionGroup().isPresent() && suppressionGroup.isEmpty()) {
+            issues.add(new Issue(
+                    IssueKind.SUPPRESSION_INVALID_PARTIAL,
+                    "components[" + index + "].suppression_group must not be blank"));
+        }
+
+        boolean componentLevelSuppressionRequested = policy == AscensionComponentSuppressionPolicy.INDEPENDENT
+                || policy == AscensionComponentSuppressionPolicy.GROUPED;
+        if (componentLevelSuppressionRequested && !component.suppressibleIndividually()) {
+            issues.add(new Issue(
+                    IssueKind.COMPONENT_NOT_SUPPRESSIBLE,
+                    "components[" + index + "] component-level suppression requires suppressible_individually=true"));
+        }
+
+        if (componentLevelSuppressionRequested && !type.suppressibleIndividually()) {
+            issues.add(new Issue(
+                    IssueKind.COMPONENT_NOT_SUPPRESSIBLE,
+                    "components[" + index + "] type " + component.type() + " does not support component-level suppression"));
+        }
+
+        if (policy == AscensionComponentSuppressionPolicy.GROUPED && suppressionGroup.isEmpty()) {
+            issues.add(new Issue(
+                    IssueKind.SUPPRESSION_GROUP_REQUIRED,
+                    "components[" + index + "] grouped suppression requires suppression_group"));
+            return;
+        }
+
+        if (policy != AscensionComponentSuppressionPolicy.GROUPED && suppressionGroup.isPresent()) {
+            issues.add(new Issue(
+                    IssueKind.SUPPRESSION_INVALID_PARTIAL,
+                    "components[" + index + "] suppression_group requires suppression_policy=grouped"));
+        }
+
+        if (suppressionGroup.isPresent()) {
+            String group = suppressionGroup.get();
+            AscensionComponentSuppressionPolicy existing = suppressionPolicyByGroup.get(group);
+            if (existing == null) {
+                suppressionPolicyByGroup.put(group, policy);
+                firstGroupIndex.put(group, index);
+            } else if (existing != policy) {
+                issues.add(new Issue(
+                        IssueKind.SUPPRESSION_INVALID_PARTIAL,
+                        "components[" + index + "] suppression_group '" + group
+                                + "' conflicts with components[" + firstGroupIndex.get(group)
+                                + "] policy " + existing.serializedName()));
+            }
+        }
+    }
+
     public enum IssueKind {
         EMPTY_COMPONENT_LIST,
         UNKNOWN_COMPONENT_TYPE,
         INVALID_COMPONENT_PARAMETERS,
         INCOMPATIBLE_COMPONENT_COMPOSITION,
         NO_RUNTIME_RESULT,
-        DUPLICATE_COMPONENT_TYPE
+        DUPLICATE_COMPONENT_TYPE,
+        COMPONENT_NOT_SUPPRESSIBLE,
+        SUPPRESSION_GROUP_REQUIRED,
+        SUPPRESSION_INVALID_PARTIAL
     }
 
     public record Issue(IssueKind kind, String detail) {
