@@ -3,7 +3,7 @@
 Short answers to the questions people actually ask.
 
 - Document status: Active human-friendly FAQ
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Common operator and author questions
 
 ---
@@ -57,6 +57,60 @@ No.
 
 Suppression is only a live-effect toggle for already owned rewards/components.
 Ownership, exclusivity, and forfeiture history stay permanent.
+
+## How Do Mutator Caps And Overrides Work?
+
+There are two mutator cap layers.
+
+- `mutators.max_mutators_per_mob` in `worldawakened-common.toml` is the global default cap.
+- `mutation_pools[].max_mutators_per_entity` is an optional per-pool override.
+
+Resolution order:
+1. if the selected mutation pool defines `max_mutators_per_entity`, that value is used
+2. otherwise the global TOML default is used
+
+Practical use:
+- keep the global default conservative
+- raise caps only on specific pools where you intentionally want stronger rolls
+
+## Why Did A Selected Mutation Pool Still Not Mutate The Mob?
+
+Because pool selection and mutation application are separate steps.
+
+- pool weight decides which eligible pool wins
+- selected pool `mutation_chance` decides whether mutation proceeds
+
+`mutation_chance` defaults to `1.0` when omitted.
+
+- `1.0`: always mutate after selection
+- `0.0`: never mutate
+- values between `0.0` and `1.0`: deterministic per-evaluation roll
+
+Use `/wa debug mutators evaluate <entity_id>` and check:
+- `selected_pool`
+- `chance_result`
+- `final_outcome` (`chance_failed` means chance gate blocked mutation)
+
+## Do Spawner And Trial Spawner Mobs Get Mutated By Default?
+
+No.
+
+Mutation pools skip both sources unless the pool explicitly opts in.
+
+Use these pool fields when you want to allow them:
+- `allow_from_spawner`
+- `allow_from_trial_spawner`
+
+That keeps common modpack grinders and farm setups from getting unexpectedly buffed.
+
+## How Does `per_player` Mode Affect Spawn-Time Mutators?
+
+Spawn-time mutator evaluation is attributed to the nearest nearby non-spectator player.
+
+Practical result:
+- a mob near the progressed player can mutate from that player's unlocked stages
+- a mob near a player who has not passed the gate should not mutate from another player's progress
+- if no nearby player can be attributed, the mutator pass fails closed and the mob stays unmutated
 
 ## When Should I Use `world`-Scoped Triggers?
 

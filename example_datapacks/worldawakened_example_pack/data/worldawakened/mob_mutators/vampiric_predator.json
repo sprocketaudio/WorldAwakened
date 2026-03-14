@@ -53,7 +53,6 @@
       }
     }
   ],
-  "component_budget": 4,
   "reward_modifier": {
     "xp_multiplier": 1.18,
     "loot_bonus_chance": 0.05

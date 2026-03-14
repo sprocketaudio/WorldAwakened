@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "wa_p5_test:skeleton_guard",
+  "display_name": "WA P5 Skeleton Guard",
+  "enabled": true,
+  "rarity": "common",
+  "weight": 7,
+  "stacking_group": "guard",
+  "max_stack_count": 1,
+  "components": [
+    {
+      "type": "worldawakened:max_health_bonus",
+      "parameters": {
+        "amount": 6.0
+      }
+    },
+    {
+      "type": "worldawakened:knockback_resistance_bonus",
+      "parameters": {
+        "amount": 0.2
+      }
+    },
+    {
+      "type": "worldawakened:ambient_particles",
+      "parameters": {
+        "particle": "minecraft:flame",
+        "count": 2,
+        "offset_x": 0.2,
+        "offset_y": 0.4,
+        "offset_z": 0.2,
+        "speed": 0.01,
+        "interval_ticks": 10
+      }
+    },
+    {
+      "type": "worldawakened:equip_item",
+      "parameters": {
+        "item": "minecraft:diamond_sword",
+        "slot": "auto",
+        "drop_chance": 0.05
+      }
+    }
+  ],
+  "eligible_entities": [
+    "minecraft:skeleton",
+    "minecraft:stray"
+  ],
+  "applies_to_bosses": false,
+  "applies_to_invaders": false,
+  "application_contexts": [
+    "on_spawn"
+  ]
+}

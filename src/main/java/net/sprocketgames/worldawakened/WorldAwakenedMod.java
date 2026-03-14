@@ -22,11 +22,13 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDataReloadListener
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorEventHandlers;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
+import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.progression.trigger.WorldAwakenedTriggerEventHandlers;
 import net.sprocketgames.worldawakened.progression.trigger.WorldAwakenedTriggerService;
 import net.sprocketgames.worldawakened.rules.WorldAwakenedRuleService;
-import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
 
 @Mod(WorldAwakenedConstants.MOD_ID)
 public final class WorldAwakenedMod {
@@ -36,6 +38,7 @@ public final class WorldAwakenedMod {
     public static final WorldAwakenedAscensionService ASCENSION_SERVICE = new WorldAwakenedAscensionService(DATAPACK_SERVICE, STAGE_SERVICE);
     public static final WorldAwakenedRuleService RULE_SERVICE = new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE);
     public static final WorldAwakenedTriggerService TRIGGER_SERVICE = new WorldAwakenedTriggerService(DATAPACK_SERVICE, STAGE_SERVICE, RULE_SERVICE, ASCENSION_SERVICE);
+    public static final WorldAwakenedMutatorService MUTATOR_SERVICE = new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE);
 
     public WorldAwakenedMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
@@ -45,6 +48,7 @@ public final class WorldAwakenedMod {
         WorldAwakenedTriggerEventHandlers triggerHandlers = new WorldAwakenedTriggerEventHandlers(TRIGGER_SERVICE);
         WorldAwakenedAscensionEventHandlers ascensionHandlers = new WorldAwakenedAscensionEventHandlers(ASCENSION_SERVICE);
         WorldAwakenedOwnedCarrierEventHandlers carrierHandlers = new WorldAwakenedOwnedCarrierEventHandlers();
+        WorldAwakenedMutatorEventHandlers mutatorHandlers = new WorldAwakenedMutatorEventHandlers(MUTATOR_SERVICE);
         modEventBus.addListener(WorldAwakenedNetwork::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListener);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
@@ -58,6 +62,10 @@ public final class WorldAwakenedMod {
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerRespawn);
         NeoForge.EVENT_BUS.addListener(carrierHandlers::onLivingIncomingDamage);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onFinalizeSpawn);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityJoinLevel);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityTickPost);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onPlayerStartTracking);
 
         WorldAwakenedLog.info(LOGGER, WorldAwakenedLogCategory.CORE, "Initialized {}", WorldAwakenedConstants.MOD_NAME);
     }
@@ -67,7 +75,14 @@ public final class WorldAwakenedMod {
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
-        WorldAwakenedCommands.register(event.getDispatcher(), DATAPACK_SERVICE, STAGE_SERVICE, TRIGGER_SERVICE, RULE_SERVICE, ASCENSION_SERVICE);
+        WorldAwakenedCommands.register(
+                event.getDispatcher(),
+                DATAPACK_SERVICE,
+                STAGE_SERVICE,
+                TRIGGER_SERVICE,
+                RULE_SERVICE,
+                ASCENSION_SERVICE,
+                MUTATOR_SERVICE);
     }
 }
 

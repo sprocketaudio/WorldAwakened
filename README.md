@@ -2,7 +2,7 @@
 
 World Awakened is a NeoForge mod framework for Minecraft 1.21.1 focused on **server-authoritative progression-driven difficulty**.
 
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
 The core model is:
@@ -18,10 +18,10 @@ Repository/distribution note:
 - Optional example content currently lives under `example_datapacks/worldawakened_example_pack/` and must be installed like a normal datapack.
 
 ## Status
-Phase 4 core complete.  
-Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery.
+Phase 5 core complete.
+Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery. Phase 5 is now implemented: compiled selector-index mutator narrowing, per-pool `mutation_chance` gating (default `1.0`), spawn-time mutator application budgets, deterministic provenance metadata (`WA_MUTATION_*` keys), recursion/re-entry guards, data-driven vanilla-slot mob equipment via `worldawakened:equip_item`, silhouette outline mutation visuals via `worldawakened:glow_style`, simple vanilla effect-style visual emitters via `worldawakened:effect_particles`, advanced raw particle emitters via `worldawakened:ambient_particles`, and command-driven mutator verification (`/wa mob inspect`, `/wa debug mutators evaluate|force_pool|force_mutator`, `/wa debug spawn test`) including explicit chance-pass/chance-fail debug output.
 Architecture baseline correction is applied: mutation definitions and ascension reward definitions are component-based authored objects, and the framework jar remains content-empty until a datapack is installed.
-Current active milestone is Phase 5 (Mutators and Pools runtime).
+Current active milestone is Phase 6 (Spawn pressure and difficulty guardrails).
 The browser-based web authoring tool is part of v1 scope and is planned as a late-phase companion deliverable after core runtime systems stabilize.
 
 ## Primary Documentation
@@ -113,7 +113,7 @@ Based on current `gradle.properties`:
 3. Phase 2 (Complete): Trigger engine + stage unlock flow
 4. Phase 3 (Complete): Rule engine core + deterministic active-rule introspection + optional world-context condition evaluation + single-pass stage propagation guarantee + debug trace ID support
 5. Phase 4 (Complete): Ascension Choice System + minimal GUI/packet flow + permanent reward reconciliation
-6. Phase 5: Mutators + mutation pools + spawn application + mob inspect + spawn-time performance budgets (`max_mutators_per_spawn`, `max_components_per_mutator`)
+6. Phase 5 (Complete): Mutators + mutation pools + spawn application + mob inspect + mutator evaluate/force/live-test commands + spawn-time performance budgets (`max_mutators_per_spawn`, `max_components_per_mutator`)
 7. Phase 6: Spawn pressure controls + rule-event budget guardrails (`maximum_rules_evaluated_per_event`, `maximum_actions_per_rule`) + shared effective-scalar service for global/optional challenge modifiers
 8. Phase 7: Loot evolution profiles and bonus drop integration (including safe additive behavior on Apotheosis-sensitive targets)
 9. Phase 8: Invasion system (scheduler, waves, and command mode MVP)

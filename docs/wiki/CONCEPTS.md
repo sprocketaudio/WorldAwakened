@@ -3,7 +3,7 @@
 Plain-language explanation of how World Awakened thinks about progression, triggers, rules, and ascension.
 
 - Document status: Active human-friendly concept guide
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Mental model for operators and datapack authors
 
 ---
@@ -58,6 +58,10 @@ Examples:
 - a co-op server wants personal progression rather than a shared campaign
 
 Important: progression mode does not decide what kind of event happened. It decides where stage state is persisted.
+
+Spawn-time mutator note:
+- in `per_player` mode, spawn-time mutator evaluation uses the nearest nearby non-spectator player as the progression source
+- if no player can be attributed to that spawn, the mutator pass fails closed instead of borrowing world progression or another player's stages
 
 ## Trigger `source_scope`: World vs Player
 

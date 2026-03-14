@@ -3,7 +3,7 @@
 Canonical reference for mutation and ascension component IDs, schemas, statuses, and composition rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Runtime component contracts and authoring/tooling alignment
 
 ---
@@ -85,7 +85,7 @@ Mutation and ascension components both use shared composition semantics:
 - explicit dependency metadata (`requires_component_types`, `forbidden_component_types`)
 
 Authoritative semantics:
-- canonical duplicate/conflict/order/budget/no-op resolution algorithm is defined in [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
+- canonical duplicate/conflict/order/guardrail/no-op resolution algorithm is defined in [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
 - component entries in this file should reference that contract instead of redefining local variants
 
 Hard composition expectations:
@@ -93,7 +93,7 @@ Hard composition expectations:
 - incompatible compositions fail validation pre-runtime
 - helper components requiring a core component are invalid without that core
 - presentation-layer stacking is opt-in by component contract
-- diagnostics must call out duplicate/conflict/stacking/budget failures explicitly
+- diagnostics must call out duplicate/conflict/stacking/guardrail failures explicitly
 
 ## Component Entry Shape
 Common conceptual entry fields:
@@ -120,6 +120,17 @@ Current v1 codec note:
 ## 3. Mutation Components
 Mutation components are reusable mob-affecting behavior/stat packages used inside named mutation definitions in `mob_mutators`.
 A mutation definition may combine multiple compatible components.
+
+### 3A. Mutation Selection Caps (Global Default + Pool Override)
+
+Mutation selection limits resolve from config plus pool metadata.
+
+Hard rules:
+- global default per-spawn mutator cap comes from `mutators.max_mutators_per_mob` in server config
+- a mutation pool may define `max_mutators_per_entity` to override that default for the selected pool
+- when no pool override is present, runtime uses the global config default
+- applied mutator count still respects runtime spawn-time guardrails documented in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
+- these are mutator-selection limits, not component-entry fields
 
 ### Stat / durability
 
@@ -357,10 +368,9 @@ Applies `movement_speed_multiplier` behavior to a named mutation definition in `
 
 **Parameters:**
 - `multiplier` (number, expected `> 0`).
-- Initial design target: final lower/upper bounds may be tightened when implemented.
 
 **Defaults / Notes:**
-- **Status:** `planned` (initial design target).
+- **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
 
@@ -761,6 +771,49 @@ Applies `temporary_shield` behavior to a named mutation definition in `mob_mutat
 **Example Snippet:**
 ```json
 { "type": "worldawakened:temporary_shield", "parameters": { "amount": 1.0 } }
+```
+
+## `equip_item`
+
+**Category:** `Equipment / loadout`
+
+**Purpose:**
+Applies `equip_item` behavior to a named mutation definition in `mob_mutators`.
+
+**Typical Uses:**
+- Give mutated mobs authored weapons, shields, or armor pieces.
+- Add a small number of authored gear upgrades without creating bespoke entity compat logic.
+
+**Parameters:**
+- `item` (resource location, required).
+- `slot` (string, optional): `auto`, `mainhand`, `offhand`, `head`, `chest`, `legs`, `feet`, `body`.
+- `drop_chance` (number, optional): `0.0` to `1.0`.
+- `enchantments` (array, optional): entries use `{ "id": "<enchantment_id>", "level": <int>=1 }`.
+
+**Defaults / Notes:**
+- **Status:** `implemented`.
+- Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
+- `slot` defaults to `auto`; runtime resolves the item's vanilla equipable slot and otherwise falls back to `mainhand`.
+- Duplicates are allowed so one mutator may author multiple gear pieces.
+
+**Compatibility Notes:**
+- If the mob cannot use the resolved slot or cannot hold the resolved hand item, only this component fails closed.
+- Only vanilla equipment slots are supported in v1; extra-slot systems remain compat-sensitive future work.
+- When multiple resolved `equip_item` entries target the same slot, later resolved execution order overwrites the earlier slot contents.
+
+**Example Snippet:**
+```json
+{
+  "type": "worldawakened:equip_item",
+  "parameters": {
+    "item": "minecraft:iron_sword",
+    "slot": "auto",
+    "drop_chance": 0.15,
+    "enchantments": [
+      { "id": "minecraft:sharpness", "level": 2 }
+    ]
+  }
+}
 ```
 
 ## `shield_regen`
@@ -2039,7 +2092,16 @@ Applies `nameplate_style` behavior to a named mutation definition in `mob_mutato
 - Fits `Presentation`-focused preset compositions.
 
 **Parameters:**
-- Intended style keys such as `style`, `color`, and presentation toggles.
+- Exactly one of:
+  - `particle` (`ResourceLocation`) for a registered simple particle type such as `minecraft:flame`
+  - `effect` (`ResourceLocation`) for a registered mob effect visual such as `minecraft:strength`
+- Optional:
+  - `count` (integer, `1..32`)
+  - `offset_x` (number, `0..4`)
+  - `offset_y` (number, `0..4`)
+  - `offset_z` (number, `0..4`)
+  - `speed` (number, `0..4`)
+  - `interval_ticks` (integer, `1..200`)
 - **Schema status:** Initial design target; do not assume final key set yet.
 
 **Defaults / Notes:**
@@ -2062,23 +2124,87 @@ Applies `nameplate_style` behavior to a named mutation definition in `mob_mutato
 Applies `glow_style` behavior to a named mutation definition in `mob_mutators`.
 
 **Typical Uses:**
-- Combine into named elite archetypes, invasion variants, or boss-adjacent mutation presets.
-- Fits `Presentation`-focused preset compositions.
+- Primary mutation readability tell using a silhouette outline that stays separate from the base mob texture.
+- Works across irregular models (for example spiders) without custom art assets.
+- Combine with `effect_particles` or `ambient_particles` when a mutation needs additional authored visual flavor.
 
 **Parameters:**
-- Intended style keys such as `style`, `color`, and presentation toggles.
+- `color` (`string`, optional): hex RGB in `#RRGGBB` form. Default `#66ff66`.
+- `brightness` (`number`, optional): outline brightness scale range `0.0..1.0`. Default `1.0`.
+- `see_through_walls` (`boolean`, optional): default `false`.
+- `pulse` (`boolean`, optional): default `false`.
+- `pulse_speed` (`number`, optional): range `0.25..3.0`. Default `1.0`.
+- `pulse_strength` (`number`, optional): range `0.05..0.35`. Default `0.12`.
+- Unsupported/unknown fields fail validation.
 
 **Defaults / Notes:**
 - **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
+- Rendering uses the WA-owned custom outline pass (not vanilla status glowing).
+- `brightness` scales the outline color intensity and is clamped to `0.0..1.0` at parse/runtime.
+- `see_through_walls=true` is opt-in; default behavior respects occlusion.
+- Pulse modulates outline alpha gently and does not strobe.
 
 **Compatibility Notes:**
 - Duplicates are rejected unless the component type explicitly allows duplicates.
 
 **Example Snippet:**
 ```json
-{ "type": "worldawakened:glow_style", "parameters": { "style": "default" } }
+{
+  "type": "worldawakened:glow_style",
+  "parameters": {
+    "color": "#66ff66",
+    "brightness": 0.9,
+    "see_through_walls": false,
+    "pulse": true,
+    "pulse_speed": 1.2,
+    "pulse_strength": 0.2
+  }
+}
+```
+
+## `effect_particles`
+
+**Category:** `Presentation`
+
+**Purpose:**
+Applies `effect_particles` behavior to a named mutation definition in `mob_mutators`.
+
+**Typical Uses:**
+- Reuse the vanilla particle look of a mob effect without applying the gameplay effect.
+- Use as the simple recommended path for mutation visuals that should read like potion/status energy.
+- Combine into named elite archetypes, invasion variants, or boss-adjacent mutation presets.
+- Fits `Presentation`-focused preset compositions.
+
+**Parameters:**
+- `effect_type` (`ResourceLocation`, required): registered vanilla mob-effect ID used only for the particle visual.
+- `color` (`string`, optional): hex RGB in `#RRGGBB` form. When present, overrides the default effect particle color.
+- `count` (`integer`, optional): particle count per emission tick. Range `1..32`. Default `4`.
+- `interval_ticks` (`integer`, optional): emission cadence in ticks. Range `1..200`. Default `12`.
+
+**Defaults / Notes:**
+- **Status:** `implemented`.
+- Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
+- Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
+- `effect_particles` does not apply the real mob effect.
+- `effect_particles` uses standard mob-effect particle mode (`ambient=false`, `visible=true`, `showIcon=false`) for stronger visibility.
+- `effect_particles` does not support `particle`, `offset_x`, `offset_y`, `offset_z`, or `speed`; use `ambient_particles` for the advanced emitter path.
+
+**Compatibility Notes:**
+- Duplicate entries are currently allowed; keep particle stacks intentional.
+
+**Example Snippet:**
+```json
+{
+  "type": "worldawakened:effect_particles",
+  "parameters": {
+    "effect_type": "minecraft:strength",
+    "color": "#66ff66",
+    "count": 3,
+    "interval_ticks": 10
+  }
+}
 ```
 
 ## `ambient_particles`
@@ -2089,23 +2215,50 @@ Applies `glow_style` behavior to a named mutation definition in `mob_mutators`.
 Applies `ambient_particles` behavior to a named mutation definition in `mob_mutators`.
 
 **Typical Uses:**
+- Emit direct simple particles such as `minecraft:flame` or `minecraft:smoke`.
+- Use as the advanced/flexible emitter path when you want custom spread, density, or cadence.
 - Combine into named elite archetypes, invasion variants, or boss-adjacent mutation presets.
 - Fits `Presentation`-focused preset compositions.
 
 **Parameters:**
-- Intended style keys such as `style`, `color`, and presentation toggles.
+- `particle` (`ResourceLocation`, required): registered simple particle type ID.
+- `color` (`string`, optional): hex RGB in `#RRGGBB` form; used by particles requiring color data (for example `minecraft:dust`).
+- `size` (`number`, optional): particle scale for particles requiring size data (for example `minecraft:dust`). Range `0.01..4.0`. Default `1.0`.
+- `count` (`integer`, optional): particle count per emission tick. Range `1..32`. Default `4`.
+- `offset_x` (`number`, optional): horizontal spread on the X axis. Range `0..4`. Default `0.25`.
+- `offset_y` (`number`, optional): vertical spread. Range `0..4`. Default `0.40`.
+- `offset_z` (`number`, optional): horizontal spread on the Z axis. Range `0..4`. Default `0.25`.
+- `speed` (`number`, optional): particle speed argument. Range `0..4`. Default `0.01`.
+- `interval_ticks` (`integer`, optional): emission cadence in ticks. Range `1..200`. Default `12`.
 
 **Defaults / Notes:**
 - **Status:** `implemented`.
 - Component entry defaults: `enabled=true`, `priority=0`, `parameters={}`.
 - Component-level conditions/conflicts use `conditions`, `exclusions`, and `conflicts_with` in current v1 codecs.
+- `ambient_particles` accepts only raw simple particle emission fields.
+- `ambient_particles` supports data-bearing `minecraft:dust` with optional `color`/`size`; when omitted it uses vanilla dust defaults (redstone red, size `1.0`).
+- For non-dust particles, `color` and `size` are accepted and ignored safely.
+- `ambient_particles` does not support `effect_type`; use `effect_particles` for vanilla mob-effect visuals.
 
 **Compatibility Notes:**
-- Duplicate entries are currently allowed; keep particle stacks intentional.
+- Duplicate entries are currently allowed; each resolved emitter stacks independently.
 
 **Example Snippet:**
 ```json
-{ "type": "worldawakened:ambient_particles", "parameters": { "style": "default" } }
+{
+  "type": "worldawakened:ambient_particles",
+  "parameters": {
+    "particle": "minecraft:dust",
+    "color": "#33ff66",
+    "size": 0.8,
+    "count": 4,
+    "offset_x": 0.3,
+    "offset_y": 0.6,
+    "offset_z": 0.3,
+    "speed": 0.01,
+    "interval_ticks": 8
+  }
+}
 ```
 
 ## `ambient_sound_loop`
@@ -3409,7 +3562,7 @@ Recommended error code families:
 - `WA_ASC_SUPPRESSION_INVALID_PARTIAL`
 
 Current implementation note:
-- Runtime diagnostics currently use shared component codes such as `WA_COMPONENT_TYPE_UNKNOWN`, `WA_COMPONENT_PARAMETERS_INVALID`, `WA_COMPONENT_COMPOSITION_INVALID`, `WA_COMPONENT_ARRAY_EMPTY`, and `WA_COMPONENT_BUDGET_EXCEEDED`.
+- Runtime diagnostics currently use shared component codes such as `WA_COMPONENT_TYPE_UNKNOWN`, `WA_COMPONENT_PARAMETERS_INVALID`, `WA_COMPONENT_COMPOSITION_INVALID`, and `WA_COMPONENT_ARRAY_EMPTY`.
 - Keep this reference aligned with real codec/validator behavior and shipped external example-pack content.
 
 ## 7. Built-In Preset Examples

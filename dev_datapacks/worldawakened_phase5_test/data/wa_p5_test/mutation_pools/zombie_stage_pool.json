@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "wa_p5_test:zombie_stage_pool",
+  "enabled": true,
+  "weight": 40,
+  "conditions": [
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:overworld"
+      }
+    }
+  ],
+  "stage_filters": {
+    "all_of": [
+      "wa_p5_test:phase5_gate"
+    ]
+  },
+  "eligible_dimensions": [
+    "minecraft:overworld"
+  ],
+  "eligible_entities": [
+    "minecraft:zombie",
+    "minecraft:husk"
+  ],
+  "mutators": [
+    {
+      "id": "wa_p5_test:zombie_bulwark",
+      "weight": 8
+    },
+    {
+      "id": "wa_p5_test:runner_skirmisher",
+      "weight": 6
+    },
+    {
+      "id": "wa_p5_test:unsupported_summoner",
+      "weight": 4
+    },
+    {
+      "id": "wa_p5_test:over_component_limit",
+      "weight": 3
+    }
+  ],
+  "max_mutators_per_entity": 2
+}

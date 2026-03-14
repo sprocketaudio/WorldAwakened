@@ -3,7 +3,7 @@
 Practical checks for when World Awakened does not behave the way you expected.
 
 - Document status: Active human-friendly troubleshooting guide
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Validation, command behavior, targeting mistakes, and common runtime surprises
 
 ---
@@ -35,6 +35,13 @@ Phase 5 (mutators/spawn):
 - use `/wa debug mutators force_pool ...` for pool-level debugging
 - use `/wa debug mutators force_mutator ...` for mutator/component debugging
 - use `/wa debug spawn test ...` for end-to-end spawn-path verification
+- check the `spawn_context` line on debug output for spawn origin and attributed player
+- check `chance_result` to distinguish chance gating from selector/condition/budget failures
+- use `/wa mob inspect` to confirm provenance (`pool`, `mutators`, `components`, `stage context`, `trace ID`, `depth/origin`)
+
+Practical targeting note:
+- `/wa mob inspect` with no target uses the mob under the executing player's crosshair
+- if that is inconvenient or you are using console/automation, use `/wa mob inspect <target>` instead
 
 Phase 6 (pressure/difficulty/challenge):
 - use `/wa debug pressure evaluate ...` for spawn-pressure debugging
@@ -70,6 +77,15 @@ What to do:
 Good habit:
 - always start testing with validation clean
 
+Common mutator cap pitfall:
+- `mutators.max_mutators_per_mob` is the global default, not a hard per-pool lock
+- selected pools may override with `max_mutators_per_entity`
+- if applied mutator count surprises you, inspect which pool was selected and compare that pool cap against the global TOML default
+
+Common mutation chance pitfall:
+- matching/selecting a pool does not guarantee mutation when that pool sets `mutation_chance < 1.0`
+- if debug output shows `final_outcome=chance_failed`, the pool matched but chance blocked mutation
+
 ## Problem: `Unknown or incomplete command`
 
 Common causes:
@@ -81,6 +97,22 @@ Checks:
 1. confirm the command spelling and argument order
 2. confirm you are using `global`, not an old alias
 3. confirm `general.enable_debug_commands = true` if you are trying to use debug commands
+
+## Problem: `/wa debug` Only Shows `clear` And `reset`
+
+What it means:
+- your runtime command registration is still pre-Phase-5
+- datapack reload succeeded, but the process did not load the newer command tree
+
+Why this happens:
+- you are running an older compiled mod build
+- or you updated source/data and only ran `/reload` (which does not re-register command nodes)
+
+What to do:
+1. stop the game/server
+2. rebuild and relaunch from current source/build
+3. reconnect and run `/wa debug` again
+4. confirm `mutators` and `spawn` now appear under `/wa debug`
 
 ## Problem: `evaluated=1, matched=0` On `trigger fire`
 
@@ -398,7 +430,11 @@ What to do:
    - `WA_ENTITY_RUNTIME_SURFACE_MISSING`
    - `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
 3. verify the required capability/hook/channel exists for the target entity and active integration set
-4. if the surface is unavailable in this pack, remove or gate that mutator component for this environment
+4. for `worldawakened:equip_item`, also verify:
+   - the authored `item` exists
+   - the mob can use the resolved vanilla slot
+   - the mob can hold the resolved hand item if the slot is `mainhand` or `offhand`
+5. if the surface is unavailable in this pack, remove or gate that mutator component for this environment
 
 Important:
 - this is intentional compatibility behavior

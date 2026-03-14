@@ -17,7 +17,6 @@ class WorldAwakenedMutationComponentRegistryTest {
         WorldAwakenedMutationComponentType extension = new WorldAwakenedMutationComponentType(
                 id,
                 false,
-                2,
                 Set.of(),
                 parameters -> Optional.empty());
 

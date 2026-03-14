@@ -10,7 +10,6 @@ import net.minecraft.resources.ResourceLocation;
 public record WorldAwakenedMutationComponentType(
         ResourceLocation id,
         boolean allowDuplicates,
-        int budgetCost,
         Set<ResourceLocation> incompatibleWith,
         ParameterValidator parameterValidator) {
     @FunctionalInterface

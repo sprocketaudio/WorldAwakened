@@ -3,7 +3,7 @@
 Datapack format and content contract for user-created progression/content packs.
 
 - Document status: Draft for implementation
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Applies to: Minecraft 1.21.1 + NeoForge + World Awakened (`worldawakened`)
 
 ---
@@ -549,6 +549,12 @@ Operational model:
 - optional challenge modifier policies and scope are server-controlled
 - World Awakened applies modifiers only to World Awakened-owned numeric difficulty outputs
 
+Phase 6 authoring impact:
+- assume scalar influence only on explicit WA-owned outputs (for example pressure, WA-owned intensity/chance paths wired to shared scalar service)
+- do not assume scalar systems can unlock stages or alter trigger eligibility
+- do not assume scalar systems can rewrite unrelated vanilla/modded systems
+- if your content depends on scalar-sensitive encounters, validate behavior under multiple global/challenge settings and scope policies
+
 ---
 
 ### 5.10 Performance Budget Guardrails
@@ -568,6 +574,9 @@ Authoring implications:
 - avoid giant action lists on one rule
 - keep mutator definitions and component stacks bounded
 - treat performance-limit diagnostics as balancing/architecture failures, not cosmetic warnings
+- expect deterministic event-pass truncation at `maximum_rules_evaluated_per_event`
+- expect oversized action lists to emit diagnostics (`WA_PERF_RULE_ACTION_COUNT_EXCEEDED`) and optionally disable affected objects by policy
+- do not rely on hidden rerolls/retries to recover from budget truncation
 
 Canonical contract:
 - full semantics and diagnostics expectations are defined in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
@@ -864,7 +873,6 @@ Example:
       "parameters": { "amount": 0.1 }
     }
   ],
-  "component_budget": 5,
   "reward_modifier": {
     "loot_bonus_chance": 0.08,
     "xp_multiplier": 1.2
@@ -890,9 +898,12 @@ Authoring model:
 - shared composition semantics apply (`conflicts_with`, `stacking_group`, `duplicate_policy`, `max_instances`, `composition_priority`, companion requirements)
 - incompatible component compositions fail validation; runtime does not silently improvise stacking behavior
 - mutator components that require entity capabilities/hooks/runtime surfaces unavailable in the current modpack fail closed branch-only with diagnostics; they must not rewrite foreign entity state as fallback
+- `worldawakened:equip_item` may replace one vanilla equipment slot on the spawned mob; unsupported slot/item cases fail closed at the component level and do not invalidate unrelated components on the same mutator
+- `worldawakened:equip_item` uses `parameters.item` (required), optional `parameters.slot` (`auto` by default), optional `parameters.drop_chance`, and optional `parameters.enchantments[]` entries of shape `{ "id": "<enchantment_id>", "level": <int> }`
+- when `worldawakened:equip_item` omits `slot` or uses `auto`, runtime resolves the target slot from the item's vanilla equipable metadata and otherwise falls back to `mainhand`
 - compat-sensitive components should document required optional runtime surfaces (for example extra slot systems, custom combat hooks, boss-runtime metadata, custom attributes, or visual channels) so operators can gate content per modpack
 - missing mutator definitions referenced by persisted provenance remain inspectable and non-fatal; World Awakened does not auto-substitute another definition
-- use `/wa mob inspect` during testing to verify resolved mutator branches, failed-closed component branches, and missing-definition provenance state
+- use `/wa mob inspect` during testing to verify resolved mutator branches, failed-closed component branches, active visual state (`glow_style` and particle emitters) when present, and missing-definition provenance state
 
 Example mutation component type IDs currently registered by core:
 - `worldawakened:max_health_bonus`
@@ -901,6 +912,11 @@ Example mutation component type IDs currently registered by core:
 - `worldawakened:attack_damage_multiplier`
 - `worldawakened:armor_bonus`
 - `worldawakened:armor_multiplier`
+- `worldawakened:movement_speed_multiplier`
+- `worldawakened:equip_item`
+- `worldawakened:glow_style`
+- `worldawakened:effect_particles`
+- `worldawakened:ambient_particles`
 - `worldawakened:reinforcement_summon`
 - `worldawakened:summon_cooldown`
 - `worldawakened:summon_cap`
@@ -908,6 +924,69 @@ Example mutation component type IDs currently registered by core:
 - `worldawakened:frost_package`
 - `worldawakened:lightning_package`
 - `worldawakened:poison_package`
+
+Example `equip_item` component:
+
+```json
+{
+  "type": "worldawakened:equip_item",
+  "parameters": {
+    "item": "minecraft:iron_sword",
+    "slot": "auto",
+    "drop_chance": 0.15,
+    "enchantments": [
+      { "id": "minecraft:sharpness", "level": 2 }
+    ]
+  }
+}
+```
+
+Example `glow_style` component using a silhouette outline mutation visual:
+
+```json
+{
+  "type": "worldawakened:glow_style",
+  "parameters": {
+    "color": "#66ff66",
+    "brightness": 0.9,
+    "see_through_walls": false,
+    "pulse": false
+  }
+}
+```
+
+Example `effect_particles` component using a vanilla mob-effect visual:
+
+```json
+{
+  "type": "worldawakened:effect_particles",
+  "parameters": {
+    "effect_type": "minecraft:strength",
+    "color": "#66ff66",
+    "count": 3,
+    "interval_ticks": 10
+  }
+}
+```
+
+Example `ambient_particles` component using a direct simple particle type:
+
+```json
+{
+  "type": "worldawakened:ambient_particles",
+  "parameters": {
+    "particle": "minecraft:dust",
+    "color": "#33ff66",
+    "size": 0.8,
+    "count": 4,
+    "offset_x": 0.3,
+    "offset_y": 0.6,
+    "offset_z": 0.3,
+    "speed": 0.01,
+    "interval_ticks": 8
+  }
+}
+```
 
 Field defaults:
 - `schema_version`: `1`
@@ -925,7 +1004,6 @@ Field defaults:
 - `excluded_entities`: `[]`
 - `excluded_entity_tags`: `[]`
 - `required_conditions`: `[]`
-- `component_budget`: absent
 - `reward_modifier`: `{}`
 - `visuals`: `{}`
 - `sounds`: `{}`
@@ -950,6 +1028,7 @@ Example:
   "id": "my_pack:overworld_night_t2",
   "enabled": true,
   "weight": 20,
+  "mutation_chance": 0.35,
   "conditions": [
     {
       "type": "worldawakened:current_dimension",
@@ -973,12 +1052,13 @@ Example:
   "eligible_dimensions": ["minecraft:overworld"],
   "eligible_biomes": ["minecraft:plains", "minecraft:forest"],
   "eligible_entities": ["minecraft:zombie", "minecraft:skeleton"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
   "mutators": [
     { "id": "my_pack:berserker_t1", "weight": 10 },
     { "id": "my_pack:shielded_t1", "weight": 6 }
   ],
-  "max_mutators_per_entity": 2,
-  "reroll_policy": "single_retry"
+  "max_mutators_per_entity": 2
 }
 ```
 
@@ -987,15 +1067,25 @@ Field defaults:
 - `id`: required
 - `enabled`: `true`
 - `weight`: `1`
+- `mutation_chance`: `1.0`
 - `conditions`: `[]`
 - `stage_filters`: absent
 - `apotheosis_tier_filters`: absent
 - `eligible_dimensions`: `[]`
 - `eligible_biomes`: `[]`
 - `eligible_entities`: `[]`
+- `allow_from_spawner`: `false`
+- `allow_from_trial_spawner`: `false`
 - `mutators`: required
 - `max_mutators_per_entity`: inherit global `mutators.max_mutators_per_mob`
-- `reroll_policy`: `none`
+
+Runtime notes:
+- spawner and trial spawner mobs are excluded by default; opt in per pool with `allow_from_spawner` and `allow_from_trial_spawner`
+- `mutation_chance` is evaluated after pool selection:
+  - `1.0`: always proceed (roll skipped)
+  - `0.0`: always stop with `chance_failed`
+  - `0.0 < x < 1.0`: one deterministic roll per selected-pool spawn evaluation
+- in `per_player` progression mode, spawn-time mutator evaluation attributes the spawn to the nearest nearby non-spectator player; if no player can be attributed, the mutator pass fails closed for that spawn
 
 ---
 
@@ -1415,13 +1505,14 @@ Recommended v1 ascension component types:
 - `worldawakened:luck_bonus`
 - `worldawakened:xp_gain_bonus`
 - `worldawakened:loot_quality_bonus`
-- `worldawakened:potion_resistance`
-- `worldawakened:fire_resistance_like_passive`
+- `worldawakened:debuff_resistance`
+- `worldawakened:fire_resistance_passive`
 - `worldawakened:extra_revival_buffer`
-- `worldawakened:night_vision_like_passive`
+- `worldawakened:night_vision_passive`
 - `worldawakened:fall_damage_reduction`
 - `worldawakened:healing_efficiency_bonus`
-- `worldawakened:mob_detection_bonus`
+- `worldawakened:hostile_wall_sense`
+- `worldawakened:elite_detection`
 - `worldawakened:invasion_reward_bonus`
 - `worldawakened:mutation_resistance_bonus`
 
@@ -1625,7 +1716,6 @@ On reload, World Awakened should validate and report:
 - grouped suppression policy conflicts within one suppression package
 - component-level suppression paths that violate grouped suppression requirements
 - component compositions with no valid runtime result (for example all components disabled)
-- mutation component compositions over `component_budget` when budget is set
 - performance threshold exceedance:
   - scope rule bucket size over `maximum_rules_per_bucket`
   - per-event evaluated rules over `maximum_rules_evaluated_per_event`

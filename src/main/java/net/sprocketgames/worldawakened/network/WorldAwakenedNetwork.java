@@ -8,6 +8,7 @@ import com.mojang.logging.LogUtils;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Mob;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -17,6 +18,7 @@ import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedGlowStyleState;
 
 public final class WorldAwakenedNetwork {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -35,10 +37,22 @@ public final class WorldAwakenedNetwork {
                 WorldAwakenedSelectAscensionRewardPayload.TYPE,
                 WorldAwakenedSelectAscensionRewardPayload.STREAM_CODEC,
                 WorldAwakenedNetwork::handleSelectAscensionReward);
+        registrar.playToClient(
+                WorldAwakenedGlowStylePayload.TYPE,
+                WorldAwakenedGlowStylePayload.STREAM_CODEC,
+                WorldAwakenedNetwork::handleGlowStyleState);
     }
 
     public static void sendOpenAscensionOffer(ServerPlayer player, WorldAwakenedAscensionService.OpenOfferView view) {
         PacketDistributor.sendToPlayer(player, new WorldAwakenedOpenAscensionOfferPayload(toJson(view).toString()));
+    }
+
+    public static void sendGlowStyleState(ServerPlayer player, Mob mob) {
+        PacketDistributor.sendToPlayer(player, toGlowStylePayload(mob));
+    }
+
+    public static void sendGlowStyleStateToTracking(Mob mob) {
+        PacketDistributor.sendToPlayersTrackingEntity(mob, toGlowStylePayload(mob));
     }
 
     private static void handleOpenAscensionOffer(WorldAwakenedOpenAscensionOfferPayload payload, IPayloadContext context) {
@@ -53,6 +67,42 @@ public final class WorldAwakenedNetwork {
                         LOGGER,
                         WorldAwakenedLogCategory.PIPELINE,
                         "Failed to dispatch open ascension offer payload to client handler: {}",
+                        exception.toString());
+            }
+        });
+    }
+
+    private static void handleGlowStyleState(WorldAwakenedGlowStylePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                Class<?> handlerClass = Class.forName("net.sprocketgames.worldawakened.network.client.WorldAwakenedClientGlowStylePayloadHandler");
+                handlerClass.getMethod(
+                        "handleGlowStyleState",
+                        int.class,
+                        boolean.class,
+                        int.class,
+                        float.class,
+                        boolean.class,
+                        boolean.class,
+                        float.class,
+                        float.class)
+                        .invoke(
+                                null,
+                                payload.entityId(),
+                                payload.active(),
+                                payload.colorRgb(),
+                                payload.brightness(),
+                                payload.seeThroughWalls(),
+                                payload.pulse(),
+                                payload.pulseSpeed(),
+                                payload.pulseStrength());
+            } catch (ClassNotFoundException ignored) {
+                // Dedicated server side: no client handler present.
+            } catch (ReflectiveOperationException exception) {
+                WorldAwakenedLog.warn(
+                        LOGGER,
+                        WorldAwakenedLogCategory.PIPELINE,
+                        "Failed to dispatch glow style payload to client handler: {}",
                         exception.toString());
             }
         });
@@ -113,5 +163,27 @@ public final class WorldAwakenedNetwork {
         }
         root.add("rewards", rewards);
         return root;
+    }
+
+    private static WorldAwakenedGlowStylePayload toGlowStylePayload(Mob mob) {
+        return WorldAwakenedGlowStyleState.read(mob.getPersistentData())
+                .map(style -> new WorldAwakenedGlowStylePayload(
+                        mob.getId(),
+                        true,
+                        style.colorRgb(),
+                        style.brightness(),
+                        style.seeThroughWalls(),
+                        style.pulse(),
+                        style.pulseSpeed(),
+                        style.pulseStrength()))
+                .orElseGet(() -> new WorldAwakenedGlowStylePayload(
+                        mob.getId(),
+                        false,
+                        0,
+                        0.0F,
+                        false,
+                        false,
+                        0.0F,
+                        0.0F));
     }
 }

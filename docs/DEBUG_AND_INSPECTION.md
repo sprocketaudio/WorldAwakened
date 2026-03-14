@@ -3,7 +3,7 @@
 Canonical contract for runtime inspection surfaces, debug command minimums, trace payloads, and provenance visibility.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Runtime debug, inspect output, and trace observability contracts
 
 ---
@@ -54,7 +54,7 @@ Hard rule:
 | Trigger engine | `/wa trigger fire`, trigger inspect output | trigger ID, trigger type, scope | matched/rejected, cooldown, one-shot, rejection reason | `implemented` |
 | Rule engine | `/wa dump active_rules` | rule ID, scope, priority | eligible/rejected, cooldown, consumed, reason category | `implemented` |
 | Ascension | `/wa ascension inspect` | player UUID, offer ID, reward IDs, source key, active owned carriers | pending/resolved state, forfeits, suppression state, grant/reconcile outcome | `implemented` |
-| Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID | applied/rejected components, budget/conflict outcomes | `planned` |
+| Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
 | Loot profiles | loot debug output | profile ID, loot target | matched/rejected, compat safety outcome, applied operations | `planned` |
 | Invasions | invasion inspect output | profile ID, invasion instance ID | scheduler state, wave state, caps/cooldown outcomes | `planned` |
@@ -103,11 +103,29 @@ Current baseline command surface:
 - `/wa debug clear global <stage|trigger|rule> <id>`
 - `/wa debug clear player <player> <stage|trigger|rule> <id>`
 - `/wa debug clear player <player> ascension_instance <instance_id>`
+- `/wa mob inspect`
+- `/wa mob inspect <entity>`
+- `/wa debug mutators summary`
+- `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
+- `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
+- `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
 - `/wa compat list`
 
 Notes:
 - `global` means the shared save-wide progression bucket, not a second Minecraft world.
 - `dimension <dimension_id>` overrides only the world-context evaluation dimension for the command pass; it does not change the targeted player/global persistence bucket.
+- mutator/spawn debug output must surface the spawn origin plus the resolved progression attribution used for stage gating
+- mutator/spawn debug output must surface chance gates explicitly:
+  - `selected_pool`
+  - `chance_result` (`mutation_chance`, rolled value or `<skipped>/<bypassed>`, `passed=<bool>`)
+  - `final_outcome=chance_failed` when pool selection succeeded but mutation chance failed
+- command chance behavior contract:
+  - `evaluate` respects authored `mutation_chance`
+  - `force_pool` bypasses pool chance
+  - `force_mutator` bypasses pool chance
+  - `spawn test` respects authored `mutation_chance` by default
+- player-executed `/wa mob inspect` with no explicit target should inspect the mob under the player's crosshair; non-player sources must use `/wa mob inspect <entity>`
 - ascension runtime `instance_id` values are generated as short opaque command-safe IDs such as `wao_ab12cd34`; `offer_id` and `source_key` remain the inspect/debug provenance fields
 - ascension suppression `component_key` values use canonical `index|namespace:component_type` form (for example `0|worldawakened:movement_speed_bonus`); index-only shorthand (for example `0`) is accepted
 - inspect output must surface active owned carriers separately from chosen rewards so operators can see both the stable owned key and the carrier type ID
@@ -119,15 +137,9 @@ Notes:
 Planned minimum additions as systems complete:
 - `/wa debug perf`
 - `/wa debug rules`
-- `/wa debug mutators`
-- `/wa mob inspect`
 - `/wa invasion inspect <profile|active>`
 - `/wa loot inspect <target>`
 - `/wa debug trace <trace_id>`
-- `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
-- `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
-- `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
-- `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
 - `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
 - `/wa debug difficulty scalar [player]`
 - `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
@@ -192,6 +204,7 @@ Required common output fields:
 Required subsystem-specific output:
 
 Mutators/spawn:
+- spawn origin and progression attribution summary
 - selector narrowing summary
 - candidate pools
 - rejected pools
@@ -209,6 +222,14 @@ Pressure/difficulty:
 - integration scalar inputs
 - final effective scalar
 - policy rejection reasons
+- resolved challenge scope
+- policy gates consulted
+- unclamped and clamped values when clamping applies
+- clamp reason when clamping applies
+- target dimension/position/player context used
+- peaceful/category gate outcomes
+- whether category-restriction data was available or fail-closed
+- cooldown/usage/vote state when applicable
 
 Loot:
 - candidate profiles
@@ -238,6 +259,8 @@ Command-path behavior rules:
 - `force` may bypass randomness or scheduling uncertainty but must still enforce composition, ownership, compatibility safety, and policy gates
 - `live_test` must stay bounded and explicit; it must not become an uncontrolled world-modification path
 - when command-path and live-path outcomes diverge, both outputs should include enough candidate/rejection detail to isolate pipeline mismatch regressions
+- debug/evaluate/inspect paths must use the same compiled runtime structures and scalar resolver used by live execution
+- debug/evaluate/inspect paths must not use alternate math or debug-only fallback resolvers for pressure/difficulty/challenge
 
 ---
 
@@ -381,14 +404,19 @@ When an entity is mutated, inspect output must show:
 - selected pool ID
 - selected mutator ID
 - resolved component list in final order
+- failed-closed component entries with component-local reasons when some selected components could not apply safely
+- resolved stage context used for mutation selection
+- mutation trace ID that produced the current mutation state
+- mutation depth or explicit WA-origin marker
 - rejected candidates with reason
 - budget/conflict/duplicate outcomes
 
-When an eligible spawn is not mutated due to coexistence policy, inspect/debug output should still show:
+When an eligible spawn is not mutated due to coexistence policy or chance gating, inspect/debug output should still show:
 - upstream-cancel skip reason when present
 - external-transform detection marker when present
 - spawn-context invalidation reason when present
 - re-entry-blocked reason when present
+- chance-failed reason when selected pool mutation chance does not pass
 
 ### 7.2 Rule Provenance
 
@@ -473,7 +501,7 @@ Hard rule:
   "dropped_components": [
     {
       "type": "worldawakened:projectile_split",
-      "reason_code": "WA_COMPONENT_BUDGET_EXCEEDED"
+      "reason_code": "WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE"
     }
   ],
   "state_changes": [
@@ -488,8 +516,8 @@ Hard rule:
 ## 11. Phase Alignment (MVP Roadmap)
 
 This contract aligns to future implementation phases as follows:
-- Phase 5: `mob inspect` provenance, mutation-budget visibility, and ownership-safe mutator fail-closed diagnostics
-- Phase 6: rule-event guardrail diagnostics and deeper runtime observability
+- Phase 5: `mob inspect` provenance, mutation-guardrail visibility, and ownership-safe mutator fail-closed diagnostics
+- Phase 6: rule-event guardrail diagnostics, pressure/difficulty/challenge inspect coverage, and strict debug/live runtime-parity guarantees
 - Phase 7-9: loot/invasion/compat inspection surfaces and rejection-path visibility
 - Phase 10: tooling-facing validation/debug payload alignment for authoring workflows
 - Phase 11: required `/wa debug perf`, `/wa debug rules`, `/wa debug mutators` surfaces and telemetry hardening
@@ -506,10 +534,13 @@ Inspect/debug expectation notes:
   - `WA_ASC_SUPPRESSION_GROUP_REQUIRED`
   - `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE`
   - `WA_ASC_SUPPRESSED_DEFINITION_MISSING`
-- `/wa mob inspect` should distinguish persisted mutation provenance, currently resolvable definition state, and failed-closed mutator component state where relevant
+- `/wa mob inspect` should distinguish persisted mutation provenance, currently resolvable definition state, live visual runtime state (for example active `glow_style` outline state plus `effect_particles` / `ambient_particles` emitters), and failed-closed mutator component state where relevant
 - `/wa mob inspect` should also surface mutator ownership-safe branch diagnostics where relevant:
   - `WA_ENTITY_RUNTIME_SURFACE_MISSING`
   - `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
+  - `equip_item` failures should include the authored item and resolved slot or slot-rejection reason when available
+  - `glow_style` state should include color, brightness, through-wall flag, and pulse fields
+  - `particle_visual_emitters` state should include whether each emitter is using a direct particle ID or a vanilla mob-effect visual ID, plus the resolved count/interval values and optional color/size overrides when authored
   - `WA_RUNTIME_SURFACE_OPTIONAL_UNAVAILABLE`
   - `WA_COMPAT_BRANCH_SKIPPED_SURFACE_UNAVAILABLE`
   - `WA_EXTRA_SLOT_SURFACE_UNAVAILABLE`

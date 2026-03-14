@@ -3,7 +3,7 @@
 Browser-based datapack authoring and validation companion for World Awakened.
 
 - Document status: Active v1 companion spec
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: v1 required deliverable (late-phase implementation)
 
 ---
@@ -75,6 +75,12 @@ The tool must also support:
 - components (mutation and ascension)
 - references between objects
 - implemented/planned/deprecated feature markers
+
+Mutation pool editor minimum field support:
+- `mutation_chance`
+- `allow_from_spawner`
+- `allow_from_trial_spawner`
+- `max_mutators_per_entity`
 - validation results and diagnostics
 
 ---
@@ -160,11 +166,13 @@ Must support:
 Must support:
 - component registry selection
 - parameter editing
+- typed equipment editors for implemented mutation components such as `worldawakened:equip_item` (`item`, `slot`, `drop_chance`, `enchantments[]`)
+- typed presentation editors for implemented mutation components such as `worldawakened:glow_style` (`color`, `brightness`, `see_through_walls`, `pulse`), `worldawakened:effect_particles` (`effect_type`, `color`, `count`, `interval_ticks`), and `worldawakened:ambient_particles` (`particle`, `color`, `size`, `count`, `offset_x`, `offset_y`, `offset_z`, `speed`, `interval_ticks`)
 - ascension suppression metadata editing (`suppressible_individually`, `suppression_policy`, `suppression_group`)
 - deterministic ordering controls
 - conflict detection
 - duplicate/conflict/order resolution preview against canonical rules
-- budget and no-op outcome preview
+- component-count guardrail and no-op outcome preview
 - implemented/planned/deprecated markers
 
 Semantics source:

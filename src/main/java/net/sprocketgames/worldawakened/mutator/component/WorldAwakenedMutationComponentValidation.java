@@ -19,14 +19,13 @@ public final class WorldAwakenedMutationComponentValidation {
     private WorldAwakenedMutationComponentValidation() {
     }
 
-    public static Result validate(List<MutationComponentDefinition> components, Optional<Integer> componentBudget) {
+    public static Result validate(List<MutationComponentDefinition> components) {
         List<Issue> issues = new ArrayList<>();
         if (components.isEmpty()) {
             issues.add(new Issue(IssueKind.EMPTY_COMPONENT_LIST, "components must include at least one entry"));
-            return new Result(List.copyOf(issues), List.of(), 0);
+            return new Result(List.copyOf(issues), List.of());
         }
 
-        int totalCost = 0;
         LinkedHashSet<ResourceLocation> activeTypeIds = new LinkedHashSet<>();
         Map<ResourceLocation, Integer> activeCounts = new LinkedHashMap<>();
         Map<Integer, WorldAwakenedMutationComponentType> activeTypesByIndex = new LinkedHashMap<>();
@@ -55,7 +54,6 @@ public final class WorldAwakenedMutationComponentValidation {
             activeTypeIds.add(component.type());
             activeCounts.merge(component.type(), 1, Integer::sum);
             activeTypesByIndex.put(index, resolvedType);
-            totalCost += Math.max(0, resolvedType.budgetCost());
         }
 
         if (activeTypeIds.isEmpty()) {
@@ -105,13 +103,7 @@ public final class WorldAwakenedMutationComponentValidation {
                     "summon_cooldown and summon_cap require reinforcement_summon"));
         }
 
-        if (componentBudget.isPresent() && componentBudget.get() > 0 && totalCost > componentBudget.get()) {
-            issues.add(new Issue(
-                    IssueKind.COMPONENT_BUDGET_EXCEEDED,
-                    "active component budget exceeded: cost=" + totalCost + " budget=" + componentBudget.get()));
-        }
-
-        return new Result(deduplicate(issues), List.copyOf(activeTypeIds), totalCost);
+        return new Result(deduplicate(issues), List.copyOf(activeTypeIds));
     }
 
     private static List<Issue> deduplicate(List<Issue> issues) {
@@ -133,7 +125,6 @@ public final class WorldAwakenedMutationComponentValidation {
         INCOMPATIBLE_COMPONENT_COMPOSITION,
         IMPOSSIBLE_COMPONENT_COMPOSITION,
         NO_RUNTIME_RESULT,
-        COMPONENT_BUDGET_EXCEEDED,
         DUPLICATE_COMPONENT_TYPE
     }
 
@@ -142,7 +133,6 @@ public final class WorldAwakenedMutationComponentValidation {
 
     public record Result(
             List<Issue> issues,
-            List<ResourceLocation> activeComponentTypes,
-            int totalBudgetCost) {
+            List<ResourceLocation> activeComponentTypes) {
     }
 }

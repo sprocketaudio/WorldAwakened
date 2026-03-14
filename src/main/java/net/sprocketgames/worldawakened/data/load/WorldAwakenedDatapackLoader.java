@@ -27,6 +27,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentValidation;
+import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.codec.WorldAwakenedJsonCodecs;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
@@ -58,6 +59,8 @@ import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDriven
 
 public final class WorldAwakenedDatapackLoader {
     private static final Pattern CONFIG_GATE_PATTERN = Pattern.compile("^[a-z0-9_]+(\\.[a-z0-9_]+)*$");
+    static final int MAX_MUTATORS_PER_SPAWN_BUDGET = 8;
+    static final int MAX_COMPONENTS_PER_MUTATOR_BUDGET = 10;
     private static final Set<String> STAGE_CONTEXT_KEYS = Set.of(
             "stage",
             "stage_id",
@@ -299,17 +302,12 @@ public final class WorldAwakenedDatapackLoader {
                             "max_stack_count must be >= 1",
                             "disabled_object"));
                 }
-                if (definition.componentBudget().isPresent() && definition.componentBudget().get() < 1) {
-                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                            WorldAwakenedDiagnosticSeverity.ERROR,
-                            WorldAwakenedDiagnosticCodes.COMPONENT_BUDGET_EXCEEDED,
-                            "mob_mutators",
-                            definition.id(),
-                            sourcePath,
-                            "component_budget must be >= 1",
-                            "disabled_object"));
-                }
                 validateMutationComponents(definition, sourcePath, collector);
+                evaluateMutatorComponentCountLimit(
+                        definition,
+                        sourcePath,
+                        MAX_COMPONENTS_PER_MUTATOR_BUDGET)
+                        .ifPresent(collector::addDiagnostic);
                 validateEntityTagSelectors("mob_mutators", definition.id(), sourcePath, definition.eligibleEntityTags(), collector);
                 validateEntityTagSelectors("mob_mutators", definition.id(), sourcePath, definition.excludedEntityTags(), collector);
                 validateTypedNodes("mob_mutators", definition.id(), sourcePath, "required_conditions", definition.requiredConditions(), true, collector);
@@ -357,6 +355,18 @@ public final class WorldAwakenedDatapackLoader {
                             "Mutation pool weight must be > 0",
                             "disabled_object"));
                 }
+                if (!Double.isFinite(definition.mutationChance())
+                        || definition.mutationChance() < 0.0D
+                        || definition.mutationChance() > 1.0D) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.MUTATION_CHANCE_INVALID,
+                            "mutation_pools",
+                            definition.id(),
+                            sourcePath,
+                            "mutation_chance must be a number in range [0.0, 1.0]",
+                            "disabled_object"));
+                }
                 if (definition.maxMutatorsPerEntity().isPresent() && definition.maxMutatorsPerEntity().get() < 1) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
@@ -367,6 +377,12 @@ public final class WorldAwakenedDatapackLoader {
                             "max_mutators_per_entity must be >= 1",
                             "disabled_object"));
                 }
+                evaluatePoolMutatorCountLimit(
+                        definition,
+                        sourcePath,
+                        MAX_MUTATORS_PER_SPAWN_BUDGET,
+                        Math.max(1, WorldAwakenedCommonConfig.MAX_MUTATORS_PER_MOB.get()))
+                        .ifPresent(collector::addDiagnostic);
                 validateTypedNodes("mutation_pools", definition.id(), sourcePath, "conditions", definition.conditions(), true, collector);
                 validateOptionalApotheosisFilter("mutation_pools", definition.id(), sourcePath, definition.apotheosisTierFilters(), collector);
             });
@@ -551,6 +567,26 @@ public final class WorldAwakenedDatapackLoader {
 
             try (Reader reader = entry.getValue().openAsReader()) {
                 JsonElement root = JsonParser.parseReader(reader);
+                Optional<String> rawMutationPoolChanceError = validateRawMutationChance(objectType.key(), root);
+                if (rawMutationPoolChanceError.isPresent()) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.MUTATION_CHANCE_INVALID,
+                            objectType.key(),
+                            fileId,
+                            sourcePath,
+                            rawMutationPoolChanceError.get(),
+                            "disabled_object"));
+                    collector.addRejectedTrace(
+                            WorldAwakenedRuntimeLayer.STATIC_DATA_LOAD,
+                            objectType.key(),
+                            fileId,
+                            sourcePath,
+                            WorldAwakenedRejectionReason.INVALID_REFERENCED_OBJECT,
+                            "mutation_chance_invalid");
+                    collector.incrementDisabled(objectType.key());
+                    continue;
+                }
                 DataResult<T> parsed = objectType.codec().parse(JsonOps.INSTANCE, root);
                 T definition = parsed.result().orElse(null);
                 if (definition == null) {
@@ -710,7 +746,7 @@ public final class WorldAwakenedDatapackLoader {
             String sourcePath,
             WorldAwakenedValidationSummary.Builder collector) {
         WorldAwakenedMutationComponentValidation.Result result =
-                WorldAwakenedMutationComponentValidation.validate(definition.components(), definition.componentBudget());
+                WorldAwakenedMutationComponentValidation.validate(definition.components());
         for (WorldAwakenedMutationComponentValidation.Issue issue : result.issues()) {
             String code = switch (issue.kind()) {
                 case EMPTY_COMPONENT_LIST -> WorldAwakenedDiagnosticCodes.COMPONENT_ARRAY_EMPTY;
@@ -718,7 +754,6 @@ public final class WorldAwakenedDatapackLoader {
                 case INVALID_COMPONENT_PARAMETERS -> WorldAwakenedDiagnosticCodes.COMPONENT_PARAMETERS_INVALID;
                 case INCOMPATIBLE_COMPONENT_COMPOSITION, IMPOSSIBLE_COMPONENT_COMPOSITION -> WorldAwakenedDiagnosticCodes.COMPONENT_COMPOSITION_INVALID;
                 case NO_RUNTIME_RESULT -> WorldAwakenedDiagnosticCodes.COMPONENT_NO_RUNTIME_RESULT;
-                case COMPONENT_BUDGET_EXCEEDED -> WorldAwakenedDiagnosticCodes.COMPONENT_BUDGET_EXCEEDED;
                 case DUPLICATE_COMPONENT_TYPE -> WorldAwakenedDiagnosticCodes.COMPONENT_DUPLICATE_UNSUPPORTED;
             };
             collector.addDiagnostic(new WorldAwakenedDiagnostic(
@@ -730,6 +765,58 @@ public final class WorldAwakenedDatapackLoader {
                     issue.detail(),
                     "disabled_object"));
         }
+    }
+
+    static Optional<WorldAwakenedDiagnostic> evaluateMutatorComponentCountLimit(
+            MobMutatorDefinition definition,
+            String sourcePath,
+            int maxComponentsPerMutator) {
+        if (maxComponentsPerMutator < 1) {
+            return Optional.empty();
+        }
+        long enabledComponentCount = definition.components().stream()
+                .filter(MutationComponentDefinition::enabled)
+                .count();
+        if (enabledComponentCount <= maxComponentsPerMutator) {
+            return Optional.empty();
+        }
+        return Optional.of(new WorldAwakenedDiagnostic(
+                WorldAwakenedDiagnosticSeverity.WARNING,
+                WorldAwakenedDiagnosticCodes.PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED,
+                "mob_mutators",
+                definition.id(),
+                sourcePath,
+                "enabled component count " + enabledComponentCount
+                        + " exceeds max_components_per_mutator=" + maxComponentsPerMutator,
+                "warn_threshold"));
+    }
+
+    static Optional<WorldAwakenedDiagnostic> evaluatePoolMutatorCountLimit(
+            MutationPoolDefinition definition,
+            String sourcePath,
+            int maxMutatorsPerSpawn,
+            int defaultMaxMutatorsPerEntity) {
+        if (maxMutatorsPerSpawn < 1) {
+            return Optional.empty();
+        }
+        int fallbackMax = Math.max(1, defaultMaxMutatorsPerEntity);
+        int requestedMax = definition.maxMutatorsPerEntity().orElse(fallbackMax);
+        if (requestedMax <= maxMutatorsPerSpawn) {
+            return Optional.empty();
+        }
+        String source = definition.maxMutatorsPerEntity().isPresent()
+                ? "pool max_mutators_per_entity"
+                : "default mutators.max_mutators_per_mob";
+        return Optional.of(new WorldAwakenedDiagnostic(
+                WorldAwakenedDiagnosticSeverity.WARNING,
+                WorldAwakenedDiagnosticCodes.PERF_MUTATOR_COUNT_EXCEEDED,
+                "mutation_pools",
+                definition.id(),
+                sourcePath,
+                "requested mutator cap " + requestedMax
+                        + " exceeds max_mutators_per_spawn=" + maxMutatorsPerSpawn
+                        + " (" + source + ")",
+                "warn_threshold"));
     }
 
     private static void validateTypedNodes(
@@ -1047,6 +1134,28 @@ public final class WorldAwakenedDatapackLoader {
                     "Invalid config gate: " + configGate,
                     "disabled_object"));
         }
+    }
+
+    static Optional<String> validateRawMutationChance(String objectType, JsonElement root) {
+        if (!"mutation_pools".equals(objectType)) {
+            return Optional.empty();
+        }
+        if (root == null || !root.isJsonObject()) {
+            return Optional.empty();
+        }
+        JsonObject object = root.getAsJsonObject();
+        if (!object.has("mutation_chance")) {
+            return Optional.empty();
+        }
+        JsonElement rawChance = object.get("mutation_chance");
+        if (!rawChance.isJsonPrimitive() || !rawChance.getAsJsonPrimitive().isNumber()) {
+            return Optional.of("mutation_chance must be a number in range [0.0, 1.0]");
+        }
+        double chance = rawChance.getAsDouble();
+        if (!Double.isFinite(chance) || chance < 0.0D || chance > 1.0D) {
+            return Optional.of("mutation_chance must be in range [0.0, 1.0]");
+        }
+        return Optional.empty();
     }
 
     private static void validateIconReference(

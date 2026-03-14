@@ -52,7 +52,6 @@
       }
     }
   ],
-  "component_budget": 5,
   "reward_modifier": {
     "xp_multiplier": 1.16
   },

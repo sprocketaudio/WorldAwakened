@@ -54,8 +54,7 @@ public record MobMutatorDefinition(
                     .forGetter(MutatorBehavior::rewardModifier),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.optionalFieldOf("visuals").forGetter(MutatorBehavior::visuals),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.optionalFieldOf("sounds").forGetter(MutatorBehavior::sounds),
-            WorldAwakenedJsonCodecs.STRING_LIST.optionalFieldOf("application_contexts", List.of("on_spawn")).forGetter(MutatorBehavior::applicationContexts),
-            Codec.INT.optionalFieldOf("component_budget").forGetter(MutatorBehavior::componentBudget))
+            WorldAwakenedJsonCodecs.STRING_LIST.optionalFieldOf("application_contexts", List.of("on_spawn")).forGetter(MutatorBehavior::applicationContexts))
             .apply(instance, MutatorBehavior::new));
 
     public static final Codec<MobMutatorDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -134,10 +133,6 @@ public record MobMutatorDefinition(
         return behavior.applicationContexts();
     }
 
-    public Optional<Integer> componentBudget() {
-        return behavior.componentBudget();
-    }
-
     public record MutatorPresentation(
             JsonElement displayName,
             Optional<String> rarity) {
@@ -163,8 +158,7 @@ public record MobMutatorDefinition(
             JsonObject rewardModifier,
             Optional<JsonElement> visuals,
             Optional<JsonElement> sounds,
-            List<String> applicationContexts,
-            Optional<Integer> componentBudget) {
+            List<String> applicationContexts) {
     }
 }
 

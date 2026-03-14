@@ -39,6 +39,5 @@
       "weight": 5
     }
   ],
-  "max_mutators_per_entity": 1,
-  "reroll_policy": "single_retry"
+  "max_mutators_per_entity": 1
 }

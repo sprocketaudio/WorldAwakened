@@ -1,9 +1,9 @@
 # World Awakened Composition and Stacking Contract
 
-Canonical contract for duplicate handling, conflict resolution, ordering, budget rules, and no-op detection in component-based authored definitions.
+Canonical contract for duplicate handling, conflict resolution, ordering, guardrail rules, and no-op detection in component-based authored definitions.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-14
 - Scope: Mutation and ascension component composition semantics
 
 ---
@@ -27,7 +27,7 @@ Related contracts:
 - [AGENTS.md](../AGENTS.md)
 
 Update rule:
-- Update this file in the same change whenever composition fields, duplicate/conflict policies, ordering semantics, or budget/no-op behavior changes.
+- Update this file in the same change whenever composition fields, duplicate/conflict policies, ordering semantics, or guardrail/no-op behavior changes.
 - Keep this file aligned with runtime resolver implementation, validation diagnostics, and debug inspection output.
 
 ---
@@ -42,7 +42,7 @@ Covered authored objects:
 - any future object type that declares `components[]` and opts into shared composition semantics
 
 Hard rule:
-- no subsystem may define a separate duplicate/conflict/ordering/budget algorithm without promoting that change into this file and `SPECIFICATION.md`.
+- no subsystem may define a separate duplicate/conflict/ordering/guardrail algorithm without promoting that change into this file and `SPECIFICATION.md`.
 
 ---
 
@@ -82,10 +82,9 @@ All component compositions must be resolved through this exact sequence:
 10. Apply conflict-set policy
 11. Apply companion/dependency constraints
 12. Apply deterministic ordering
-13. Compute effective component budget cost
-14. Apply budget rules
-15. Detect no-op effective results
-16. Emit resolved component list + diagnostics metadata
+13. Apply configured component-count guardrails
+14. Detect no-op effective results
+15. Emit resolved component list + diagnostics metadata
 
 Hard rule:
 - each phase may only consume output from previous phases; later phases must not retroactively skip required earlier checks.
@@ -111,6 +110,14 @@ Precedence for duplicate resolution:
 2. higher `composition_priority` (if present)
 3. later authored order
 4. stable tiebreaker by normalized entry hash
+
+Component-local target note:
+- `worldawakened:equip_item` explicitly allows duplicate entries so one mutator can author multiple gear pieces
+- if multiple resolved `equip_item` entries target the same final vanilla slot, later resolved execution order overwrites earlier slot contents
+- this is a component-local last-wins rule inside the already accepted duplicate set, not a second global duplicate algorithm
+- `worldawakened:effect_particles` and `worldawakened:ambient_particles` explicitly allow duplicate entries so multiple visual emitters can stack on the same mob
+- visual emitter duplicates do not merge; each accepted entry persists as its own per-entity emitter state
+- `worldawakened:glow_style` uses the default duplicate policy (`reject`); only one resolved outline style may own an entity at a time
 
 ---
 
@@ -170,23 +177,14 @@ Runtime safety rule:
 
 ---
 
-## 7. Budget Interaction Rules
+## 7. Guardrail Rules
 
-Budget evaluation uses resolved components after duplicates/conflicts are applied.
-
-Budget fields:
-- candidate-level limit (for example mutator `component_budget`)
-- component cost from registry metadata (default `1` unless declared otherwise)
+Guardrail evaluation uses resolved components after duplicates/conflicts are applied.
 
 Rules:
-- total cost = sum of resolved component costs
-- if total cost exceeds budget, candidate is rejected
-- budget rejection disables only the affected candidate/object branch
-- budget failure must not crash unrelated systems
-
-Runtime behavior:
-- spawn-time mutation pool rolls may skip over-budget candidates and continue bounded reroll flow
-- ascension reward definitions that are permanently over budget are validation errors when a budget contract is active
+- v1 runtime guardrails are enforced by configured count limits (for example `max_components_per_mutator`)
+- guardrail failures disable only the affected candidate/object branch
+- guardrail failure must not crash unrelated systems
 
 ---
 
@@ -254,31 +252,6 @@ Result:
 - drop `fire_package`
 - emit drop diagnostic with precedence reason
 
-### 9.3 Budget Rejection
-
-Input:
-
-```json
-{
-  "id": "my_pack:glass_cannon",
-  "component_budget": 4,
-  "components": [
-    { "type": "worldawakened:max_health_multiplier" },
-    { "type": "worldawakened:attack_damage_multiplier" },
-    { "type": "worldawakened:projectile_split" }
-  ]
-}
-```
-
-Assumption:
-- resolved cost is `6`
-
-Result:
-- candidate rejected as over budget
-- emit `WA_COMPONENT_BUDGET_EXCEEDED`
-
----
-
 ## 10. Inspection and Trace Requirements
 
 Composition resolution must be inspectable through debug surfaces defined in [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md).
@@ -289,14 +262,14 @@ Minimum exposed fields:
 - resolved component list in execution order
 - dropped/rejected components
 - reason codes and categories
-- effective cost and budget outcome
+- guardrail outcomes
 
 ---
 
 ## 11. Phase Alignment (MVP Roadmap)
 
 This contract aligns to future implementation phases as follows:
-- Phase 5: mutation composition enforcement (duplicates/conflicts/order/budget/no-op) for spawn-time mutators
+- Phase 5: mutation composition enforcement (duplicates/conflicts/order/no-op) for spawn-time mutators
 - Phase 6: integration of composition outcomes with bounded rule/action and spawn guardrails
 - Phase 10: web authoring tool composition previews and warnings aligned with this resolver contract
 - Phase 11: hardening and validation quality for composition diagnostics and deterministic resolution

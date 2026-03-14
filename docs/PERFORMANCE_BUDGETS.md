@@ -3,7 +3,7 @@
 Canonical contract for hot-path runtime limits, indexing guarantees, and evaluation guardrails.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Rule engine and spawn-time mutation performance contracts
 
 ---
@@ -38,6 +38,8 @@ Update rule:
 - Runtime performance protections must fail closed per object/branch rather than destabilizing unrelated systems.
 - Owned runtime carrier executors for damage, tick, render, or other hot-path surfaces must use keyed WA-owned state and typed handler logic; they must not parse raw JSON on every event.
 - Client visual carrier handlers must stay local-player-only and constant-time per frame; they may read synced WA-owned state and feed the owning client's render/lightmap hooks, but they must not scan world entities or rebuild authored data during render/tick hooks.
+- Tick-driven mutator presentation behavior must run only on entities that already carry WA-owned typed state; `effect_particles` and `ambient_particles` must use per-entity emitter state and must not scan loaded entities globally.
+- `glow_style` client outline rendering must run only for entities with synced WA-owned glow state, use frustum checks before rendering, keep the outline pass bounded, and clamp authored `brightness` to `0.0..1.0`.
 
 ---
 
@@ -96,6 +98,18 @@ Budget handling contract:
 - policy may optionally disable an offending rule/object branch when configured.
 - budget warnings must never crash the server.
 
+Runtime enforcement rules:
+- `maximum_rules_evaluated_per_event` must stop evaluation at a deterministic boundary in the already-deterministic candidate order.
+- when event-pass truncation occurs, emit `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED` with event type, scope bucket, evaluated count, limit, and trace context when available.
+- enforcement must not add hidden rerolls/retries to compensate for truncation.
+- `maximum_actions_per_rule` overflow must emit `WA_PERF_RULE_ACTION_COUNT_EXCEEDED`.
+- validation must warn at minimum for oversized action lists; policy may disable the offending object/branch.
+- action-overflow paths must never execute oversized action lists unpredictably.
+
+Stable ordering requirement:
+- candidate order must be deterministic before truncation.
+- hash-map iteration order must never be used as execution/truncation order.
+
 ---
 
 ## 4. Spawn-Time Mutation Budget
@@ -113,6 +127,26 @@ Budget handling contract:
 - if limits are exceeded, apply deterministic truncation or validation failure based on active policy.
 - resolution outcomes must be deterministic for identical inputs.
 - no budget overflow path may trigger unbounded retries.
+
+## Mutator Evaluation Guardrail
+
+Mutator evaluation must remain bounded even in large modpacks.
+
+Hard requirements:
+- pool selection must occur before mutator evaluation
+- selected-pool `mutation_chance` must be evaluated after pool selection and before mutator evaluation
+- mutator evaluation must operate only on candidate pools
+- selector indexing must prevent full pool scans per spawn
+- component-count guardrails must prevent unbounded stacking
+
+Recommended limits:
+- max candidate pools per spawn context should remain small
+- max mutators applied per entity must be bounded
+- component-count guardrails must remain enforceable even under forced debug commands
+- forced debug pool/mutator paths may bypass chance gates but must still remain bounded by the same mutator/component guardrails
+
+Performance goal:
+- mutator systems must not introduce per-spawn evaluation costs proportional to total defined pools or mutators
 
 ---
 
@@ -138,7 +172,7 @@ Recommended diagnostics:
 - `WA_SPAWN_EXTERNAL_TRANSFORM_DETECTED`
 
 Recommended observability:
-Future `/wa debug mutators` and `/wa debug perf` outputs should expose:
+Current `/wa debug mutators` and future `/wa debug perf` outputs should expose:
 - spawn events skipped due to upstream cancellation
 - external-transform detection count
 - re-entry blocks
@@ -234,8 +268,8 @@ Canonical payloads and trace integration must align with [DEBUG_AND_INSPECTION.m
 ## 8. Phase Alignment (MVP Roadmap)
 
 This contract aligns to future implementation phases as follows:
-- Phase 5: enforce spawn-time mutator/component budgets and deterministic overflow behavior
-- Phase 6: enforce per-event rule/action budget guardrails and diagnostics-first policy
+- Phase 5: enforce spawn-time mutator/component count guardrails and deterministic overflow behavior
+- Phase 6: enforce per-event rule/action budget guardrails with deterministic truncation boundaries, diagnostics-first policy, and stable ordering guarantees
 - Phase 10: expose performance-budget warnings in web authoring validation workflows
 - Phase 11: harden performance telemetry and ship `/wa debug perf|rules|mutators` observability surfaces
 

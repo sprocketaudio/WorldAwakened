@@ -18,7 +18,6 @@
   "excluded_entities": ["minecraft:warden"],
   "excluded_entity_tags": ["#c:bosses"],
   "required_conditions": [],
-  "component_budget": 5,
   "reward_modifier": {
     "xp_multiplier": 1.2,
     "loot_bonus_chance": 0.04

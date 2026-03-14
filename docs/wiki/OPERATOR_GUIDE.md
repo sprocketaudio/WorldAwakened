@@ -3,7 +3,7 @@
 Practical guide to using the `/wa` command tree for inspection, testing, recovery, and administration.
 
 - Document status: Active human-friendly operator handbook
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Command usage, targeting, recovery, and testing support
 
 ---
@@ -158,6 +158,68 @@ What these tell you:
 - which rules are currently active or blocked
 - whether the player has pending or resolved ascension instances
 - which WA-owned carriers are currently active on the player, including client-visual carriers such as passive night vision that now drive a lightmap-backed client render path
+
+## 3A. Phase 5 Mutator Inspect Expectations
+
+Treat `/wa mob inspect` as the first mutator diagnosis tool.
+
+Targeting forms:
+- `/wa mob inspect` uses the mob under your crosshair when you run it as a player
+- `/wa mob inspect <target>` keeps the explicit entity form for console, command blocks, and selectors such as `@e[type=minecraft:zombie,limit=1,sort=nearest]`
+
+Minimum fields you should expect to see:
+- entity type
+- mutation pool
+- applied mutators
+- applied components
+- mutation stage context
+- mutation trace ID
+- mutation depth or origin marker
+- spawn origin and attributed progression player on debug evaluate/force/spawn-test output
+
+If one of these fields is missing, treat that as an observability gap and investigate before trusting balancing results.
+
+Preflight check before using Phase 5 debug commands:
+- run `/wa debug`
+- confirm `mutators` and `spawn` appear as child literals
+- if `/wa debug` only shows `clear` and `reset`, restart on a current Phase 5 build; datapack reload does not refresh command registration
+
+Use these Phase 5 debug surfaces when a spawn path is unclear:
+
+```text
+/wa debug mutators evaluate <entity_id>
+/wa debug mutators force_pool <entity_id> <pool_id>
+/wa debug mutators force_mutator <entity_id> <mutator_id>
+/wa debug spawn test <entity_id>
+```
+
+## 3B. Mutator Cap Resolution
+
+Mutator count limits resolve in this order:
+1. `mutation_pools[].max_mutators_per_entity` on the selected pool (if present)
+2. otherwise `mutators.max_mutators_per_mob` from `worldawakened-common.toml`
+
+Operator workflow when counts look wrong:
+1. run `/wa debug mutators evaluate <entity_id>` to see likely pool selection
+2. run `/wa debug mutators force_pool <entity_id> <pool_id>` to isolate one pool
+3. check the reported `spawn_context` line to confirm the spawn origin and attributed player
+4. compare that pool's `max_mutators_per_entity` against the global TOML default
+
+## 3C. Mutation Chance Resolution
+
+Mutation chance resolves on the selected pool, after pool selection and before mutator selection.
+
+Rules:
+1. `mutation_pools[].mutation_chance` defaults to `1.0` when omitted
+2. `mutation_chance=1.0` always proceeds (no roll)
+3. `mutation_chance=0.0` always stops with `final_outcome=chance_failed`
+4. `0.0 < mutation_chance < 1.0` performs one deterministic roll per selected-pool evaluation
+
+Operator workflow when pools match but mobs still do not mutate:
+1. run `/wa debug mutators evaluate <entity_id>`
+2. check `selected_pool` and `chance_result`
+3. if `chance_result` shows `passed=false`, you hit chance gating rather than selector/budget rejection
+4. run `/wa debug mutators force_pool <entity_id> <pool_id>` if you need to bypass chance while debugging
 
 ## 4. Baseline Mutation Commands
 

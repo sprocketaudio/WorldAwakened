@@ -18,7 +18,6 @@
   "excluded_entities": ["minecraft:creeper"],
   "excluded_entity_tags": ["#c:bosses"],
   "required_conditions": [],
-  "component_budget": 4,
   "reward_modifier": {
     "xp_multiplier": 1.1
   },

@@ -3,7 +3,7 @@
 Deferred and long-term feature backlog for World Awakened.
 
 - Document status: Non-normative backlog
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Purpose: Record future feature ideas without expanding MVP scope
 
 ---
@@ -291,6 +291,24 @@ Recommended status:
 - future idea / deferred
 - not active v1 scope
 - should only be promoted when multiple concrete advanced mutator families justify formalizing shared runtime surfaces
+
+### 1.12 Mutation Pool Reroll Policy
+
+Concept:
+Allow optional bounded reroll behavior during mutation pool/mutator selection.
+
+Possible policy shapes:
+- `none`
+- `single_retry`
+- small bounded retry count with strict guardrails
+
+Hard constraints if promoted:
+- no unbounded reroll loops
+- deterministic debug visibility for every reroll decision
+- explicit cap enforcement aligned with performance budgets
+
+Scope note:
+- deferred idea only; not part of the active v1 `mutation_pools` schema
 
 ---
 

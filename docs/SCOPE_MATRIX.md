@@ -3,7 +3,7 @@
 Canonical reference for shared execution scopes, guaranteed context, and condition/action legality.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-14
 - Scope: Shared scope model used by runtime, validators, and tooling
 
 ---
@@ -208,6 +208,7 @@ Each scope entry in this file defines:
   - primarily runtime/event-bound state; persistent writes only when an action explicitly documents them
 - Invalid/missing-context behavior:
   - missing optional player/entity-derived fields fail closed for dependent conditions
+  - spawn-time mutator evaluation in `per_player` progression mode fails closed when no nearby player attribution exists
   - no assumption of pre-existing persisted entity metadata before spawn finalize
 - Notes/example:
   - Example: spawn-event rule checks `entity_type` + `world_day_gte` then attempts `apply_mutator_pool`.

@@ -70,7 +70,10 @@ public final class WorldAwakenedCommonConfig {
 
         builder.push("mutators");
         ENABLE_MUTATORS = builder.define("enable_mutators", true);
-        MAX_MUTATORS_PER_MOB = builder.defineInRange("max_mutators_per_mob", 2, 0, 16);
+        MAX_MUTATORS_PER_MOB = builder.comment(
+                        "Global default cap for mutators applied per spawned mob. "
+                                + "Mutation pools may override this with max_mutators_per_entity.")
+                .defineInRange("max_mutators_per_mob", 2, 0, 16);
         RESPECT_BOSS_BLACKLIST = builder.define("respect_boss_blacklist", true);
         APPLY_ON_SPAWN_ONLY = builder.define("apply_on_spawn_only", true);
         builder.pop();

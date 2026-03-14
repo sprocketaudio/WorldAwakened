@@ -3,7 +3,7 @@
 Canonical reference for structured diagnostic code families, severity semantics, and publication rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-13
+- Last updated: 2026-03-14
 - Scope: Validation and diagnostics contracts across runtime, commands, and tooling
 
 ---
@@ -149,14 +149,14 @@ Primary families:
 - `WA_COMPONENT_*`
 - `WA_MUTATION_COMPONENT_*`
 - `WA_ASCENSION_COMPONENT_*`
-- `WA_COMPONENT_BUDGET_*`
 
 Common cases:
 - Unknown component type.
 - Invalid parameters.
+- Invalid item/slot/enchantment payloads on component types such as `worldawakened:equip_item`.
 - Empty component array.
 - Conflict/duplicate/companion violations.
-- Budget exceeded.
+- Unsupported authored mutator cost fields.
 
 ### F. Reference Resolution
 
@@ -302,15 +302,14 @@ Publication labels used below:
 | `WA_CONFIG_GATE_INVALID` | implemented | config gate | error | validation | yes | Invalid `config_gate` token/shape. | Disable owning object branch. | Use valid gate key format and existing gate. | Emitted by loader gate validation. |
 | `WA_SELECTOR_INVALID` | implemented | selector | error | validation | yes | Invalid selector/tag syntax for hot-path filters. | Disable owning object. | Correct selector syntax and target type. | Emitted during reload precompilation checks. |
 
-### 7D. Component Composition and Budgeting
+### 7D. Component Composition and Unsupported Authored Cost Fields
 
 | Code | Publication | Domain | Severity | Lifecycle | Blocking? | Typical causes | Fallback behavior | Fix guidance | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_COMPONENT_ARRAY_EMPTY` | implemented | component | error | validation | yes | Empty `components[]`. | Disable owning mutator/reward object. | Provide at least one valid component. | Required canonical component code. |
 | `WA_COMPONENT_TYPE_UNKNOWN` | implemented | component | error | validation | yes | Unknown/unregistered component `type`. | Disable owning object. | Use supported component type or install provider mod. | Required canonical component code. |
-| `WA_COMPONENT_PARAMETERS_INVALID` | implemented | component | error | validation | yes | Invalid/missing component parameters. | Disable owning object. | Correct parameter shape/ranges. | Required canonical component code. |
+| `WA_COMPONENT_PARAMETERS_INVALID` | implemented | component | error | validation | yes | Invalid/missing component parameters, including bad `equip_item` item IDs, slot names, drop chances, enchantment payloads, bad `glow_style` color/brightness/pulse fields, bad `effect_particles` effect_type/color/count/interval fields, or bad `ambient_particles` particle/color/size/count/offset/speed/interval fields. | Disable owning object. | Correct parameter shape/ranges. | Required canonical component code. |
 | `WA_COMPONENT_COMPOSITION_INVALID` | implemented | component composition | error | validation | yes | Incompatible composition, conflict, impossible combination. | Disable owning object. | Remove conflicting components or satisfy dependencies. | Required canonical component code. |
-| `WA_COMPONENT_BUDGET_EXCEEDED` | implemented | component budget | error | validation | yes | Component budget/cost exceeded. | Disable owning object. | Reduce cost or raise configured budget if intended. | Required canonical component budget code. |
 | `WA_COMPONENT_DUPLICATE_UNSUPPORTED` | implemented | component duplicate policy | error | validation | yes | Duplicate component type not allowed by policy. | Disable owning object. | Remove duplicate or change duplicate policy support. | Shared duplicate-policy failure code. |
 | `WA_COMPONENT_NO_RUNTIME_RESULT` | implemented | component runtime applicability | error | validation | yes | Component composition validates structurally but cannot produce runtime effect. | Disable owning object. | Adjust composition to produce executable runtime result. | Used by both ascension and mutation validations. |
 | `WA_MUTATION_COMPONENT_INVALID` | published | mutation component | error | validation | yes | Mutation component invalid (type/shape-level). | Disable owning mutator object. | Correct mutation component definition. | Component reference recommended family. |
@@ -333,6 +332,7 @@ Publication labels used below:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_INVALID_REFERENCE` | implemented | reference resolution | warning or error | cross-object | context-dependent | Missing referenced mutator/reward/profile/stage or ID/path mismatch. | Disable dependent object on hard missing refs; keep warning-only mismatches non-blocking. | Fix target IDs and ensure referenced object exists/enabled. | Current generic reference code in loader. |
 | `WA_POOL_SELECTION_IMPOSSIBLE` | implemented | mutation pool | error | validation/runtime guard | yes | Pool has no selectable/valid entries after filtering. | Disable invalid pool/object branch. | Add valid entries/weights and fix filters. | Emitted in pool validation paths. |
+| `WA_MUTATION_CHANCE_INVALID` | implemented | mutation pool chance | error | validation | yes | `mutation_chance` missing numeric type or outside `[0.0, 1.0]`. | Disable owning pool object. | Author a numeric value in range `0.0..1.0` or omit field for default `1.0`. | Canonical validation code for pool chance field. |
 | `WA_INVASION_COMPOSITION_INVALID` | implemented | invasion profile | error | validation | yes | Invalid `spawn_composition` entries or zero valid entries. | Disable offending invasion profile. | Provide valid selectors and composition entries. | Emitted during invasion profile checks. |
 | `WA_INTEGRATION_INACTIVE` | implemented | integration | error | validation | branch-level | Integration-specific data authored while integration disabled/missing. | Skip/disable integration-specific branch only. | Enable integration or remove integration-specific nodes. | Must not become hard dependency failure. |
 | `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED` | published | Apotheosis compat | warning or error | validation/runtime guard | branch-level | Unsafe destructive operation (`replace_entries`, `remove_entries`) blocked on sensitive target. | Block operation branch; preserve Apotheosis behavior. | Use additive/safe mode or retarget profile. | Required canonical Apotheosis safety code. |
@@ -347,6 +347,7 @@ Publication labels used below:
 | `WA_SPAWN_SKIPPED_UPSTREAM_CANCEL` | published | spawn coexistence guard | info or warning | runtime/debug | branch-level | Upstream hook/mod already cancelled or denied the spawn event before World Awakened mutation processing. | Early-exit spawn mutation path; do not retry/recreate denied spawn. | Verify external spawn-controller rules and intended priority ordering. | Canonical coexistence code for additive-first spawn behavior. |
 | `WA_SPAWN_CONTEXT_INVALIDATED` | published | spawn coexistence guard | warning | runtime/debug | branch-level | Spawn context became invalid (entity removed/replaced/unusable) before mutation evaluation completed. | Abort mutation branch safely and continue server tick flow. | Audit hook-chain ordering and validate context guards. | Must never force invalidated spawn context back into processing. |
 | `WA_SPAWN_REENTRY_BLOCKED` | published | spawn recursion guard | warning | runtime guard | branch-level | Re-entry attempt detected for redirected or follow-up spawn not marked compat-safe. | Block re-entrant mutation branch; continue non-recursive processing. | Remove unsafe follow-up spawn loops or mark compat-safe path explicitly when supported. | Complements `WA_RULE_RECURSION_BLOCKED` for spawn path. |
+| `WA_MUTATION_CHANCE_FAILED` | implemented | mutation pool chance | info | runtime/debug | branch-level | Pool matched and was selected, but mutation chance roll did not pass. | Stop mutator evaluation for that selected pool and keep entity unmutated. | Increase pool `mutation_chance` or use force command for deterministic debug isolation. | Must remain distinct from selector mismatch, budget rejection, or missing mutator candidates. |
 | `WA_SPAWN_EXTERNAL_TRANSFORM_DETECTED` | published | spawn coexistence telemetry | info | runtime/debug | no | Upstream hook/mod transformed/replaced spawn context before World Awakened evaluation. | Continue using final surviving context only. | Confirm transformed entity context remains eligible for intended pools/mutators. | Supports mixed-mod observability for spawn hook chains. |
 | `WA_ASCENSION_RECONCILE_COMPONENT_PARAM_INVALID` | implemented | ascension reconcile | warning | runtime/debug | branch-level | Chosen reward component is missing required runtime parameters during player reward reconciliation. | Skip that component only; continue reconciling the rest of the reward set. | Fix the component payload or reward definition so the live handler receives valid parameters. | Emitted as structured reconcile-skip diagnostics. |
 | `WA_ASCENSION_RECONCILE_ATTRIBUTE_MISSING` | canonical-target | ascension reconcile | warning | runtime/debug | branch-level | The required attribute instance is unavailable on the current player/entity during reward reconciliation. | Skip that component only; continue reconciling unrelated reward effects. | Verify the target attribute exists in the current environment and that the component is compatible with the runtime target. | Use the player/entity surface-specific canonical code (`WA_PLAYER_ATTRIBUTE_SURFACE_MISSING`) where available. |
@@ -369,7 +370,7 @@ Publication labels used below:
 | `WA_CLIENT_VISUAL_CHANNEL_UNAVAILABLE` | canonical-target | runtime surface compat | warning | runtime/debug | branch-level | Required client visual presentation channel is unavailable for the ownership-safe branch. | Skip only the affected branch or component. | Route through an available WA-owned visual carrier/channel or disable the authored branch. | Complements `WA_VISUAL_CARRIER_UNAVAILABLE` for broader visual-channel constraints. |
 | `WA_COMPAT_BRANCH_SKIPPED_SURFACE_UNAVAILABLE` | canonical-target | compat branch status | warning | runtime/debug | branch-level | A compat-sensitive branch was intentionally skipped due to optional runtime-surface unavailability. | Preserve foreign state and continue evaluating unrelated branches. | Inspect required surface diagnostics and active integration/provider state. | Useful umbrella code when a branch has multiple optional-surface dependencies. |
 | `WA_ENTITY_RUNTIME_SURFACE_MISSING` | canonical-target | entity runtime surface | warning | runtime/debug | branch-level | Mutator or entity branch expected a runtime capability/hook/channel that is not present. | Skip only the affected branch or component. | Verify the entity capability/hook exists in the current environment. | Entity equivalent of missing player runtime surfaces. |
-| `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE` | canonical-target | mutator runtime surface | warning | runtime/debug | branch-level | Mutator component has no safe available runtime surface for application. | Skip only the affected mutator component or branch. | Add a compat-safe runtime surface or remove the authored component. | Required for future Phase 5 ownership-safe mutation application. |
+| `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE` | canonical-target | mutator runtime surface | warning | runtime/debug | branch-level | Mutator component has no safe available runtime surface for application, such as `equip_item` resolving to a slot the mob cannot use or a hand item it cannot hold. | Skip only the affected mutator component or branch. | Add a compat-safe runtime surface or remove the authored component. | Required for future Phase 5 ownership-safe mutation application. |
 | `WA_RUNTIME_INSTANCE_MISSING_DEFINITION` | implemented | migration/runtime | warning | runtime/debug | branch-level | Saved runtime state references a definition that no longer exists after reload or datapack changes. | Preserve the saved instance/provenance record; do not auto-substitute. | Restore the definition or accept the degraded historical state. | Applies to saved rewards, offer instances, future mutator provenance, and similar runtime references. |
 | `WA_COMPILED_GRAPH_MIXED_STATE_BLOCKED` | implemented | reload/runtime cache | error | runtime guard | branch-level or subsystem-level | Runtime attempted to observe a mixed old/new compiled graph state during reload. | Abort the mixed branch and continue on a stable compiled graph only. | Audit reload atomicity and snapshot replacement logic. | Ownership-safe reloads must use old-or-new compiled graphs only. |
 | `WA_FOREIGN_STATE_PRESERVATION_REQUIRED` | canonical-target | ownership safety | info or warning | runtime/debug | no (by itself) | World Awakened intentionally preserved foreign state because the branch was not owned by WA. | Preserve the foreign state and continue owned-state work only. | Add explicit compat only when safe and documented. | Useful when explaining why a foreign effect/modifier was not removed. |
@@ -396,10 +397,10 @@ Policy guidance:
 | Code | Publication | Domain | Severity | Lifecycle | Blocking? | Typical causes | Fallback behavior | Fix guidance | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_PERF_RULE_BUCKET_OVERSIZE` | published | performance/rule bucket | warning | validation | no (by default) | Scope bucket exceeds `maximum_rules_per_bucket` recommendation/policy. | Emit warning; optionally disable or split offending scope branch by policy. | Split rules across scopes, reduce broad conditions, or tighten policy thresholds. | Performance budget warning family from `PERFORMANCE_BUDGETS.md`. |
-| `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED` | published | performance/rule evaluation | warning | runtime/debug | branch-level | Event pass attempted to evaluate over `maximum_rules_evaluated_per_event`. | Truncate or short-circuit per policy; emit trace summary. | Reduce candidate fan-out and improve indexing/selectors. | Must include scope bucket and event type in payload. |
-| `WA_PERF_RULE_ACTION_COUNT_EXCEEDED` | published | performance/action budget | warning or error | validation | object-level | Rule defines more than `maximum_actions_per_rule`. | Warn by default; optionally disable offending rule by policy. | Split rule into smaller deterministic rules. | Severity may be strict-mode elevated. |
+| `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED` | published | performance/rule evaluation | warning | runtime/debug | branch-level | Event pass attempted to evaluate over `maximum_rules_evaluated_per_event`. | Truncate at deterministic boundary or short-circuit per policy; emit trace summary. | Reduce candidate fan-out and improve indexing/selectors. | Must include scope bucket, event type, evaluated count, and limit; no hidden reroll compensation. |
+| `WA_PERF_RULE_ACTION_COUNT_EXCEEDED` | published | performance/action budget | warning or error | validation | object-level | Rule defines more than `maximum_actions_per_rule`. | Warn by default; optionally disable offending rule by policy. | Split rule into smaller deterministic rules. | Severity may be strict-mode elevated; oversized action list must not execute unpredictably. |
 | `WA_PERF_MUTATOR_COUNT_EXCEEDED` | published | performance/spawn mutators | warning | validation/runtime | branch-level | Spawn branch exceeds `max_mutators_per_spawn`. | Deterministic truncation or candidate rejection per policy. | Reduce pool fan-out or lower mutator density. | Must remain deterministic for identical inputs. |
-| `WA_PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED` | published | performance/spawn components | warning | validation | object-level | Mutator defines over `max_components_per_mutator`. | Warn by default; optionally disable offending mutator by policy. | Reduce component count or split mutator archetypes. | Complements composition budget codes. |
+| `WA_PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED` | published | performance/spawn components | warning | validation | object-level | Mutator defines over `max_components_per_mutator`. | Warn by default; optionally disable offending mutator by policy. | Reduce component count or split mutator archetypes. | Complements component composition guardrails. |
 | `WA_PERF_ACTION_CHAIN_DEPTH_EXCEEDED` | published | performance/action chain | warning or error | runtime guard | branch-level | Action chain depth exceeds single-pass `max_action_chain_depth`. | Abort recursive/re-entry branch; continue stable pass. | Remove same-pass re-entry and cyclic action design. | Should correlate with `WA_RULE_RECURSION_BLOCKED` when both apply. |
 
 ### 7H. Legacy-to-Canonical Granularity Mapping
@@ -491,7 +492,6 @@ When introducing or changing published diagnostics:
 | `WA_COMPONENT_PARAMETERS_INVALID` | error | components | yes |
 | `WA_COMPONENT_COMPOSITION_INVALID` | error | components | yes |
 | `WA_COMPONENT_ARRAY_EMPTY` | error | components | yes |
-| `WA_COMPONENT_BUDGET_EXCEEDED` | error | components | yes |
 | `WA_ASC_COMPONENT_NOT_SUPPRESSIBLE` | error | ascension suppression | branch-level |
 | `WA_ASC_SUPPRESSION_GROUP_REQUIRED` | error | ascension suppression | branch-level |
 | `WA_ASC_SUPPRESSION_INVALID_PARTIAL` | error | ascension suppression | branch-level |
@@ -501,8 +501,12 @@ When introducing or changing published diagnostics:
 | `WA_ACTION_SCOPE_INVALID` | error | action/scope | yes |
 | `WA_ACTION_TYPE_UNKNOWN` | error | action | yes |
 | `WA_ACTION_PARAMETERS_INVALID` | error | action | yes |
+| `WA_DIFFICULTY_GLOBAL_INVALID` | error | difficulty config | yes |
 | `WA_CHALLENGE_SCOPE_INVALID` | error | challenge config | yes |
 | `WA_CHALLENGE_BOUNDS_INVALID` | error | challenge config | yes |
+| `WA_CHALLENGE_STEP_INVALID` | error | challenge config | yes |
+| `WA_CHALLENGE_VOTE_CONFIG_INVALID` | error | challenge config | yes |
+| `WA_CHALLENGE_MODE_UNSUPPORTED` | error | challenge config | yes |
 | `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED` | warning or error | compat/apotheosis | branch-level |
 | `WA_APOTHEOSIS_LOOT_MODE_UNSAFE` | warning or error | compat/apotheosis | branch-level |
 | `WA_APOTHEOSIS_LOOT_TARGET_SENSITIVE` | info or warning | compat/apotheosis | no |

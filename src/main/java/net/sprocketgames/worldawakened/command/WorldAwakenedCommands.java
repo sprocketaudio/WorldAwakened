@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 
 import com.google.gson.JsonElement;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -30,13 +31,23 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionOfferRuntime;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionRewardEffects;
@@ -52,9 +63,13 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedComponentDebugFormatter;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedGlowStyleState;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutationProvenance;
 import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedEffectiveStageContext;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionStateEditor;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationResult;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationStatus;
@@ -66,6 +81,8 @@ import net.sprocketgames.worldawakened.progression.trigger.WorldAwakenedTriggerT
 import net.sprocketgames.worldawakened.rules.WorldAwakenedRuleService;
 
 public final class WorldAwakenedCommands {
+    private static final double AIMED_MOB_INSPECT_RANGE = 64.0D;
+
     private WorldAwakenedCommands() {
     }
 
@@ -75,7 +92,8 @@ public final class WorldAwakenedCommands {
             WorldAwakenedStageService stageService,
             WorldAwakenedTriggerService triggerService,
             WorldAwakenedRuleService ruleService,
-            WorldAwakenedAscensionService ascensionService) {
+            WorldAwakenedAscensionService ascensionService,
+            WorldAwakenedMutatorService mutatorService) {
         WorldAwakenedDebugCommandService debugCommandService = new WorldAwakenedDebugCommandService(stageService, ascensionService);
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("wa")
                 .then(Commands.literal("reload")
@@ -89,10 +107,11 @@ public final class WorldAwakenedCommands {
                         .requires(source -> source.hasPermission(2))
                         .then(Commands.literal("list")
                                 .executes(context -> runCompatList(context.getSource()))))
-                .then(buildAscensionTree(datapackService, ascensionService));
+                .then(buildAscensionTree(datapackService, ascensionService))
+                .then(buildMobTree(mutatorService));
 
         if (WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get()) {
-            root.then(buildDebugTree(datapackService, stageService, ascensionService, debugCommandService));
+            root.then(buildDebugTree(datapackService, stageService, ascensionService, mutatorService, debugCommandService));
         }
 
         dispatcher.register(root);
@@ -778,78 +797,102 @@ public final class WorldAwakenedCommands {
                                                 ResourceLocationArgument.getId(context, "reward_id"))))));
     }
 
+    private static LiteralArgumentBuilder<CommandSourceStack> buildMobTree(WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("mob")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("inspect")
+                        .executes(context -> runMobInspectLookedAt(
+                                context.getSource(),
+                                mutatorService,
+                                sourcePlayer(context.getSource())))
+                        .then(Commands.argument("target", EntityArgument.entity())
+                                .executes(context -> runMobInspect(
+                                        context.getSource(),
+                                        mutatorService,
+                                        EntityArgument.getEntity(context, "target")))));
+    }
+
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugTree(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
             WorldAwakenedAscensionService ascensionService,
+            WorldAwakenedMutatorService mutatorService,
             WorldAwakenedDebugCommandService debugCommandService) {
-        return Commands.literal("debug")
-                .requires(source -> source.hasPermission(2) && WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get())
-                .then(Commands.literal("reset")
-                        .then(buildDebugResetGlobalBranch("global", debugCommandService))
-                        .then(Commands.literal("player")
-                                .then(Commands.argument("player", EntityArgument.player())
-                                        .then(Commands.literal("stages")
-                                                .executes(context -> runDebugResetPlayerStages(
+        LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug")
+                .requires(source -> source.hasPermission(2) && WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
+
+        LiteralArgumentBuilder<CommandSourceStack> resetBranch = Commands.literal("reset")
+                .then(buildDebugResetGlobalBranch("global", debugCommandService))
+                .then(Commands.literal("player")
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .then(Commands.literal("stages")
+                                        .executes(context -> runDebugResetPlayerStages(
+                                                context.getSource(),
+                                                debugCommandService,
+                                                EntityArgument.getPlayer(context, "player"))))
+                                .then(Commands.literal("triggers")
+                                        .executes(context -> runDebugResetPlayerTriggers(
+                                                context.getSource(),
+                                                debugCommandService,
+                                                EntityArgument.getPlayer(context, "player"))))
+                                .then(Commands.literal("rules")
+                                        .executes(context -> runDebugResetPlayerRules(
+                                                context.getSource(),
+                                                debugCommandService,
+                                                EntityArgument.getPlayer(context, "player"))))
+                                .then(Commands.literal("ascension")
+                                        .executes(context -> runDebugResetPlayerAscension(
+                                                context.getSource(),
+                                                debugCommandService,
+                                                EntityArgument.getPlayer(context, "player"))))
+                                .then(Commands.literal("all")
+                                        .executes(context -> runDebugResetPlayerAll(
+                                                context.getSource(),
+                                                debugCommandService,
+                                                EntityArgument.getPlayer(context, "player"))))));
+
+        LiteralArgumentBuilder<CommandSourceStack> clearBranch = Commands.literal("clear")
+                .then(buildDebugClearGlobalBranch("global", datapackService, stageService, debugCommandService))
+                .then(Commands.literal("player")
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .then(Commands.literal("stage")
+                                        .then(Commands.argument("id", ResourceLocationArgument.id())
+                                                .suggests(suggestStageIds(stageService))
+                                                .executes(context -> runDebugClearPlayerStage(
                                                         context.getSource(),
                                                         debugCommandService,
-                                                        EntityArgument.getPlayer(context, "player"))))
-                                        .then(Commands.literal("triggers")
-                                                .executes(context -> runDebugResetPlayerTriggers(
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        ResourceLocationArgument.getId(context, "id")))))
+                                .then(Commands.literal("trigger")
+                                        .then(Commands.argument("id", ResourceLocationArgument.id())
+                                                .suggests(suggestTriggerIds(datapackService))
+                                                .executes(context -> runDebugClearPlayerTrigger(
                                                         context.getSource(),
                                                         debugCommandService,
-                                                        EntityArgument.getPlayer(context, "player"))))
-                                        .then(Commands.literal("rules")
-                                                .executes(context -> runDebugResetPlayerRules(
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        ResourceLocationArgument.getId(context, "id")))))
+                                .then(Commands.literal("rule")
+                                        .then(Commands.argument("id", ResourceLocationArgument.id())
+                                                .suggests(suggestRuleIds(datapackService))
+                                                .executes(context -> runDebugClearPlayerRule(
                                                         context.getSource(),
                                                         debugCommandService,
-                                                        EntityArgument.getPlayer(context, "player"))))
-                                        .then(Commands.literal("ascension")
-                                                .executes(context -> runDebugResetPlayerAscension(
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        ResourceLocationArgument.getId(context, "id")))))
+                                .then(Commands.literal("ascension_instance")
+                                        .then(Commands.argument("instance_id", StringArgumentType.word())
+                                                .suggests(suggestAnyInstanceIds(ascensionService))
+                                                .executes(context -> runDebugClearPlayerAscensionInstance(
                                                         context.getSource(),
                                                         debugCommandService,
-                                                        EntityArgument.getPlayer(context, "player"))))
-                                        .then(Commands.literal("all")
-                                                .executes(context -> runDebugResetPlayerAll(
-                                                        context.getSource(),
-                                                        debugCommandService,
-                                                        EntityArgument.getPlayer(context, "player")))))))
-                .then(Commands.literal("clear")
-                        .then(buildDebugClearGlobalBranch("global", datapackService, stageService, debugCommandService))
-                        .then(Commands.literal("player")
-                                .then(Commands.argument("player", EntityArgument.player())
-                                        .then(Commands.literal("stage")
-                                                .then(Commands.argument("id", ResourceLocationArgument.id())
-                                                        .suggests(suggestStageIds(stageService))
-                                                        .executes(context -> runDebugClearPlayerStage(
-                                                                context.getSource(),
-                                                                debugCommandService,
-                                                                EntityArgument.getPlayer(context, "player"),
-                                                                ResourceLocationArgument.getId(context, "id")))))
-                                        .then(Commands.literal("trigger")
-                                                .then(Commands.argument("id", ResourceLocationArgument.id())
-                                                        .suggests(suggestTriggerIds(datapackService))
-                                                        .executes(context -> runDebugClearPlayerTrigger(
-                                                                context.getSource(),
-                                                                debugCommandService,
-                                                                EntityArgument.getPlayer(context, "player"),
-                                                                ResourceLocationArgument.getId(context, "id")))))
-                                        .then(Commands.literal("rule")
-                                                .then(Commands.argument("id", ResourceLocationArgument.id())
-                                                        .suggests(suggestRuleIds(datapackService))
-                                                        .executes(context -> runDebugClearPlayerRule(
-                                                                context.getSource(),
-                                                                debugCommandService,
-                                                                EntityArgument.getPlayer(context, "player"),
-                                                                ResourceLocationArgument.getId(context, "id")))))
-                                        .then(Commands.literal("ascension_instance")
-                                                .then(Commands.argument("instance_id", StringArgumentType.word())
-                                                        .suggests(suggestAnyInstanceIds(ascensionService))
-                                                        .executes(context -> runDebugClearPlayerAscensionInstance(
-                                                                context.getSource(),
-                                                                debugCommandService,
-                                                                EntityArgument.getPlayer(context, "player"),
-                                                                StringArgumentType.getString(context, "instance_id"))))))));
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        StringArgumentType.getString(context, "instance_id")))))));
+
+        debug.then(resetBranch);
+        debug.then(clearBranch);
+        debug.then(buildDebugMutatorsTree(datapackService, mutatorService));
+        debug.then(buildDebugSpawnTree(mutatorService));
+        return debug;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugResetGlobalBranch(
@@ -893,6 +936,863 @@ public final class WorldAwakenedCommands {
                                         context.getSource(),
                                         debugCommandService,
                                         ResourceLocationArgument.getId(context, "id")))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugMutatorsTree(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("mutators")
+                .then(Commands.literal("summary")
+                        .executes(context -> runDebugMutatorSummary(context.getSource(), mutatorService)))
+                .then(buildDebugMutatorsEvaluateBranch(mutatorService))
+                .then(buildDebugMutatorsForcePoolBranch(datapackService, mutatorService))
+                .then(buildDebugMutatorsForceMutatorBranch(datapackService, mutatorService));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugMutatorsEvaluateBranch(
+            WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("evaluate")
+                .then(Commands.argument("entity_id", ResourceLocationArgument.id())
+                        .suggests(suggestEntityTypeIds())
+                        .executes(context -> runDebugMutatorEvaluate(
+                                context.getSource(),
+                                mutatorService,
+                                ResourceLocationArgument.getId(context, "entity_id"),
+                                null,
+                                null,
+                                null,
+                                null))
+                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                .executes(context -> runDebugMutatorEvaluate(
+                                        context.getSource(),
+                                        mutatorService,
+                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                        DimensionArgument.getDimension(context, "dimension"),
+                                        null,
+                                        null,
+                                        null))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugMutatorEvaluate(
+                                                                context.getSource(),
+                                                                mutatorService,
+                                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                                DimensionArgument.getDimension(context, "dimension"),
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z")))))))
+                        .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                .executes(context -> runDebugMutatorEvaluate(
+                                                        context.getSource(),
+                                                        mutatorService,
+                                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                                        null,
+                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                        DoubleArgumentType.getDouble(context, "z")))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugMutatorsForcePoolBranch(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("force_pool")
+                .then(Commands.argument("entity_id", ResourceLocationArgument.id())
+                        .suggests(suggestEntityTypeIds())
+                        .then(Commands.argument("pool_id", ResourceLocationArgument.id())
+                                .suggests(suggestMutationPoolIds(datapackService))
+                                .executes(context -> runDebugMutatorForcePool(
+                                        context.getSource(),
+                                        mutatorService,
+                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                        ResourceLocationArgument.getId(context, "pool_id"),
+                                        null,
+                                        null,
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugMutatorForcePool(
+                                                context.getSource(),
+                                                mutatorService,
+                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                ResourceLocationArgument.getId(context, "pool_id"),
+                                                DimensionArgument.getDimension(context, "dimension"),
+                                                null,
+                                                null,
+                                                null))
+                                        .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                        .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                                .executes(context -> runDebugMutatorForcePool(
+                                                                        context.getSource(),
+                                                                        mutatorService,
+                                                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                                                        ResourceLocationArgument.getId(context, "pool_id"),
+                                                                        DimensionArgument.getDimension(context, "dimension"),
+                                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                                        DoubleArgumentType.getDouble(context, "z")))))))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugMutatorForcePool(
+                                                                context.getSource(),
+                                                                mutatorService,
+                                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                                ResourceLocationArgument.getId(context, "pool_id"),
+                                                                null,
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z"))))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugMutatorsForceMutatorBranch(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("force_mutator")
+                .then(Commands.argument("entity_id", ResourceLocationArgument.id())
+                        .suggests(suggestEntityTypeIds())
+                        .then(Commands.argument("mutator_id", ResourceLocationArgument.id())
+                                .suggests(suggestMutatorIds(datapackService))
+                                .executes(context -> runDebugMutatorForceMutator(
+                                        context.getSource(),
+                                        mutatorService,
+                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                        ResourceLocationArgument.getId(context, "mutator_id"),
+                                        null,
+                                        null,
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugMutatorForceMutator(
+                                                context.getSource(),
+                                                mutatorService,
+                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                ResourceLocationArgument.getId(context, "mutator_id"),
+                                                DimensionArgument.getDimension(context, "dimension"),
+                                                null,
+                                                null,
+                                                null))
+                                        .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                        .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                                .executes(context -> runDebugMutatorForceMutator(
+                                                                        context.getSource(),
+                                                                        mutatorService,
+                                                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                                                        ResourceLocationArgument.getId(context, "mutator_id"),
+                                                                        DimensionArgument.getDimension(context, "dimension"),
+                                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                                        DoubleArgumentType.getDouble(context, "z")))))))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugMutatorForceMutator(
+                                                                context.getSource(),
+                                                                mutatorService,
+                                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                                ResourceLocationArgument.getId(context, "mutator_id"),
+                                                                null,
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z"))))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugSpawnTree(
+            WorldAwakenedMutatorService mutatorService) {
+        return Commands.literal("spawn")
+                .then(Commands.literal("test")
+                        .then(Commands.argument("entity_id", ResourceLocationArgument.id())
+                                .suggests(suggestEntityTypeIds())
+                                .executes(context -> runDebugSpawnTest(
+                                        context.getSource(),
+                                        mutatorService,
+                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                        null,
+                                        null,
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugSpawnTest(
+                                                context.getSource(),
+                                                mutatorService,
+                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                DimensionArgument.getDimension(context, "dimension"),
+                                                null,
+                                                null,
+                                                null))
+                                        .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                        .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                                .executes(context -> runDebugSpawnTest(
+                                                                        context.getSource(),
+                                                                        mutatorService,
+                                                                        ResourceLocationArgument.getId(context, "entity_id"),
+                                                                        DimensionArgument.getDimension(context, "dimension"),
+                                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                                        DoubleArgumentType.getDouble(context, "z")))))))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugSpawnTest(
+                                                                context.getSource(),
+                                                                mutatorService,
+                                                                ResourceLocationArgument.getId(context, "entity_id"),
+                                                                null,
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z"))))))));
+    }
+
+    private static int runMobInspect(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            Entity target) {
+        if (!(target instanceof Mob mob)) {
+            source.sendFailure(Component.literal("Target must be a mob entity.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_MUTATOR_TARGET_INVALID)));
+            return 0;
+        }
+
+        WorldAwakenedMutatorService.MutationInspectView inspect = mutatorService.inspectEntity(mob);
+        source.sendSuccess(
+                () -> Component.literal("Mob inspect: entity="
+                        + inspect.entityTypeId()
+                        + " uuid="
+                        + mob.getStringUUID()
+                        + " has_provenance="
+                        + inspect.hasProvenance()),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - mutation_pool=" + inspect.sourcePoolId().map(ResourceLocation::toString).orElse("<none>")),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - source_rules=" + formatResourceLocations(inspect.sourceRuleIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - applied_mutators=" + formatResourceLocations(inspect.mutatorIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - applied_components=" + formatResourceLocations(inspect.componentIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - mutation_stage_context=" + formatResourceLocations(inspect.stageContext())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - mutation_trace_id=" + (inspect.traceId().isBlank() ? "<none>" : inspect.traceId())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - mutation_depth="
+                        + inspect.mutationDepth()
+                        + " origin_marker="
+                        + (inspect.originMarker().isBlank() ? "<none>" : inspect.originMarker())
+                        + " pipeline_processed="
+                        + inspect.pipelineProcessed()),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - provenance_keys="
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_SOURCE_POOL
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_IDS
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_COMPONENTS
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_STAGE_CONTEXT
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_TRACE_ID
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_MUTATION_DEPTH
+                        + ", "
+                        + WorldAwakenedMutationProvenance.WA_ORIGIN),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - resolvable_mutators=" + formatResourceLocations(inspect.resolvedMutatorIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - missing_mutators=" + formatResourceLocations(inspect.missingMutatorIds())),
+                false);
+        source.sendSuccess(() -> Component.literal(" - glow_style"), false);
+        if (inspect.glowStyle().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            WorldAwakenedGlowStyleState.GlowStyleDefinition glowStyle = inspect.glowStyle().get();
+            source.sendSuccess(
+                    () -> Component.literal("   color="
+                            + WorldAwakenedGlowStyleState.formatColorHex(glowStyle.colorRgb())
+                            + " brightness="
+                            + formatNumber(glowStyle.brightness())
+                            + " see_through_walls="
+                            + glowStyle.seeThroughWalls()
+                            + " pulse="
+                            + glowStyle.pulse()
+                            + " pulse_speed="
+                            + formatNumber(glowStyle.pulseSpeed())
+                            + " pulse_strength="
+                            + formatNumber(glowStyle.pulseStrength())).withStyle(ChatFormatting.DARK_GRAY),
+                    false);
+        }
+        source.sendSuccess(() -> Component.literal(" - particle_visual_emitters"), false);
+        if (inspect.particleVisualEmitters().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            for (net.sprocketgames.worldawakened.mutator.WorldAwakenedVisualParticleEmitters.EmitterDefinition emitter
+                    : inspect.particleVisualEmitters()) {
+                String visualKey = emitter.kind()
+                        == net.sprocketgames.worldawakened.mutator.WorldAwakenedVisualParticleEmitters.EmitterKind.EFFECT_VISUAL
+                                ? "effect_type"
+                                : "particle";
+                String colorField = emitter.colorOverrideRgb()
+                        .map(color -> " color=" + String.format(java.util.Locale.ROOT, "#%06x", color))
+                        .orElse("");
+                String sizeField = emitter.sizeOverride()
+                        .map(size -> " size=" + formatNumber(size))
+                        .orElse("");
+                source.sendSuccess(
+                        () -> Component.literal("   "
+                                + visualKey
+                                + "="
+                                + emitter.registryId()
+                                + colorField
+                                + sizeField
+                                + " count="
+                                + emitter.count()
+                                + " interval_ticks="
+                                + emitter.intervalTicks()
+                                + " offset_x="
+                                + formatNumber(emitter.offsetX())
+                                + " offset_y="
+                                + formatNumber(emitter.offsetY())
+                                + " offset_z="
+                                + formatNumber(emitter.offsetZ())
+                                + " speed="
+                                + formatNumber(emitter.speed())).withStyle(ChatFormatting.DARK_GRAY),
+                        false);
+            }
+        }
+        source.sendSuccess(() -> Component.literal(" - failed_closed_components"), false);
+        if (inspect.failedComponents().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            for (WorldAwakenedMutationProvenance.ComponentFailureEntry failure : inspect.failedComponents()) {
+                source.sendSuccess(
+                        () -> Component.literal("   mutator="
+                                + failure.mutatorId().map(ResourceLocation::toString).orElse("<none>")
+                                + " component="
+                                + failure.componentType()
+                                + " code="
+                                + failure.code()
+                                + " detail="
+                                + failure.detail()).withStyle(ChatFormatting.DARK_GRAY),
+                        false);
+            }
+        }
+        source.sendSuccess(() -> Component.literal(" - final_attribute_deltas"), false);
+        if (inspect.attributes().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY), false);
+        } else {
+            for (WorldAwakenedMutatorService.AttributeInspection attribute : inspect.attributes()) {
+                double delta = attribute.currentValue() - attribute.baseValue();
+                source.sendSuccess(
+                        () -> Component.literal("   attribute="
+                                + attribute.attributeId()
+                                + " base="
+                                + formatNumber(attribute.baseValue())
+                                + " current="
+                                + formatNumber(attribute.currentValue())
+                                + " delta="
+                                + formatNumber(delta)
+                                + " wa_modifiers="
+                                + attribute.waOwnedModifiers().size()).withStyle(ChatFormatting.DARK_GRAY),
+                        false);
+                for (WorldAwakenedMutatorService.AttributeModifierInspection modifier : attribute.waOwnedModifiers()) {
+                    source.sendSuccess(
+                            () -> Component.literal("      modifier="
+                                    + modifier.modifierId()
+                                    + " amount="
+                                    + formatNumber(modifier.amount())
+                                    + " op="
+                                    + modifier.operation()).withStyle(ChatFormatting.DARK_GRAY),
+                            false);
+                }
+            }
+        }
+        source.sendSuccess(
+                () -> Component.literal(" - foreign_state_preserved=true (World Awakened preserves non-WA entity state by default)")
+                        .withStyle(ChatFormatting.DARK_GRAY),
+                false);
+        return 1;
+    }
+
+    private static int runMobInspectLookedAt(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            ServerPlayer player) {
+        if (player == null) {
+            source.sendFailure(Component.literal("This form requires a player source. Use /wa mob inspect <target> from console or automation.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return 0;
+        }
+
+        Mob lookedAtMob = resolveLookedAtMob(player);
+        if (lookedAtMob == null) {
+            source.sendFailure(Component.literal("You are not aiming at a mob. Use /wa mob inspect <target> for an explicit entity or selector.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_MUTATOR_TARGET_INVALID)));
+            return 0;
+        }
+        return runMobInspect(source, mutatorService, lookedAtMob);
+    }
+
+    private static Mob resolveLookedAtMob(ServerPlayer player) {
+        double range = Math.max(AIMED_MOB_INSPECT_RANGE, player.entityInteractionRange());
+        Vec3 eyePosition = player.getEyePosition();
+        Vec3 viewVector = player.getViewVector(1.0F);
+        Vec3 end = eyePosition.add(viewVector.scale(range));
+        HitResult blockHit = player.level().clip(new ClipContext(
+                eyePosition,
+                end,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
+                player));
+        double maxDistanceSqr = range * range;
+        if (blockHit.getType() != HitResult.Type.MISS) {
+            end = blockHit.getLocation();
+            maxDistanceSqr = eyePosition.distanceToSqr(end);
+        }
+
+        EntityHitResult entityHit = ProjectileUtil.getEntityHitResult(
+                player,
+                eyePosition,
+                end,
+                player.getBoundingBox().expandTowards(viewVector.scale(range)).inflate(1.0D),
+                entity -> entity instanceof Mob && !entity.isSpectator() && entity.isPickable(),
+                maxDistanceSqr);
+        return entityHit != null && entityHit.getEntity() instanceof Mob mob ? mob : null;
+    }
+
+    private static int runDebugMutatorSummary(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService) {
+        WorldAwakenedMutatorService.MutatorDebugSummary summary = mutatorService.debugSummary();
+        source.sendSuccess(
+                () -> Component.literal("Mutator summary: generation="
+                        + summary.generation()
+                        + " pools="
+                        + summary.poolCount()
+                        + " mutators="
+                        + summary.mutatorCount()
+                        + " selector_entity_id_buckets="
+                        + summary.selectorEntityIdBuckets()
+                        + " selector_entity_tag_buckets="
+                        + summary.selectorEntityTagBuckets()
+                        + " wildcard_pools="
+                        + summary.wildcardPools()),
+                false);
+        return 1;
+    }
+
+    private static int runDebugMutatorEvaluate(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            ResourceLocation entityTypeId,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z) {
+        EntityType<?> entityType = resolveEntityType(source, entityTypeId);
+        if (entityType == null) {
+            return 0;
+        }
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug mutators evaluate");
+        if (target.isEmpty()) {
+            return 0;
+        }
+        WorldAwakenedMutatorService.MutatorRunResult result = mutatorService.debugEvaluate(
+                target.get().level(),
+                entityType,
+                target.get().position());
+        emitMutatorRunResult(source, result, "evaluate", false);
+        return 1;
+    }
+
+    private static int runDebugMutatorForcePool(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            ResourceLocation entityTypeId,
+            ResourceLocation poolId,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z) {
+        EntityType<?> entityType = resolveEntityType(source, entityTypeId);
+        if (entityType == null) {
+            return 0;
+        }
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug mutators force_pool");
+        if (target.isEmpty()) {
+            return 0;
+        }
+        WorldAwakenedMutatorService.MutatorRunResult result = mutatorService.debugForcePool(
+                target.get().level(),
+                entityType,
+                target.get().position(),
+                poolId);
+        emitMutatorRunResult(source, result, "force", true);
+        return 1;
+    }
+
+    private static int runDebugMutatorForceMutator(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            ResourceLocation entityTypeId,
+            ResourceLocation mutatorId,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z) {
+        EntityType<?> entityType = resolveEntityType(source, entityTypeId);
+        if (entityType == null) {
+            return 0;
+        }
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug mutators force_mutator");
+        if (target.isEmpty()) {
+            return 0;
+        }
+        WorldAwakenedMutatorService.MutatorRunResult result = mutatorService.debugForceMutator(
+                target.get().level(),
+                entityType,
+                target.get().position(),
+                mutatorId);
+        emitMutatorRunResult(source, result, "force", true);
+        return 1;
+    }
+
+    private static int runDebugSpawnTest(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            ResourceLocation entityTypeId,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z) {
+        EntityType<?> entityType = resolveEntityType(source, entityTypeId);
+        if (entityType == null) {
+            return 0;
+        }
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug spawn test");
+        if (target.isEmpty()) {
+            return 0;
+        }
+        WorldAwakenedMutatorService.MutatorRunResult result = mutatorService.debugSpawnTest(
+                target.get().level(),
+                entityType,
+                target.get().position());
+        emitMutatorRunResult(source, result, "live_test", false);
+        return result.spawnAdded() ? 1 : 0;
+    }
+
+    private static void emitMutatorRunResult(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService.MutatorRunResult result,
+            String commandMode,
+            boolean randomnessBypassed) {
+        source.sendSuccess(
+                () -> Component.literal("Mutator debug: mode="
+                        + commandMode
+                        + " trace_id="
+                        + result.traceId()
+                        + " dry_run="
+                        + result.dryRun()
+                        + " live_applied="
+                        + result.liveApplied()
+                        + " skipped="
+                        + result.skipped()),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - target_context=entity="
+                        + result.entityTypeId()
+                        + " dimension="
+                        + result.dimensionId()
+                        + " pos="
+                        + formatBlockPos(result.position())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - spawn_context="
+                        + formatMutatorSpawnContext(
+                                result.spawnOrigin(),
+                                result.progressionMode(),
+                                result.attributedPlayer())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - stage_context=" + formatResourceLocations(result.stageContext())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - external_scalars=<none>"),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - config_gates=mod_enabled="
+                        + net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates.modEnabled()
+                        + ", mutators_enabled="
+                        + WorldAwakenedCommonConfig.ENABLE_MUTATORS.get()
+                        + ", debug_commands_enabled="
+                        + WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get()),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - selector_narrowing=indexed_candidates="
+                        + result.indexedCandidatePoolCount()
+                        + "/total_pools="
+                        + result.totalPoolCount()
+                        + " candidate_pools="
+                        + formatResourceLocations(result.indexedCandidatePoolIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - candidate_pools=" + formatResourceLocations(result.eligiblePoolIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - rejected_pools=" + formatRejectedObjects(result.rejectedPools(), "pool")),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - selected_pool=" + result.selectedPoolId().map(ResourceLocation::toString).orElse("<none>")),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - chance_result=" + formatMutationChanceResult(result.chanceResult())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - limit_results=requested_mutator_cap="
+                        + result.requestedMutatorCap()
+                        + " enforced_mutator_cap="
+                        + result.enforcedMutatorCap()),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - candidate_mutators=" + formatResourceLocations(result.eligibleMutatorIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - rejected_mutators=" + formatRejectedObjects(result.rejectedMutators(), "mutator")),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - selected_mutators=" + formatResourceLocations(result.selectedMutatorIds())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - selected_components=" + formatAppliedMutations(result.appliedMutations())),
+                false);
+        source.sendSuccess(
+                () -> Component.literal(" - composition_results=" + formatComponentFailures(result.componentFailures())),
+                false);
+        if (result.skipped()) {
+            source.sendSuccess(
+                    () -> Component.literal(" - final_outcome=skipped code="
+                            + result.skipCode()
+                            + " detail="
+                            + result.skipDetail()
+                            + " randomness_bypassed="
+                            + randomnessBypassed),
+                    false);
+            return;
+        }
+        if (result.spawnedEntityUuid().isPresent()) {
+            source.sendSuccess(
+                    () -> Component.literal(" - live_spawn=added="
+                            + result.spawnAdded()
+                            + " entity_uuid="
+                            + result.spawnedEntityUuid().get()),
+                    false);
+        }
+        String outcome = result.liveApplied()
+                ? "applied"
+                : result.chanceResult().isPresent() && !result.chanceResult().get().passed()
+                        ? "chance_failed"
+                : result.selectedMutatorIds().isEmpty()
+                        ? "no_mutator_selected"
+                        : "evaluated";
+        source.sendSuccess(
+                () -> Component.literal(" - final_outcome="
+                        + outcome
+                        + " randomness_bypassed="
+                        + randomnessBypassed),
+                false);
+    }
+
+    static String formatMutationChanceResult(
+            Optional<WorldAwakenedMutatorService.MutationChanceResult> chanceResult) {
+        if (chanceResult.isEmpty()) {
+            return "<none>";
+        }
+        WorldAwakenedMutatorService.MutationChanceResult result = chanceResult.get();
+        String rolled = switch (result.rollMode()) {
+            case ROLLED -> result.rolledValue().isPresent()
+                    ? formatNumber(result.rolledValue().getAsDouble())
+                    : "<missing>";
+            case SKIPPED -> "<skipped>";
+            case BYPASSED -> "<bypassed>";
+        };
+        return "mutation_chance="
+                + formatNumber(result.mutationChance())
+                + " rolled="
+                + rolled
+                + " passed="
+                + result.passed();
+    }
+
+    static String formatMutatorSpawnContext(
+            String spawnOrigin,
+            WorldAwakenedProgressionMode progressionMode,
+            Optional<WorldAwakenedMutatorService.AttributedPlayerView> attributedPlayer) {
+        String playerText = attributedPlayer
+                .map(player -> player.name() + "(" + player.uuid() + ")")
+                .orElse("<none>");
+        return "origin=" + spawnOrigin
+                + " progression_mode=" + progressionMode.serializedName()
+                + " attributed_player=" + playerText;
+    }
+
+    private static Optional<SpawnCommandTarget> resolveSpawnCommandTarget(
+            CommandSourceStack source,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z,
+            String commandPath) {
+        ServerLevel level = explicitLevel != null
+                ? explicitLevel
+                : requireCommandLevel(source, "This command requires a server level context.");
+        if (level == null) {
+            return Optional.empty();
+        }
+        boolean hasX = x != null;
+        boolean hasY = y != null;
+        boolean hasZ = z != null;
+        if (hasX != hasY || hasX != hasZ) {
+            source.sendFailure(Component.literal("Coordinates must provide x, y, and z together.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return Optional.empty();
+        }
+        BlockPos position = hasX
+                ? BlockPos.containing(x, y, z)
+                : BlockPos.containing(source.getPosition());
+        if (showVerboseOperatorDetails()) {
+            source.sendSuccess(
+                    () -> Component.literal("   context: command="
+                            + commandPath
+                            + " dimension="
+                            + level.dimension().location()
+                            + " pos="
+                            + formatBlockPos(position)).withStyle(ChatFormatting.DARK_GRAY),
+                    false);
+        }
+        return Optional.of(new SpawnCommandTarget(level, position));
+    }
+
+    private static EntityType<?> resolveEntityType(CommandSourceStack source, ResourceLocation entityTypeId) {
+        Optional<EntityType<?>> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(entityTypeId);
+        if (entityType.isPresent()) {
+            return entityType.get();
+        }
+        source.sendFailure(Component.literal("Unknown entity type: " + entityTypeId)
+                .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_MUTATOR_TARGET_INVALID)));
+        return null;
+    }
+
+    private static String formatBlockPos(BlockPos pos) {
+        return pos.getX() + "," + pos.getY() + "," + pos.getZ();
+    }
+
+    private static String formatRejectedObjects(
+            List<WorldAwakenedMutatorService.RejectedObject> rejected,
+            String label) {
+        if (rejected.isEmpty()) {
+            return "<none>";
+        }
+        return rejected.stream()
+                .map(entry -> label
+                        + "="
+                        + entry.objectId()
+                        + " code="
+                        + entry.code()
+                        + " detail="
+                        + entry.detail())
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String formatAppliedMutations(List<WorldAwakenedMutatorService.AppliedMutation> appliedMutations) {
+        if (appliedMutations.isEmpty()) {
+            return "<none>";
+        }
+        return appliedMutations.stream()
+                .map(applied -> applied.mutatorId() + " -> [" + formatResourceLocations(applied.appliedComponentTypes()) + "]")
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String formatComponentFailures(List<WorldAwakenedMutationProvenance.ComponentFailureEntry> failures) {
+        if (failures.isEmpty()) {
+            return "<none>";
+        }
+        return failures.stream()
+                .map(failure -> "mutator="
+                        + failure.mutatorId().map(ResourceLocation::toString).orElse("<none>")
+                        + " component="
+                        + failure.componentType()
+                        + " code="
+                        + failure.code())
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String formatResourceLocations(List<ResourceLocation> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return "<none>";
+        }
+        return ids.stream()
+                .map(ResourceLocation::toString)
+                .sorted()
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String formatNumber(double value) {
+        return String.format(Locale.ROOT, "%.3f", value);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestEntityTypeIds() {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                BuiltInRegistries.ENTITY_TYPE.keySet(),
+                builder);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestMutationPoolIds(WorldAwakenedDatapackService datapackService) {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                datapackService.currentSnapshot().data().mutationPools().keySet(),
+                builder);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestMutatorIds(WorldAwakenedDatapackService datapackService) {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                datapackService.currentSnapshot().data().mobMutators().keySet(),
+                builder);
     }
 
     private static SuggestionProvider<CommandSourceStack> suggestStageIds(WorldAwakenedStageService stageService) {
@@ -2306,6 +3206,9 @@ public final class WorldAwakenedCommands {
             }
         }
         return failures;
+    }
+
+    private record SpawnCommandTarget(ServerLevel level, BlockPos position) {
     }
 
     private record OwnedModifierView(String attributeId, String modifierId, double amount, String operation) {

@@ -2,8 +2,8 @@
 
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
-- Document status: Active implementation spec (Phase 4 complete, Phase 5 active)
-- Last updated: 2026-03-13
+- Document status: Active implementation spec (Phase 5 complete, Phase 6 active)
+- Last updated: 2026-03-14
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -844,13 +844,14 @@ Examples of v1 ascension component types:
 - `luck_bonus`
 - `xp_gain_bonus`
 - `loot_quality_bonus`
-- `potion_resistance`
-- `fire_resistance_like_passive`
+- `debuff_resistance`
+- `fire_resistance_passive`
 - `extra_revival_buffer`
-- `night_vision_like_passive`
+- `night_vision_passive`
 - `fall_damage_reduction`
 - `healing_efficiency_bonus`
-- `mob_detection_bonus`
+- `hostile_wall_sense`
+- `elite_detection`
 - `invasion_reward_bonus`
 - `mutation_resistance_bonus`
 
@@ -1199,257 +1200,294 @@ Hard line:
 
 ## 5B. Difficulty and Challenge Modifiers
 
-World Awakened may expose two scalar layers for operator and player-facing tuning:
+World Awakened exposes two optional scalar layers for operator/player tuning:
 - global difficulty modifier (world-scoped baseline)
-- challenge modifier (optional adjustment layer with scope and policy control)
+- challenge modifier (optional layer with scope and policy controls)
 
 Hard contract:
-- these systems only affect World Awakened-owned numeric difficulty outputs
-- these systems do not mutate stage unlock state
-- these systems do not change trigger eligibility or trigger execution
-- scalar composition is deterministic and provided by one shared resolver
+- these systems affect only World Awakened-owned numeric difficulty outputs
+- these systems never mutate stage unlock/progression state
+- these systems never change trigger eligibility or trigger execution identity
+- scalar composition is deterministic and resolved through one shared provider
 
-### 5B.1 Global Difficulty Modifier
+### 5B.0 Phase 6 Scope Boundary (Normative)
 
-World Awakened may expose a separate operator-controlled global difficulty modifier.
+Phase 6 implements only:
+1. conservative spawn-pressure scalars and category modifiers
+2. optional per-dimension pressure baselines
+3. shared effective-difficulty scalar provider
+4. global difficulty modifier config and command surface
+5. optional challenge modifier scope/policy/bounds/step/cooldown handling with optional vote flow
+6. rule-engine runtime guardrails (`maximum_rules_evaluated_per_event`, `maximum_actions_per_rule`)
+7. debug/evaluate/inspect surfaces for pressure/difficulty/challenge
+
+Phase 6 must not add:
+- new progression systems or hidden pressure-tier progression
+- stage unlock/progression changes driven by difficulty/challenge
+- trigger eligibility changes driven by difficulty/challenge
+- full spawn-engine replacement
+- retroactive mutation or retroactive pressure application to already-loaded entities
+- duplicate subsystem-specific scalar composition code
+
+### 5B.1 Hard Semantic Rule: Allowed and Disallowed Effects
+
+Global and challenge modifiers may affect only World Awakened-owned numeric difficulty outputs.
+
+Explicitly allowed in Phase 6:
+- spawn-pressure scalar outputs
+- category pressure modifiers
+- World Awakened-owned mutation intensity/chance/weight outputs explicitly wired to the shared scalar provider
+- World Awakened-owned invasion scaling parameters (for example wave budget/intensity values) explicitly wired to the shared scalar provider
+- other World Awakened-owned chance/weight/intensity outputs explicitly wired to the shared scalar provider
+
+Difficulty and challenge modifiers must never affect progression contracts:
+- stage unlock logic
+- progression trigger eligibility
+- stage advancement state
+
+Explicitly disallowed:
+- stage unlock state
+- stage progression state
+- trigger eligibility
+- one-shot/cooldown rule identity semantics
+- non-World Awakened foreign system state
+- unrelated vanilla or modded runtime state
+
+Any future subsystem that wants difficulty/challenge influence must opt in explicitly through the shared scalar provider contract.
+
+### 5B.2 Global Difficulty Modifier
 
 Purpose:
-- provide a simple server-level tuning control
-- allow server owners or pack maintainers to tune World Awakened harder or easier without editing datapacks
-- act as a baseline intensity scalar independent of progression stages, pressure tiers, or player challenge adjustments
+- operator-controlled world baseline intensity scalar
+- tuning without datapack edits
 
 Scope:
 - world-scoped only
-- controlled by config and operator or admin commands only
-- applies regardless of progression mode (`GLOBAL` or `PER_PLAYER`)
+- config and authorized command controlled
+- applies across progression modes (`GLOBAL`, `PER_PLAYER`)
 
-Rules:
-- affects only World Awakened-owned numeric difficulty outputs
-- does not replace stage progression
-- does not alter trigger eligibility or trigger execution
-- does not directly change stage unlock state
-- stacks deterministically with other World Awakened difficulty scalars using a documented scalar-composition rule
+Required config shape:
+```toml
+[difficulty.global]
+enabled = true
+value = 1.0
+min_value = 0.75
+max_value = 1.50
+```
 
-Examples of affected outputs:
-- mob stat scaling
-- mutator chance
-- spawn pressure
-- invasion wave budget
-- invasion elite chance
-- World Awakened-owned reward scaling when configured
+Behavior:
+- if disabled, resolved global modifier is `1.0`
+- active value must stay within configured bounds
+- invalid default/bounds emits `WA_DIFFICULTY_GLOBAL_INVALID`
+- persisted value outside updated bounds is clamped on load with structured warning
+- reset returns to configured default (or explicit canonical reset target when policy defines one)
 
-Examples of unaffected systems:
-- stage IDs and unlock state
-- datapack rule definitions
-- trigger eligibility and trigger type behavior
-- non-World Awakened systems unless explicitly integrated
-
-Recommended command support:
-- `/wa difficulty global get`
-- `/wa difficulty global set <value>`
-- `/wa difficulty global reset`
-
-Design rule:
-- progression determines when the world changes
-- global difficulty modifier determines baseline intensity of World Awakened-owned numeric difficulty outputs
-
-### 5B.2 Optional Challenge Modifier System
-
-World Awakened may expose an optional challenge modifier system to raise or lower challenge independently of progression stages.
+### 5B.3 Optional Challenge Modifier System
 
 Purpose:
-- support accessibility for weaker players
-- support optional extra challenge for stronger players
-- support mixed-skill multiplayer groups
-- allow challenge tuning without changing datapacks or core stage progression
-
-Hard rules:
-- optional subsystem
-- must not replace progression stages
-- must not alter trigger logic
-- must only affect World Awakened-owned numeric difficulty outputs
-- must stack cleanly with the global difficulty modifier
-- must remain bounded by explicit config limits
-
-Conceptual model:
-- progression controls what is unlocked
-- global difficulty modifier controls baseline intensity
-- challenge modifier controls optional easing or escalation on top
-
-Example scalar composition:
-- `effective_value = base_wa_value * global_difficulty_modifier * challenge_modifier`
-
-Exact composition may be implementation-defined, but must be deterministic and documented.
-
-### 5B.3 Scope Resolution Rules
+- accessibility lowering when policy allows
+- opt-in escalation for stronger players when policy allows
+- mixed-skill support without datapack edits
 
 Supported scope modes:
 - `auto`
 - `player`
 - `world`
 
-Resolution behavior:
-- `auto` + `PER_PLAYER` progression resolves challenge modifier as player-scoped
-- `auto` + `GLOBAL` progression resolves challenge modifier as world-scoped
-- `player` forces player scope only when evaluation path can safely support it
-- `world` forces world scope
+Required config shape:
+```toml
+[difficulty.challenge]
+enabled = true
+scope_mode = "auto" # auto | player | world
+allow_player_adjustment = true
+allow_raise = true
+allow_lower = true
+default_value = 1.0
+min_value = 0.75
+max_value = 1.50
+step = 0.10
+cooldown_minutes = 120
+max_changes_per_player = 5
+max_world_changes = 10
+require_vote_in_global = true
+vote_threshold = 0.60
+vote_timeout_seconds = 120
+admin_override = true
+```
 
-Safety rule:
-- unsupported scope combinations must be rejected or disabled with validation diagnostics rather than silently misbehaving
+Behavior:
+- if disabled, resolved challenge modifier is `1.0`
+- challenge value is bounded and step-constrained
+- requests must respect scope mode, permissions, policy gates, cooldown, usage caps, and vote requirements when enabled
+- persisted value outside updated bounds is clamped on load with structured warning
 
-### 5B.4 Player-Scoped Challenge Modifier Behavior
+### 5B.4 Scope Resolution Rules
 
-When scope is player:
-- each player has their own challenge modifier value
-- one player's adjustment must not directly change another player's modifier
-- player-context World Awakened evaluations may use that player's modifier for World Awakened-owned numeric difficulty outputs
+`auto` resolution:
+- `GLOBAL` progression mode should prefer world scope unless policy explicitly defines otherwise
+- `PER_PLAYER` progression mode should prefer player scope unless policy explicitly defines otherwise
+- if no valid scope is resolvable, reject with diagnostics
 
-Use cases:
-- stronger players opting into higher challenge
-- weaker players lowering challenge for accessibility
-- mixed-skill groups without forcing one world-wide setting
+Forced modes:
+- `player` requires player-scope-capable context and allowed policy
+- `world` requires world-scope-capable context and allowed policy
 
-Examples of affected player-scoped outputs (when those systems evaluate with player context):
-- mob stat scaling in player-context encounters
-- mutator chance for encounters resolved against that player context
-- invasion or reward scaling only for systems that explicitly support player-scoped scaling
+Safety rules:
+- unsupported or invalid combinations must reject with diagnostics
+- use `WA_CHALLENGE_SCOPE_INVALID` for invalid scope configuration/resolution
+- use `WA_CHALLENGE_MODE_UNSUPPORTED` for unsupported mode combinations
+- do not silently switch to another scope after command parsing without reporting it
 
-Restrictions:
-- must not mutate global stage state
-- must not alter another player's ascension, stage, or reward state
+### 5B.5 Bounds, Step, Cooldown, and Usage Semantics
 
-### 5B.5 World-Scoped Challenge Modifier Behavior
+Policy gates:
+- `allow_player_adjustment`
+- `allow_raise`
+- `allow_lower`
+- `max_changes_per_player`
+- `max_world_changes`
+- `cooldown_minutes`
 
-When scope is world:
-- one shared world value affects all players
-- any accepted change applies globally
+Step legality and numeric stability:
+- values must align to the configured step grid relative to policy baseline (`default_value` and bounds contract)
+- do not validate legality with raw double-equality comparisons
+- use stable decimal math or integer step-unit normalization
+- invalid step/cooldown config emits `WA_CHALLENGE_STEP_INVALID`
 
-Safety rule:
-- if non-operator world-scoped changes are allowed, configurable approval or vote flow should be required unless explicitly disabled by server policy
+Commit semantics:
+- failed or rejected requests do not consume cooldown
+- failed or rejected requests do not increment usage counters
+- only successful committed changes consume cooldown and usage
 
-### 5B.6 Player Permissions and Control Policy
+Tracking buckets:
+- world-scoped challenge writes track world cooldown/usage
+- player-scoped writes track per-player cooldown/usage
+- vote state is tracked separately when vote mode is enabled
 
-Configurable policy controls should include:
-- whether challenge adjustment is enabled
-- whether players may raise challenge
-- whether players may lower challenge
-- whether player adjustments are allowed only in player scope
-- whether world-scoped changes require vote approval
-- whether operator or admin override is always allowed
+### 5B.6 Vote Flow for World Scope
 
-Design rule:
-- player challenge adjustment is optional and server-controlled
-- accessibility-focused lowering and opt-in escalation should both be possible when enabled
+Vote flow in Phase 6 applies only to world-scoped challenge changes when required by policy.
 
-### 5B.7 Bounds, Step Size, and Frequency Controls
+Vote lifecycle state must include:
+- pending target value
+- initiator identity when relevant
+- start time and timeout
+- voter eligibility snapshot or explicit eligibility policy reference
+- yes/no tallies
+- final resolution state
 
-Challenge modifier changes must be bounded and rate-limited.
+Vote behavior:
+- no overlapping active votes for the same world challenge target bucket
+- expired votes fail cleanly and apply no change
+- successful vote applies exactly one committed challenge change
+- failed or expired vote does not consume challenge cooldown/usage unless policy explicitly says otherwise
+- admin/operator vote bypass is allowed only when `admin_override` policy allows it
 
-Configurable controls:
-- minimum and maximum values
-- step size per adjustment
-- cooldown between changes
-- max changes per player
-- max total world changes (world scope)
-- optional reset behavior
-- optional once-only behavior
+Vote validation:
+- if vote is required but vote config is missing/invalid, emit `WA_CHALLENGE_VOTE_CONFIG_INVALID`
+- disable the affected vote path or challenge branch by policy
+- never half-enable a broken vote branch
+
+### 5B.7 Persistence Model and Load Behavior
+
+World-scoped persisted state includes:
+- global difficulty modifier current value
+- world challenge value (when world scope is used/enabled)
+- world challenge cooldown/usage state
+- active vote state when vote flow is enabled
+- world-level provenance/audit fields needed for debug output
+
+Player-scoped persisted state includes:
+- per-player challenge value (when player scope is used/enabled)
+- per-player challenge cooldown/usage state
+- player-level provenance/audit fields needed for debug output
+
+Load behavior:
+- clamp out-of-range persisted values to safe bounds
+- emit structured warnings for clamped/migrated values
+- clear invalid transient vote state safely when config no longer supports it
+- never crash world load solely because challenge state became invalid
+
+### 5B.8 Shared Effective-Difficulty Scalar Provider Contract
+
+World Awakened must use one shared service (for example `EffectiveDifficultyScalarService`) for Phase 6 scalar composition.
+
+Architecture rules:
+- all Phase 6 consumers resolve through this shared service
+- no subsystem may reimplement composition order locally
+- composition order is fixed and deterministic
+
+Required conceptual inputs:
+- `base_wa_value`
+- `dimension_pressure_baseline` (Phase 6 pressure paths)
+- `global_difficulty_modifier`
+- `challenge_modifier`
+- `integration_scalars` (optional, commonly `1.0` in Phase 6)
+- clamp policy and hard caps
+
+Required order for spawn-pressure paths:
+```text
+effective_spawn_pressure =
+  base_pressure
+  * dimension_pressure_baseline
+  * global_difficulty_modifier
+  * challenge_modifier
+  * integration_scalars
+```
+
+This composition order is canonical and must not be reordered by subsystem code.
 
 Rules:
-- out-of-bounds attempts must be rejected cleanly
-- changes during cooldown must be rejected cleanly
-- changes beyond configured counts must be rejected cleanly
+- missing dimension baseline defaults to `1.0`
+- dimension baseline is applied before global/challenge/integration layers
+- final value is clamped by hard safety caps before use
 
-### 5B.8 Change Lifetime Options
+Required debug breakdown payload from the provider:
+- `base_value`
+- `dimension_baseline`
+- `global_modifier`
+- `challenge_modifier`
+- `integration_scalars` (named)
+- `unclamped_effective_value`
+- `clamped_effective_value`
+- `clamp_reason` (when applicable)
+- `challenge_scope_used`
+- `policy_gates_consulted`
+- provenance/source fields suitable for inspect/debug output
 
-Supported lifetime models may include:
-- persistent until changed
-- time-limited
-- once-only
-- limited-use
-- reset on configured policy trigger
+### 5B.9 Command Surface (Phase 6)
 
-Recommended v1 behavior:
-- persistent until changed, subject to cooldown and usage limits
-
-### 5B.9 Activation Paths
-
-Supported activation paths may include:
-- operator or admin command
-- player command (if enabled)
-- consumable item (optional later)
-- ritual or block interaction (optional later)
-- future integration hook
-
-Recommended command support:
+Required commands:
+- `/wa difficulty global get`
+- `/wa difficulty global set <value>`
+- `/wa difficulty global reset`
 - `/wa difficulty personal get`
-- `/wa difficulty personal raise`
-- `/wa difficulty personal lower`
 - `/wa difficulty personal set <value>`
 - `/wa difficulty world get`
-- `/wa difficulty world raise`
-- `/wa difficulty world lower`
 - `/wa difficulty world set <value>`
 - `/wa difficulty vote yes`
 - `/wa difficulty vote no`
 
-Any non-command activation must still obey bounds, cooldowns, permissions, and scope policies.
+Command rules:
+- reject unauthorized callers
+- reject out-of-bounds and step-invalid values
+- reject invalid/unsupported scope combinations
+- reject disallowed policy transitions (raise/lower disallowed, adjustment disabled, usage exhausted)
+- reject writes during active cooldown
+- reject vote commands when no eligible vote is active
+- surface exact rejection category (bounds, scope invalid, policy disallow, cooldown, usage exhausted, vote required/inactive, unauthorized, unsupported mode)
+- successful writes persist immediately to the correct world/player bucket
 
-### 5B.10 Vote System for World-Scoped Changes
-
-When world-scoped player-triggered adjustment is enabled, vote or approval flow may be required.
-
-Vote controls should include:
-- whether voting is required
-- approval threshold ratio
-- minimum eligible voters
-- vote timeout window
-- abstention handling
-- operator override behavior
-- whether only online eligible players are counted
-
-Vote behavior:
-- proposed change enters pending-vote state
-- players vote yes or no during configured window
-- threshold met: change applies
-- threshold not met: change is rejected
-- cooldown and usage limits still apply after approval
-
-### 5B.11 Persistence Rules
-
-Challenge modifier persistence follows scope.
-
-Player-scoped persistence may include:
-- current player modifier value
-- cooldown tracker
-- number of changes used
-- pending request state when relevant
-
-World-scoped persistence may include:
-- current world modifier value
-- world cooldown tracker
-- number of world changes used
-- active or pending vote state (if persisted by policy)
-
-Rule:
-- persistence must be deterministic across restarts according to configured policy
-
-### 5B.12 Validation and Failure Rules
+### 5B.10 Validation and Failure Rules
 
 Validate and report:
-- invalid scope mode
-- invalid min or max bounds
-- step size <= 0
-- default value outside bounds
-- cooldown < 0
-- incompatible scope settings for active progression mode
-- vote required without valid vote settings
-- activation path enabled while system disabled
+- invalid global defaults/bounds
+- invalid challenge scope/mode combinations
+- invalid challenge min/max/default configuration
+- invalid challenge step/cooldown configuration
+- vote-required paths with invalid vote configuration
 
-Failure behavior:
-- disable only the affected challenge subsystem branch where possible
-- unrelated World Awakened systems continue unless startup integrity is impossible
-
-Recommended diagnostics:
+Canonical diagnostics:
 - `WA_DIFFICULTY_GLOBAL_INVALID`
 - `WA_CHALLENGE_SCOPE_INVALID`
 - `WA_CHALLENGE_BOUNDS_INVALID`
@@ -1457,20 +1495,21 @@ Recommended diagnostics:
 - `WA_CHALLENGE_VOTE_CONFIG_INVALID`
 - `WA_CHALLENGE_MODE_UNSUPPORTED`
 
-### 5B.13 Shared Design Rules and API Contract
+Failure behavior:
+- fail closed at object/branch level where possible
+- keep unrelated subsystems running
+- do not replace canonical diagnostics with vague generic codes when a canonical code exists
+
+### 5B.11 Shared Design Rules and API Contract
 
 Design rules:
-- global difficulty modifier is the server baseline knob
-- challenge modifier is an optional player or world adjustment layer
-- neither system replaces progression stages
-- both systems are bounded intensity scalars applied only to World Awakened-owned numeric difficulty outputs
-
-Implementation note:
-- global and challenge modifiers should be resolved via one shared scalar provider or service
-- World Awakened subsystems should query that service instead of duplicating scaling logic
+- progression controls unlock state and trigger eligibility
+- global/challenge modifiers control only bounded World Awakened-owned numeric intensity layers
+- shared scalar provider is the single composition source of truth
 
 Conceptual API contract:
 - `getEffectiveDifficultyScalar(world, player?, context)`
+- `getPressureScalarBreakdown(world, player?, dimension, position?, context)`
 
 ---
 
@@ -1940,12 +1979,16 @@ Hard guarantees:
 - rules must be scope-indexed during reload and evaluated from the active scope bucket only
 - rule selectors and typed nodes must be compiled during reload
 - event pipelines must remain bounded and deterministic
-- spawn-time mutation resolution must respect strict mutator/component budgets
+- spawn-time mutation resolution must respect strict mutator/component guardrails
 
 Runtime safety contract:
 - no unbounded full-collection scans in event or spawn hot paths
 - no runtime datapack JSON parsing in rule or mutator hot paths
 - budget exceedance must emit diagnostics and apply policy-defined branch/object handling without crashing unrelated systems
+- `maximum_rules_evaluated_per_event` enforcement must truncate at a deterministic boundary and emit `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED` with event/scope/count context
+- `maximum_actions_per_rule` enforcement must emit `WA_PERF_RULE_ACTION_COUNT_EXCEEDED` and follow validation policy (warn at minimum; may disable offending object branch by policy)
+- no hidden reroll/retry logic may compensate for truncated candidates
+- candidate ordering before truncation must already be deterministic (never hash-iteration dependent)
 
 ---
 
@@ -2442,7 +2485,6 @@ Mob mutations are named datapack-authored definitions composed from mutation com
 - `excluded_entities[]`
 - `excluded_entity_tags[]`
 - `required_conditions[]` (shared condition nodes from Section `3C`)
-- `component_budget` (optional)
 - `reward_modifier{}`
 - `visuals{}`
 - `sounds{}`
@@ -2477,6 +2519,7 @@ Examples:
 - `armor_multiplier`
 - `armor_toughness_bonus`
 - `movement_speed_bonus`
+- `movement_speed_multiplier`
 - `follow_range_bonus`
 - `knockback_resistance_bonus`
 - `wall_sense`
@@ -2502,7 +2545,9 @@ Examples:
 - `damage_aura`
 - `death_explosion`
 - `retaliation_thorns`
+- `equip_item`
 - `glow_style`
+- `effect_particles`
 - `ambient_particles`
 
 ### 9.5 Stat Domains
@@ -2534,7 +2579,7 @@ Examples:
 At eligible spawn:
 1. build effective stage context
 2. collect external scalars (including Apotheosis if active)
-3. gather matching mutation pools
+3. resolve candidate mutation pools through compiled selector indexes
 4. filter by entity eligibility and exclusion
 5. filter by config gates and boss restrictions
 6. roll weighted mutator candidates
@@ -2563,6 +2608,7 @@ Hard coexistence rules:
 Safe default behavior:
 - react to eligible spawn events
 - mutate only when the spawn remains valid after upstream processing
+- in `per_player` progression mode, attribute spawn-time mutator evaluation to a nearby player or fail closed when no player attribution exists
 - fail closed when required spawn context is unavailable or invalidated by another mod
 - preserve server stability and compatibility over feature completion
 
@@ -2577,6 +2623,7 @@ Mutator application must remain ownership-scoped, capability-aware, and additive
 Hard rules:
 - spawn-time mutator handlers may mutate only World Awakened-owned runtime state, provenance, and owned projections for that mutator branch
 - World Awakened must not clear, normalize, rebuild, or overwrite foreign entity modifier/effect/capability state to force mutator compatibility
+- the `equip_item` mutation component may replace only the targeted vanilla equipment slot selected for that component; if the mob cannot use the resolved slot or hold the resolved hand item, only that component fails closed
 - each long-lived mutator projection must use a stable World Awakened-owned identity key where that projection model exists
 - mutator branches may execute only when required entity runtime surfaces, capabilities, or hooks are present and compatible
 - components that depend on optional runtime surfaces must declare or document that dependency clearly enough for validation, debugging, and future compat expansion
@@ -2632,40 +2679,97 @@ Examples:
 - a boss-sensitive mutator branch may depend on boss-classification/runtime data and fail closed if that data is unavailable
 - a carrier-backed visual reward component fails closed until an appropriate WA-owned visual carrier exists
 
-### 9.8 Mutator Budget System (Optional Guard)
+### 9.7E Mutator Evaluation Narrowing Contract
 
-In addition to `max_mutators_per_entity`, World Awakened may enforce component budgets to prevent excessive mutation stacking.
+Mutator evaluation must aggressively narrow candidate pools before evaluating mutators.
 
-Purpose:
-- prevent extreme mob power escalation caused by overlapping mutation pools
-- provide pack authors with fine-grained control over mutator complexity
-- avoid accidental overstacked elite mobs from aggressive datapack combinations
+Hard rules:
+- spawn evaluation must not iterate all mutation pools for each spawn event
+- selector indexing must reduce evaluation to a small candidate pool set
+- mutator evaluation must operate only on candidate pools selected by compiled selector indexes
 
-Optional schema additions:
+Required spawn pipeline shape:
 
-Mutation definition:
-- `component_budget` (integer, optional per-definition cap)
+spawn event
+-> resolve entity selector indexes
+-> resolve candidate mutation pools
+-> evaluate stage/scalar/condition filters
+-> perform pool selection
+-> apply selected pool mutation_chance gate
+-> evaluate candidate mutators
+-> apply composition rules
+-> enforce component-count guardrails
+-> apply mutator components
 
-Mutation component type registration:
-- each component type may declare an intrinsic budget cost
-
-Selection behavior:
-1. initialize entity mutation budget
-2. validate selected mutation component composition budget cost
-3. reject definitions whose component cost exceeds applicable budget
-4. selection ends when budget reaches zero or the candidate pool is exhausted
-
-Example:
-- `component_budget = 3`
-- `reinforcement_summon` cost = 3
-- `summon_cooldown` cost = 1
-
-Outcome:
-- definition with `reinforcement_summon + summon_cooldown` is rejected under budget 3
+Performance rule:
+- spawn evaluation complexity must scale with candidate pools, not total defined pools
+- evaluation complexity target: `O(candidate_pools)`, not `O(all_pools x all_mutators)`
 
 Design rule:
-- budget enforcement must remain deterministic and bounded
-- if budget is not configured, normal `max_mutators_per_entity` and composition validity rules apply
+- pools are the primary narrowing boundary for mutator evaluation
+- pool resolution should normally produce a small candidate set for any spawn context
+
+### 9.7F Mutator Provenance and Identity Contract
+
+Every mutated entity must carry deterministic mutation provenance metadata.
+
+Purpose:
+- allow `/wa mob inspect` to explain how a mob was mutated
+- prevent duplicate or accidental reapplication of mutators
+- support debugging, balancing, and compatibility investigation
+
+Required metadata fields:
+- `WA_MUTATION_SOURCE_POOL`
+- `WA_MUTATION_IDS`
+- `WA_MUTATION_COMPONENTS`
+- `WA_MUTATION_STAGE_CONTEXT`
+- `WA_MUTATION_TRACE_ID`
+
+Hard rules:
+- provenance metadata must be written when a mutator is applied
+- provenance metadata must survive entity lifetime unless the entity is rebuilt or despawns
+- provenance metadata must uniquely identify which mutators produced the entity's current state
+- `/wa mob inspect` must be able to surface this metadata clearly
+
+Design rule:
+- mutation provenance is part of entity runtime state and must remain inspectable
+
+### 9.7G Mutation Recursion Guard
+
+Mutator application must not create uncontrolled mutation recursion through entity spawning effects.
+
+Examples of mutators that may cause recursion:
+- summoner
+- necromancer-style reinforcement mutators
+- split-on-death entity behavior
+- reinforcement spawning mechanics
+
+Hard rules:
+- entities created by a mutator must not automatically re-enter the full mutation pipeline unless explicitly allowed by policy
+- mutation depth must be bounded
+
+Acceptable guard mechanisms include:
+- mutation depth tracking
+- spawn reason filtering
+- WA-origin entity markers
+- explicit recursion policy flags
+
+Recommended baseline behavior:
+- entities created by mutator-driven spawn effects should default to mutation depth = `1`
+- entities created by mutators should not trigger additional mutator evaluation unless explicitly configured
+
+Design rule:
+- mutator-driven entity creation must remain bounded and predictable
+- runaway spawn loops must be impossible under normal configuration
+
+### 9.8 Mutator Spawn-Time Guardrails
+
+Rules:
+- spawn-time mutator guardrails in v1 are enforced only with global/per-object count limits (`max_mutators_per_spawn`, `max_components_per_mutator`)
+- mutator composition is defined by resolved component behavior, not authored per-component cost metadata
+
+Design rule:
+- spawn-time guardrails must remain deterministic and bounded
 
 ---
 
@@ -2677,21 +2781,31 @@ Fields:
 - `id`
 - `enabled`
 - `weight`
+- `mutation_chance` (default `1.0`, range `0.0..1.0`)
 - `conditions[]`
 - `stage_filters`
 - `apotheosis_tier_filters`
 - `eligible_dimensions[]`
 - `eligible_biomes[]`
 - `eligible_entities[]`
+- `allow_from_spawner`
+- `allow_from_trial_spawner`
 - `mutators[]`
 - `max_mutators_per_entity` (optional override)
-- `reroll_policy`
 
 Use cases:
 - `undead_tier_1`
 - `overworld_night_stage_2`
 - `apotheosis_high_tier_elites`
 - `endgame_invaders`
+
+Runtime notes:
+- spawner and trial spawner sources are excluded by default and must be opted into per pool
+- mutation chance is evaluated only after pool selection:
+  - `1.0` skips rolling and always proceeds
+  - `0.0` fails closed with `WA_MUTATION_CHANCE_FAILED`
+  - `(0.0, 1.0)` performs one deterministic roll per selected pool evaluation
+- when progression mode is `per_player`, spawn-time mutator stage context is resolved from the nearest nearby non-spectator player; if no player can be attributed, the mutator pass fails closed
 
 ---
 
@@ -2702,15 +2816,15 @@ Increase world threat level without replacing vanilla spawning pipeline.
 
 ### 11.1 Adjustable Parameters
 
-- spawn pack size multiplier
-- reinforcement chance
-- elite/mutator chance
-- invasion event frequency
-- dimension hostile pressure scalar
-- conservative category cap multipliers
-- special event spawn composition
+Phase 6 pressure outputs must remain explicit, conservative, and WA-owned.
 
-When configured, spawn pressure adjustments may also indirectly increase elite presence through higher mutator-pool eligibility or higher mutator selection chance.
+Allowed Phase 6 pressure outputs:
+- elite/mutator chance
+- invasion/event-related pressure hooks where World Awakened defines the numeric output
+- hostile-category scalar/cap multiplier adjustments
+- special-event composition tuning only when already bounded and WA-owned
+
+Do not silently mutate arbitrary spawn internals outside documented World Awakened-owned paths.
 
 ### 11.1A Dimension Pressure Baselines
 
@@ -2727,21 +2841,25 @@ Optional configuration example:
 
 Behavior rules:
 - this baseline multiplies the base spawn pressure values
-- stage scaling and other scalars apply after the dimension baseline
+- global/challenge/integration scalar layers apply after the dimension baseline
 - dimension baselines are applied only to World Awakened-owned spawn pressure calculations
+- absent dimension entry defaults to `1.0`
+- invalid dimension IDs or entries must not crash world load
+- invalid entries emit structured diagnostics and fail closed for the affected baseline entry
 
 Scalar order example:
 - `effective_spawn_pressure = base_pressure * dimension_pressure_baseline * global_difficulty_modifier * challenge_modifier * integration_scalars`
-
-If not configured:
-- dimension baseline defaults to `1.0`
 
 ### 11.2 Guardrails
 
 - config hard caps for all multipliers
 - obey peaceful mode
 - obey vanilla or NeoForge category restrictions when exposed by the hook; otherwise fail closed and do not apply the modifier
+- if category restriction data is unavailable/unsafe in the hook, fail closed and do not apply modifier branch
 - bounded rerolls only
+- no uncontrolled spawn loops
+- repeated evaluation within the same tick/context must not reroll unpredictably
+- deterministic output for identical world/player/dimension/config/runtime snapshots
 - fallback behavior when no pool/profile matches
 
 ### 11.3 Optional Apotheosis Inputs
@@ -2753,16 +2871,16 @@ If not configured:
 
 ### 11.4 Scalar Composition Contract
 
-For World Awakened-owned numeric difficulty outputs, scalar composition should be deterministic and centralized.
+For World Awakened-owned numeric difficulty outputs, scalar composition is deterministic and centralized through the shared provider contract in Section `5B.8`.
 
-Recommended conceptual formula:
+For non-pressure WA-owned scalar consumers:
 - `effective_value = base_wa_value * global_difficulty_modifier * challenge_modifier * integration_scalars`
 
 Rules:
 - global difficulty modifier is world-scoped baseline
 - challenge modifier is optional and resolved by scope/policy
 - stage progression still controls unlock-state and eligibility, not these scalar layers
-- subsystems should read a shared resolved scalar provider rather than reimplementing scalar composition independently
+- all consumers resolve via the shared scalar provider; no local composition-order variants are allowed
 
 ---
 
@@ -3000,7 +3118,7 @@ allow_admin_revoke = true
 ```
 
 ### 15.6B Global Difficulty Modifier
-Detailed behavior contract: Section 5B.1.
+Detailed behavior contract: Section 5B.2.
 
 Recommended configuration shape:
 ```toml
@@ -3012,7 +3130,7 @@ max_value = 1.50
 ```
 
 ### 15.6C Optional Challenge Modifier System
-Detailed behavior contract: Sections 5B.2 through 5B.13.
+Detailed behavior contract: Sections 5B.3 through 5B.11.
 
 Recommended configuration shape:
 ```toml
@@ -3292,6 +3410,7 @@ Required commands (v1):
 - `/wa invasion start <profile>`
 - `/wa invasion stop`
 - `/wa mob inspect`
+- `/wa mob inspect <entity>`
 - `/wa compat list`
 - `/wa apotheosis tier inspect`
 - `/wa ascension list <player>`
@@ -3338,12 +3457,8 @@ Optional difficulty commands (when difficulty/challenge subsystems are enabled):
 - `/wa difficulty global set <value>`
 - `/wa difficulty global reset`
 - `/wa difficulty personal get`
-- `/wa difficulty personal raise`
-- `/wa difficulty personal lower`
 - `/wa difficulty personal set <value>`
 - `/wa difficulty world get`
-- `/wa difficulty world raise`
-- `/wa difficulty world lower`
 - `/wa difficulty world set <value>`
 - `/wa difficulty vote yes`
 - `/wa difficulty vote no`
@@ -3373,6 +3488,7 @@ Operator or admin commands:
 - `/wa dump active_rules`
 - `/wa reload validate`
 - `/wa mob inspect`
+- `/wa mob inspect <entity>`
 - `/wa compat list`
 - `/wa apotheosis tier inspect`
 - any ascension command targeting another player
@@ -3391,13 +3507,19 @@ Console behavior:
 - dedicated-server console has operator-equivalent authority
 - console execution must bypass player-only targeting restrictions when a valid target is supplied
 - console may bypass difficulty vote gates only when `admin_override` policy allows it
+- player-executed `/wa mob inspect` with no explicit target should inspect the mob under the player's crosshair
+- non-player sources must use `/wa mob inspect <entity>`
 
 `mob inspect` output must include:
 - entity type
 - active mutators
+- applied mutator components
+- active visual presentation state when a mutator owns persistent presentation behavior (for example `glow_style`, `effect_particles`, or `ambient_particles`)
 - source mutation pool
 - source rules
 - stage context
+- mutation trace ID
+- mutation depth or origin marker
 - Apotheosis tier context (when active)
 - final attribute deltas
 - persisted mutation provenance keys
@@ -3463,10 +3585,12 @@ Required commands:
 - `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
 
 Required behavior:
-- `evaluate` builds a normal `spawn_event` context and dry-runs selector/pool/mutator evaluation
-- `force_pool` bypasses pool randomness but still enforces selector, composition, exclusion, and budget rules
-- `force_mutator` bypasses mutator weighting but still enforces composition, exclusion, and budget rules
-- `spawn test` performs end-to-end controlled spawn-path verification using the real compiled pipeline
+- `evaluate` builds a normal `spawn_event` context and dry-runs selector/pool/chance/mutator evaluation
+- `force_pool` bypasses pool mutation chance and pool randomness but still enforces selector, composition, exclusion, and budget rules
+- `force_mutator` bypasses selected-pool mutation chance and mutator weighting but still enforces composition, exclusion, and budget rules
+- `spawn test` performs end-to-end controlled spawn-path verification using the real compiled pipeline and respects authored pool mutation chance
+- mutator debug output must expose `selected_pool`, `chance_result` (`mutation_chance`, rolled/bypassed/skipped, pass/fail), and `final_outcome` including explicit `chance_failed`
+- mutator/spawn debug output must expose the spawn origin and the resolved progression attribution used for stage gating
 
 #### 18.2B Phase 6 - Spawn Pressure / Difficulty / Challenge
 
@@ -3487,6 +3611,9 @@ Required behavior:
 - `pressure evaluate` dry-runs spawn-pressure composition for a target context
 - `difficulty scalar` reports resolved effective scalar inputs and final output for the target context
 - difficulty commands must expose rejection reasons for bounds, permissions, cooldowns, vote requirements, and unsupported scope combinations
+- `pressure evaluate` output must include: base values, dimension baseline, global modifier, challenge modifier, integration scalar inputs, final effective scalar, policy rejection reasons, resolved target context, peaceful/category gate outcomes, and category-data fail-closed status
+- `difficulty scalar` output must include: resolved scope, global modifier, challenge modifier, integration inputs, final effective scalar, policy gates consulted, and active cooldown/usage/vote state when applicable
+- debug/evaluate outputs must use the same compiled runtime structures and scalar service used by live execution; parity mismatch is a regression bug
 
 #### 18.2C Phase 7 - Loot
 
@@ -3629,6 +3756,8 @@ Examples:
 - `WA_CHALLENGE_STEP_INVALID`
 - `WA_CHALLENGE_VOTE_CONFIG_INVALID`
 - `WA_CHALLENGE_MODE_UNSUPPORTED`
+- `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED`
+- `WA_PERF_RULE_ACTION_COUNT_EXCEEDED`
 - `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED`
 - `WA_APOTHEOSIS_LOOT_MODE_UNSAFE`
 - `WA_APOTHEOSIS_LOOT_TARGET_SENSITIVE`
@@ -3672,6 +3801,7 @@ The system must be able to answer:
 - which stage conditions were active
 - which integration gates were applied
 - which effective difficulty scalar was applied
+- which scalar layers composed that result (base, dimension baseline, global, challenge, integration, clamp reason)
 - why difficulty/challenge adjustment requests were rejected (bounds, cooldown, permissions, scope, vote)
 
 Minimum command support for observability:
@@ -3782,12 +3912,16 @@ Minimum categories:
 - stage alias and migration compatibility tests
 - pressure-tier provider and condition-evaluation tests
 - single-pass stage propagation guarantee tests (no same-event re-evaluation after unlock)
-- global difficulty modifier bound and reset tests
+- global difficulty modifier bound, clamp-on-load, and reset tests
 - challenge modifier scope-resolution and policy-validation tests
 - challenge modifier cooldown/usage-limit and vote-flow tests
+- challenge step-grid enforcement tests using stable numeric handling (no raw-double equality assumptions)
 - dimension pressure baseline composition and default-fallback tests
+- deterministic scalar composition tests across repeated identical snapshots
+- rule budget truncation determinism tests (`maximum_rules_evaluated_per_event`, `maximum_actions_per_rule`)
+- debug parity tests for pressure and scalar output versus live runtime composition
 - optional world-context condition tests, including false-on-unavailable-context behavior
-- mutation component budget enforcement tests (`component_budget` plus registered component costs) when enabled
+- mutator spawn-time limit validation tests (`max_mutators_per_spawn`, `max_components_per_mutator`)
 - Apotheosis loot compatibility tests for additive composition and unsafe-mode fallback behavior
 - debug trace ID stability tests per evaluation pass
 
@@ -3809,6 +3943,8 @@ Phase 6 manual verification set:
 - inspect effective scalar composition
 - test difficulty/challenge bounds, cooldowns, and permissions
 - verify policy rejection diagnostics
+- verify vote required/inactive paths and admin override policy behavior
+- verify debug pressure/scalar output parity with live command-driven state changes
 
 Phase 7 manual verification set:
 - evaluate loot on valid and invalid targets
@@ -3834,6 +3970,30 @@ Phase 9 manual verification set:
 - forced commands still enforce safety/composition/policy rules
 - debug output contains candidate and rejection summaries
 - pipeline mismatch between debug path and live path is treated as a regression
+- Phase 6 scalar tests:
+  - dimension baseline missing resolves to `1.0`
+  - dimension baseline order is before global/challenge/integration layers
+  - disabled global resolves to `1.0`
+  - disabled challenge resolves to `1.0`
+  - final scalar clamps correctly
+  - identical snapshots resolve identical scalar output
+- Phase 6 challenge tests:
+  - auto-scope resolves correctly for `GLOBAL` and `PER_PLAYER`
+  - invalid scope combinations reject cleanly
+  - raise/lower policy gates are enforced
+  - cooldown/usage are consumed only after committed writes
+  - step enforcement is stable and float-safe
+  - vote-required paths apply/reject correctly
+  - invalid vote config rejects/disables cleanly
+  - admin override obeys policy
+- Phase 6 command tests:
+  - unauthorized and out-of-bounds updates reject with explicit reason category
+  - `get` reflects persisted state and `reset` restores configured target
+  - vote commands reject when vote is inactive
+- Phase 6 rule-budget tests:
+  - deterministic truncation at `maximum_rules_evaluated_per_event`
+  - oversized action list handling emits `WA_PERF_RULE_ACTION_COUNT_EXCEEDED`
+  - budget overflow path never crashes server
 
 ### Command-Driven Verification Reuse Rule
 
@@ -3982,31 +4142,33 @@ Cross-phase quality gate:
 - implement mutation pool matching and weighted selection
 - apply mutators at spawn-time with stacking/exclusivity enforcement
 - implement command-driven verification surfaces for mutators/spawn:
-  - inspect: `/wa mob inspect`
+  - inspect: `/wa mob inspect` or `/wa mob inspect <entity>`
   - evaluate: `/wa debug mutators evaluate <entity_id> [dimension] [x] [y] [z]`
   - force: `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`, `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
   - controlled live test: `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
-- implement optional mutation component budget enforcement (`component_budget` plus registered component costs)
 - implement spawn-time performance budgets from [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md):
   - `max_mutators_per_spawn`
   - `max_components_per_mutator`
   - deterministic overflow handling (truncate or reject by policy)
 - persist entity metadata for provenance and debugging
 - compile selector definitions into cached matchers
+- enforce candidate-pool-first mutator evaluation (no full pool scans per spawn)
 - implement safe spawn-hook coexistence rules so World Awakened mutates only surviving eligible spawn events and never reintroduces denied upstream spawns
+- implement bounded recursion controls for mutator-driven entity spawning paths
 - respect optional runtime-surface dependencies for mutator components and fail closed branch-only when compat-sensitive surfaces such as extra slot systems, custom combat hooks, boss-runtime metadata, or custom attributes are unavailable
 
 Exit criteria:
 - eligible spawns can receive mutators from matching pools
 - configured caps and exclusions are respected
-- when configured, mutator budget enforcement rejects over-budget candidates deterministically
 - spawn-time mutator/component count budgets are enforced deterministically
 - budget overflow paths emit structured diagnostics and do not trigger unbounded rerolls
 - `/wa mob inspect` shows source pool, active mutators, and stat deltas
-- `/wa mob inspect` also shows resolved-vs-missing mutator definitions and failed-closed mutator component reasons
+- `/wa mob inspect` also shows resolved-vs-missing mutator definitions, applied component lists, mutation trace IDs, mutation depth/origin markers, active visual state (`glow_style` plus particle emitters) when present, and failed-closed mutator component reasons
 - mutator rerolls remain bounded and rejected candidates are inspectable
 - command-driven evaluate/force/spawn-test outputs expose candidate narrowing, rejection reasons, selected mutators, component composition, and budget outcomes
+- spawn-time selector indexing ensures evaluation scales with candidate pools instead of total defined pools
 - World Awakened coexists safely with upstream spawn denial/transformation hooks and does not retry or recreate denied spawns
+- mutator-driven entity spawns are recursion-bounded and do not re-enter full mutation evaluation unless policy explicitly allows it
 - missing entity capabilities/hooks/runtime surfaces fail closed with branch-level diagnostics and do not rewrite foreign entity state
 - compat-sensitive mutator branches fail closed with structured diagnostics when optional runtime surfaces are unavailable, without mutating unrelated foreign state
 
@@ -4028,13 +4190,32 @@ Exit criteria:
 - implement hard safety caps and loop guards
 - support dimension and stage-conditioned pressure adjustments
 
+Do not add in Phase 6:
+- new progression systems or hidden pressure-tier progression
+- stage unlock/progression changes driven by difficulty/challenge
+- trigger eligibility changes driven by difficulty/challenge
+- full spawn-engine replacement
+- retroactive mutation or retroactive pressure application to already-loaded entities
+- duplicate scalar-composition logic outside the shared scalar service
+
+Recommended implementation order:
+1. config parsing and validation for difficulty global/challenge sections
+2. persistence model for global/challenge state
+3. central shared scalar provider
+4. debug scalar resolution output
+5. spawn-pressure evaluator wired to shared scalar provider
+6. command handlers for global/personal/world difficulty paths
+7. vote flow
+8. rule-budget enforcement
+9. parity tests and controlled live-path verification
+
 Exit criteria:
 - pressure adjustments remain bounded by server config caps
 - missing dimension baseline entries default to `1.0`
 - dimension baseline composition order is deterministic and precedes global/challenge/integration scalar layers
 - effective scalar composition is deterministic and consistently applied across World Awakened-owned numeric difficulty outputs
 - out-of-bounds or unauthorized difficulty/challenge changes are rejected with diagnostics
-- pressure and scalar debug commands expose base values, challenge/global layers, integration inputs, and final resolved outputs
+- pressure and scalar debug commands expose base values, challenge/global layers, integration inputs, final resolved outputs, and policy gate/rejection details
 - per-event rule and per-rule action budgets are enforced with deterministic outcomes and diagnostics
 - no uncontrolled spawn loops under malformed data
 - peaceful mode is respected and category restrictions are obeyed when exposed by the hook; otherwise modifiers fail closed

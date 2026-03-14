@@ -3,8 +3,8 @@
 Copyable authoring patterns with plain-language explanation.
 
 - Document status: Active human-friendly authoring cookbook
-- Last updated: 2026-03-12
-- Scope: Common trigger, rule, and ascension patterns
+- Last updated: 2026-03-14
+- Scope: Common trigger, rule, mutator, and ascension patterns
 
 ---
 
@@ -259,3 +259,123 @@ After authoring a new trigger/rule pattern:
 6. inspect ascension state if the pattern is supposed to touch offers
 
 This catches scope mistakes early.
+
+## Recipe 8: Give A Mutated Mob Gear Without Breaking The Whole Mutation
+
+Use this when:
+- you want a mutator to hand a mob one or more authored items
+- you want the runtime to pick the natural slot from the item when possible
+- you do not want one unsupported equipment branch to kill the rest of the mutator
+
+```json
+{
+  "id": "my_pack:armed_guard",
+  "display_name": "Armed Guard",
+  "weight": 1,
+  "eligible_entities": ["minecraft:zombie"],
+  "components": [
+    {
+      "type": "worldawakened:max_health_bonus",
+      "parameters": {
+        "amount": 6.0
+      }
+    },
+    {
+      "type": "worldawakened:equip_item",
+      "parameters": {
+        "item": "minecraft:iron_sword",
+        "slot": "auto",
+        "drop_chance": 0.1,
+        "enchantments": [
+          { "id": "minecraft:sharpness", "level": 2 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Why this shape works:
+- `slot: "auto"` keeps authoring simple and lets the runtime use the item's normal vanilla equipment slot
+- you can author multiple `equip_item` entries in one mutator when you want several gear pieces
+- if the mob cannot use the resolved slot or cannot hold the authored hand item, World Awakened skips only that `equip_item` component and keeps other valid components on the mutator
+
+Testing loop:
+1. reload and validate the datapack
+2. force or spawn the target mob
+3. run `/wa mob inspect`
+4. if the gear did not apply, check failed-closed component entries for `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
+
+## Recipe 9: Add Mutation Visuals (Outline + Vanilla Particles) Without Gameplay Potions
+
+Use this when:
+- you want a clear mutation outline tell that works on awkward mob shapes
+- you want vanilla-looking visual flair on top of the outline
+- you do not want to make custom particle art
+- you want potion-style particles without applying the gameplay effect itself
+
+```json
+{
+  "id": "my_pack:berserker_visuals",
+  "display_name": "Berserker Visuals",
+  "weight": 1,
+  "eligible_entities": ["minecraft:zombie"],
+  "components": [
+    {
+      "type": "worldawakened:movement_speed_multiplier",
+      "parameters": {
+        "multiplier": 1.2
+      }
+    },
+    {
+      "type": "worldawakened:glow_style",
+      "parameters": {
+        "color": "#66ff66",
+        "brightness": 0.9,
+        "see_through_walls": false,
+        "pulse": false
+      }
+    },
+    {
+      "type": "worldawakened:effect_particles",
+      "parameters": {
+        "effect_type": "minecraft:strength",
+        "color": "#66ff66",
+        "count": 3,
+        "interval_ticks": 10
+      }
+    }
+  ]
+}
+```
+
+Why this shape is correct:
+- `movement_speed_multiplier` changes the actual mob speed
+- `glow_style` adds the WA-owned silhouette outline mutation tell
+- `effect_particles` reuses the vanilla mob-effect particle visual only
+- no gameplay potion effect is applied to the mob
+
+Direct particle example:
+
+```json
+{
+  "type": "worldawakened:ambient_particles",
+  "parameters": {
+    "particle": "minecraft:dust",
+    "color": "#33ff66",
+    "size": 0.8,
+    "count": 4,
+    "offset_x": 0.3,
+    "offset_y": 0.6,
+    "offset_z": 0.3,
+    "speed": 0.01,
+    "interval_ticks": 8
+  }
+}
+```
+
+Notes:
+- use `glow_style` as the primary mutation readability tell
+- use `effect_particles` for vanilla potion-style visuals
+- use `ambient_particles` for direct simple particle emission
+- use `/wa mob inspect` to confirm active `glow_style` and particle visual state on the mutated mob
