@@ -21,10 +21,36 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
+import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 
 class WorldAwakenedCommandsDebugTreeStructureTest {
+    @Test
+    void buildLootTreeIncludesEvaluateAndForceTopLevelBranches() {
+        WorldAwakenedDatapackService datapackService = mock(WorldAwakenedDatapackService.class);
+        when(datapackService.currentSnapshot()).thenReturn(WorldAwakenedDatapackSnapshot.empty());
+        WorldAwakenedLootService lootService = mock(WorldAwakenedLootService.class);
+
+        LiteralArgumentBuilder<CommandSourceStack> lootTree = invokeBuildLootTree(datapackService, lootService);
+        Set<String> topLevelChildren = lootTree.build().getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(topLevelChildren.contains("evaluate"), "Expected /wa loot evaluate");
+        assertTrue(topLevelChildren.contains("force_profile"), "Expected /wa loot force_profile");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCommandNode<CommandSourceStack, String> evaluateTargetTypeNode =
+                (ArgumentCommandNode<CommandSourceStack, String>) lootTree.build().getChild("evaluate").getChild("target_type");
+        assertTrue(evaluateTargetTypeNode.getCustomSuggestions() != null, "Expected /wa loot evaluate <target_type> suggestions");
+
+        CommandNode<CommandSourceStack> forceProfileNode = lootTree.build().getChild("force_profile");
+        @SuppressWarnings("unchecked")
+        ArgumentCommandNode<CommandSourceStack, ?> profileIdNode =
+                (ArgumentCommandNode<CommandSourceStack, ?>) forceProfileNode.getChild("profile_id");
+        assertTrue(profileIdNode.getCustomSuggestions() != null, "Expected /wa loot force_profile <profile_id> suggestions");
+    }
+
     @Test
     void buildDebugTreeIncludesMutatorAndSpawnTopLevelBranches() {
         WorldAwakenedDatapackService datapackService = mock(WorldAwakenedDatapackService.class);
@@ -34,6 +60,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         WorldAwakenedAscensionService ascensionService = mock(WorldAwakenedAscensionService.class);
         WorldAwakenedMutatorService mutatorService = mock(WorldAwakenedMutatorService.class);
         when(mutatorService.pressureSnapshotIds()).thenReturn(List.of(7L, 8L));
+        WorldAwakenedLootService lootService = mock(WorldAwakenedLootService.class);
         WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService = new WorldAwakenedEffectiveDifficultyScalarService();
         WorldAwakenedDebugCommandService debugCommandService =
                 new WorldAwakenedDebugCommandService(stageService, ascensionService);
@@ -43,6 +70,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                 stageService,
                 ascensionService,
                 mutatorService,
+                lootService,
                 difficultyScalarService,
                 debugCommandService);
 
@@ -54,8 +82,16 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         assertTrue(topLevelChildren.contains("reset"), "Expected /wa debug reset");
         assertTrue(topLevelChildren.contains("mutators"), "Expected /wa debug mutators");
         assertTrue(topLevelChildren.contains("spawn"), "Expected /wa debug spawn");
+        assertTrue(topLevelChildren.contains("loot"), "Expected /wa debug loot");
         assertTrue(topLevelChildren.contains("difficulty"), "Expected /wa debug difficulty");
         assertTrue(topLevelChildren.contains("pressure"), "Expected /wa debug pressure");
+
+        CommandNode<CommandSourceStack> lootNode = debugTree.build().getChild("loot");
+        Set<String> lootChildren = lootNode.getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(lootChildren.contains("evaluate"), "Expected /wa debug loot evaluate");
+        assertTrue(lootChildren.contains("force_profile"), "Expected /wa debug loot force_profile");
 
         CommandNode<CommandSourceStack> pressureNode = debugTree.build().getChild("pressure");
         Set<String> pressureChildren = pressureNode.getChildren().stream()
@@ -73,11 +109,31 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
     }
 
     @SuppressWarnings("unchecked")
+    private static LiteralArgumentBuilder<CommandSourceStack> invokeBuildLootTree(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedLootService lootService) {
+        try {
+            Method method = WorldAwakenedCommands.class.getDeclaredMethod(
+                    "buildLootTree",
+                    WorldAwakenedDatapackService.class,
+                    WorldAwakenedLootService.class);
+            method.setAccessible(true);
+            return (LiteralArgumentBuilder<CommandSourceStack>) method.invoke(
+                    null,
+                    datapackService,
+                    lootService);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Failed to invoke buildLootTree", exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private static LiteralArgumentBuilder<CommandSourceStack> invokeBuildDebugTree(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedLootService lootService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
             WorldAwakenedDebugCommandService debugCommandService) {
         try {
@@ -87,6 +143,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     WorldAwakenedStageService.class,
                     WorldAwakenedAscensionService.class,
                     WorldAwakenedMutatorService.class,
+                    WorldAwakenedLootService.class,
                     WorldAwakenedEffectiveDifficultyScalarService.class,
                     WorldAwakenedDebugCommandService.class);
             method.setAccessible(true);
@@ -96,6 +153,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     stageService,
                     ascensionService,
                     mutatorService,
+                    lootService,
                     difficultyScalarService,
                     debugCommandService);
         } catch (ReflectiveOperationException exception) {

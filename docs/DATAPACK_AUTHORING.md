@@ -1200,6 +1200,10 @@ If an unsafe mode is used on an Apotheosis-sensitive target:
 - the profile operation should be blocked, downgraded to additive behavior, or disabled according to validation policy
 - World Awakened should never silently erase Apotheosis tier-gated loot behavior
 - server policy may be configured through `compat.apotheosis.loot_unsafe_mode_policy`
+- supported policy values:
+  - `block` (default): reject unsafe destructive branch
+  - `downgrade_additive`: downgrade unsafe destructive branch to additive inject semantics
+  - `disable_profile_branch`: disable the unsafe branch while leaving other eligible profiles intact
 
 Recommended diagnostics:
 - `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED`

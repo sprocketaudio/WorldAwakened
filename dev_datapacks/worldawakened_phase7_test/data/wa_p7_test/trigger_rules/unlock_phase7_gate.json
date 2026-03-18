@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "wa_p7_test:unlock_phase7_gate",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:manual_debug",
+  "source_scope": "world",
+  "conditions": [],
+  "actions": [
+    {
+      "type": "worldawakened:unlock_stage",
+      "parameters": {
+        "stage": "wa_p7_test:phase7_gate"
+      }
+    }
+  ],
+  "one_shot": false
+}

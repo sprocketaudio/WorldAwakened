@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "wa_p7_test:apotheosis_sensitive_targets",
+  "mod_id": "apotheosis",
+  "display_name": "Phase 7 Apotheosis Sensitive Targets",
+  "enabled_by_default": true,
+  "config_key": "compat.apotheosis.enabled",
+  "stage_hooks": [],
+  "trigger_hooks": [],
+  "entity_tags": [],
+  "boss_tags": [],
+  "loot_targets": [
+    "minecraft:chests/simple_dungeon"
+  ],
+  "special_conditions": [],
+  "notes": "Marks simple_dungeon as Apotheosis-sensitive for Phase 7 safety-policy validation."
+}

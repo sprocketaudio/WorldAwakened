@@ -56,7 +56,7 @@ Hard rule:
 | Ascension | `/wa ascension inspect` | player UUID, offer ID, reward IDs, source key, active owned carriers | pending/resolved state, forfeits, suppression state, grant/reconcile outcome | `implemented` |
 | Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
-| Loot profiles | loot debug output | profile ID, loot target | matched/rejected, compat safety outcome, applied operations | `planned` |
+| Loot profiles | `/wa loot evaluate`, `/wa loot force_profile`, `/wa debug loot evaluate`, `/wa debug loot force_profile` | profile ID, loot target, trace ID | matched/rejected, compat safety outcome, applied operations, final outcome | `implemented` |
 | Invasions | invasion inspect output | profile ID, invasion instance ID | scheduler state, active-event state, pressure modifier, duration/cooldown outcomes | `planned` |
 | Compat/integrations | `/wa compat list`, integration inspect | integration ID/mod ID | active/inactive reason, gate path, fallback path | `implemented`/`planned` |
 | Web linked sessions | `/wa web edit`, `/wa web session status` | session ID, runtime version, schema version, revision | linked/stale/revoked state, apply outcome, mismatch diagnostics | `planned` |
@@ -112,6 +112,10 @@ Current baseline command surface:
 - `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
 - `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
 - `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
+- `/wa loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+- `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa debug pressure last`
 - `/wa debug pressure replay <id>`
 - `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
@@ -159,8 +163,6 @@ Planned minimum additions as systems complete:
 - `/wa web session status`
 - `/wa web session revoke`
 - `/wa debug trace <trace_id>`
-- `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
-- `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
 - `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
 - `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
@@ -181,6 +183,7 @@ Operator/debug split:
 - player-facing notifications should be short, readable, and display-name-first; they should not expose raw authored/runtime IDs, copy buttons, or provenance fields unless the surface is explicitly inspect/debug oriented
 - non-debug operator outputs should stay concise and human-readable by default
 - inspect/debug outputs are the dense layer and should carry raw IDs, source keys, reason codes, provenance, and other diagnostics needed for recovery or diagnosis
+- `/wa loot evaluate|force_profile` is an operator-layer concise summary surface; `/wa debug loot evaluate|force_profile` remains the dense inspect/debug payload surface
 - concise operator commands may append extra raw detail only when `general.debug_logging = true`
 - when `general.debug_logging = true`, keep the concise operator line and add the raw-detail line or suffix after it; do not replace the operator layer with dense-only output
 - new command surfaces must not duplicate player-facing action prompts inside normal gameplay notifications when the same action is already present in the intended player-facing UX

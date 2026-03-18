@@ -326,8 +326,8 @@ Wrapper status:
 - **Parameters:** `min` (`0-23999`, optional), `max` (`0-23999`, optional)
 - **Defaults / Notes:** At least one bound should be supplied.
 - **Missing-context behavior:** False when time-of-day context is unavailable.
-- **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Compatibility Notes:** Implemented in Phase 7 loot runtime paths; unsupported contexts fail closed.
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:time_of_day_range", "parameters": { "min": 13000, "max": 23000 } }
@@ -341,7 +341,7 @@ Wrapper status:
 - **Defaults / Notes:** Explicit state string avoids ambiguity.
 - **Missing-context behavior:** False when weather state is unavailable.
 - **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:weather_state", "parameters": { "state": "thunder" } }
@@ -369,7 +369,7 @@ Wrapper status:
 - **Defaults / Notes:** At least one bound should be supplied.
 - **Missing-context behavior:** False when light level context is unavailable.
 - **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:light_level_range", "parameters": { "max": 7 } }
@@ -412,8 +412,8 @@ Wrapper status:
 - **Parameters:** `min` (`number`, optional), `max` (`number`, optional)
 - **Defaults / Notes:** At least one bound should be supplied.
 - **Missing-context behavior:** False when player health context is unavailable.
-- **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Compatibility Notes:** Implemented in Phase 7 loot runtime paths; unsupported contexts fail closed.
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:player_health_range", "parameters": { "max": 8.0 } }
@@ -427,7 +427,7 @@ Wrapper status:
 - **Defaults / Notes:** At least one bound should be supplied.
 - **Missing-context behavior:** False when player armor context is unavailable.
 - **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:player_armor_range", "parameters": { "min": 10 } }
@@ -441,7 +441,7 @@ Wrapper status:
 - **Defaults / Notes:** Tag source can be scoreboard/team/datapack tag model per runtime implementation.
 - **Missing-context behavior:** False when player tag context is unavailable.
 - **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:player_tag", "parameters": { "tag": "wa_hardcore" } }
@@ -712,8 +712,8 @@ Wrapper status:
 - **Parameters:** `event` (`resource_location or string`, required)
 - **Defaults / Notes:** Event IDs should be normalized and stable.
 - **Missing-context behavior:** False when event-type field is unavailable.
-- **Compatibility Notes:** Planned shared catalog entry; not fully runtime-active.
-- **Status:** `planned`
+- **Compatibility Notes:** Implemented in Phase 7 loot runtime paths; unsupported contexts fail closed.
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:event_type", "parameters": { "event": "worldawakened:entity_killed" } }
@@ -727,7 +727,7 @@ Wrapper status:
 - **Defaults / Notes:** Intended for structure/container loot targeting in profile conditions.
 - **Missing-context behavior:** False when loot-table context is unavailable.
 - **Compatibility Notes:** Phase 7 targeted shared condition for condition-driven loot profile activation.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:loot_table", "parameters": { "id": "minecraft:chests/simple_dungeon" } }
@@ -742,7 +742,7 @@ Wrapper status:
 - **Behavior:** returns `true` when active invasion profile contains the tag; returns `false` when no invasion is active; returns `false` when active profile lacks the tag.
 - **Missing-context behavior:** False when invasion-tag metadata is unavailable.
 - **Compatibility Notes:** Phase 8 v1 required condition for reusable pressure-event tag matching; fail closed when invasion state is absent.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:invasion_tag", "parameters": { "tag": "undead" } }
@@ -969,9 +969,9 @@ Authoring recommendation:
 | `external_scalar_range` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
 | `integration_active` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
 | `random_chance` | Random/event context | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
-| `event_type` | Random/event context | spawn_event, loot, invasion, event_context | planned |
-| `loot_table` | Random/event context | loot, event_context | planned |
-| `invasion_tag` | Random/event context (required for Phase 8 v1 completion) | spawn_event, loot, invasion, event_context | planned |
+| `event_type` | Random/event context | spawn_event, loot, invasion, event_context | implemented |
+| `loot_table` | Random/event context | loot, event_context | implemented |
+| `invasion_tag` | Random/event context (required for Phase 8 v1 completion) | spawn_event, loot, invasion, event_context | implemented |
 | `recent_trigger` | Random/event context | world, player, event_context | planned |
 | `source_scope_match` | Random/event context | event_context | planned |
 | `all_of` | Logical wrapper | compositional wrapper node | planned |

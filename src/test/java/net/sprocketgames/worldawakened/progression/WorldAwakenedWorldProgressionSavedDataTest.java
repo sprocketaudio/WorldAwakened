@@ -1,14 +1,30 @@
 package net.sprocketgames.worldawakened.progression;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 
 class WorldAwakenedWorldProgressionSavedDataTest {
+    @Test
+    void getUsesTransientFallbackWhenLevelDataStorageUnavailable() {
+        ServerLevel level = mock(ServerLevel.class);
+        when(level.getServer()).thenReturn(null);
+        when(level.getDataStorage()).thenReturn(null);
+
+        WorldAwakenedWorldProgressionSavedData first = WorldAwakenedWorldProgressionSavedData.get(level);
+        WorldAwakenedWorldProgressionSavedData second = WorldAwakenedWorldProgressionSavedData.get(level);
+
+        assertSame(first, second);
+    }
+
     @Test
     void roundTripsWorldProgressionState() {
         WorldAwakenedWorldProgressionSavedData data = new WorldAwakenedWorldProgressionSavedData();

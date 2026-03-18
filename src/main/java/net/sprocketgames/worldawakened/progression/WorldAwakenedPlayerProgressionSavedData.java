@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -23,6 +24,8 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
     private static final SavedData.Factory<WorldAwakenedPlayerProgressionSavedData> FACTORY = new SavedData.Factory<>(
             WorldAwakenedPlayerProgressionSavedData::new,
             WorldAwakenedPlayerProgressionSavedData::load);
+    private static final Map<ServerLevel, WorldAwakenedPlayerProgressionSavedData> TRANSIENT_FALLBACK =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private static final String KEY_PLAYERS = "players";
     private static final String KEY_PLAYER_UUID = "player_uuid";
@@ -30,7 +33,13 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
     private final Map<UUID, PlayerStageState> playerStates = new LinkedHashMap<>();
 
     public static WorldAwakenedPlayerProgressionSavedData get(ServerLevel level) {
-        return canonicalStorageLevel(level).getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+        ServerLevel storageLevel = canonicalStorageLevel(level);
+        if (storageLevel.getDataStorage() == null) {
+            return TRANSIENT_FALLBACK.computeIfAbsent(
+                    storageLevel,
+                    ignored -> new WorldAwakenedPlayerProgressionSavedData());
+        }
+        return storageLevel.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
     }
 
     private static ServerLevel canonicalStorageLevel(ServerLevel level) {

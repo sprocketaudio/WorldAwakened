@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "wa_p7_test:unsafe_replace_sensitive",
+  "enabled": true,
+  "target_loot_tables": [
+    "minecraft:chests/simple_dungeon"
+  ],
+  "stage_filters": {
+    "all_of": [
+      "wa_p7_test:phase7_gate"
+    ]
+  },
+  "replace_mode": "replace_entries",
+  "entries": [
+    {
+      "type": "item",
+      "item": "minecraft:diamond",
+      "weight": 1,
+      "min": 1,
+      "max": 1
+    }
+  ],
+  "mod_conditions": []
+}

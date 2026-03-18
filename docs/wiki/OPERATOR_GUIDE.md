@@ -183,7 +183,7 @@ If one of these fields is missing, treat that as an observability gap and invest
 
 Preflight check before using mutator debug commands:
 - run `/wa debug`
-- confirm `mutators` and `spawn` appear as child literals
+- confirm `mutators`, `loot`, and `spawn` appear as child literals
 - if `/wa debug` only shows `clear` and `reset`, restart on a current mod version; datapack reload does not refresh command registration
 
 Use these mutator debug surfaces when a spawn path is unclear:
@@ -194,6 +194,25 @@ Use these mutator debug surfaces when a spawn path is unclear:
 /wa debug mutators force_mutator <entity_id> <mutator_id>
 /wa debug spawn test <entity_id>
 ```
+
+Use these operator loot surfaces for concise checks:
+
+```text
+/wa loot evaluate <target_type> <target_id> [player] [dimension]
+/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]
+```
+
+Use these loot debug surfaces when reward profile behavior is unclear:
+
+```text
+/wa debug loot evaluate <target_type> <target_id> [player] [dimension]
+/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]
+```
+
+`/wa loot ...` returns concise operator output by default and appends raw details only when `general.debug_logging=true`.
+`/wa debug loot ...` always returns the dense inspect payload.
+`evaluate` runs normal candidate resolution for the target context.
+`force_profile` isolates one profile against the same canonical context shape for rejection-path debugging.
 
 ## 3B. Mutator Cap Resolution
 

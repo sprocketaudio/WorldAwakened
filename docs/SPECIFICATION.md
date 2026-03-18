@@ -2,7 +2,7 @@
 
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
-- Document status: Active implementation spec (Phase 5 complete, Phase 6 active)
+- Document status: Active implementation spec (Phase 7 complete, Phase 8 active)
 - Last updated: 2026-03-18
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
@@ -343,9 +343,9 @@ Condition catalog status labels use Section `3F` taxonomy.
 | Condition | Purpose | Valid scopes | Parameter schema | Example payload | Status | Missing-context behavior |
 | --- | --- | --- | --- | --- | --- | --- |
 | `random_chance` | Deterministic probabilistic gate for the evaluation snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "chance": "<0.0-1.0>" }` | `{ "type":"worldawakened:random_chance","parameters":{"chance":0.35} }` | `implemented` | False when deterministic roll context is unavailable. |
-| `event_type` | Match event type identifier in current event snapshot. | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "event": "<resource_location_or_string>" }` | `{ "type":"worldawakened:event_type","parameters":{"event":"worldawakened:entity_killed"} }` | `planned` | False when event-type field is unavailable. |
-| `loot_table` | Match the active loot table ID in current loot context. | `loot`,`event_context` | `{ "id": "<resource_location>" }` | `{ "type":"worldawakened:loot_table","parameters":{"id":"minecraft:chests/simple_dungeon"} }` | `planned` | False when loot-table context is unavailable. |
-| `invasion_tag` | Match invasion-tag metadata in invasion or invasion-reward context (required condition contract for Phase 8 v1 completion). | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "tag": "<string>" }` | `{ "type":"worldawakened:invasion_tag","parameters":{"tag":"undead"} }` | `planned` | False when invasion-tag context is unavailable. |
+| `event_type` | Match event type identifier in current event snapshot. | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "event": "<resource_location_or_string>" }` | `{ "type":"worldawakened:event_type","parameters":{"event":"worldawakened:entity_killed"} }` | `implemented` | False when event-type field is unavailable. |
+| `loot_table` | Match the active loot table ID in current loot context. | `loot`,`event_context` | `{ "id": "<resource_location>" }` | `{ "type":"worldawakened:loot_table","parameters":{"id":"minecraft:chests/simple_dungeon"} }` | `implemented` | False when loot-table context is unavailable. |
+| `invasion_tag` | Match invasion-tag metadata in invasion or invasion-reward context (required condition contract for Phase 8 v1 completion). | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "tag": "<string>" }` | `{ "type":"worldawakened:invasion_tag","parameters":{"tag":"undead"} }` | `implemented` | False when invasion-tag context is unavailable. |
 | `recent_trigger` | Match whether a named trigger recently fired within a bounded window. | `world`,`player`,`event_context` | `{ "trigger": "<resource_location>", "within_seconds"?: "<integer>" }` | `{ "type":"worldawakened:recent_trigger","parameters":{"trigger":"my_pack:nether_entry","within_seconds":60} }` | `planned` | False when recent-trigger cache is unavailable. |
 | `source_scope_match` | Match the source scope of the current wrapped event context. | `event_context` | `{ "scope": "<world/player/entity/spawn_event/loot/invasion>" }` | `{ "type":"worldawakened:source_scope_match","parameters":{"scope":"player"} }` | `planned` | False when source scope metadata is unavailable. |
 
@@ -3576,6 +3576,8 @@ Required commands (v1):
 - `/wa invasion stop`
 - `/wa mob inspect`
 - `/wa mob inspect <entity>`
+- `/wa loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa compat list`
 - `/wa apotheosis tier inspect`
 - `/wa ascension list <player>`
@@ -3790,6 +3792,8 @@ Required behavior:
 #### 18.2C Phase 7 - Loot
 
 Required commands:
+- `/wa loot evaluate <target_type> <target_id> [player] [dimension]`
+- `/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
 - `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 
@@ -3803,7 +3807,8 @@ Supported target types include:
 Required behavior:
 - `loot evaluate` dry-runs the real loot-profile pipeline for the given target context
 - `force_profile` evaluates one specific loot profile against the target context
-- both commands must report evaluated canonical context (`loot_context_type`, `target_type`, `target_id`, `loot_table_id` when relevant, entity/mutation/invasion context, dimension/stage context, compat/scalar policy context), source reward event, gathered contributors, candidate/matched/rejected profile decisions, additive/replace/remove decisions, compatibility safety restrictions, and final outcome summary
+- operator loot commands (`/wa loot evaluate|force_profile`) must emit concise operator summaries by default and append raw detail only when `general.debug_logging = true`
+- debug loot commands (`/wa debug loot evaluate|force_profile`) must report evaluated canonical context (`loot_context_type`, `target_type`, `target_id`, `loot_table_id` when relevant, entity/mutation/invasion context, dimension/stage context, compat/scalar policy context), source reward event, gathered contributors, candidate/matched/rejected profile decisions, additive/replace/remove decisions, compatibility safety restrictions, and final outcome summary
 - when Apotheosis compat is active, these commands must surface why a profile branch was blocked, downgraded, or allowed
 - rejection output must include explicit reason categories for profile misses (for example scope/context mismatch, condition fail, policy block, unsupported reward event)
 - output must make clear when duplicate-prevention blocked a non-repeatable contributor/profile in the same event pass
@@ -4434,13 +4439,16 @@ Exit criteria:
 - enforce non-repeatable-by-default contributor/profile behavior unless explicitly marked repeatable
 - implement command-driven verification surfaces for loot:
   - inspect: loot debug inspect output
-  - evaluate: `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
-  - force: `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+  - evaluate (operator): `/wa loot evaluate <target_type> <target_id> [player] [dimension]`
+  - force (operator): `/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+  - evaluate (debug): `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
+  - force (debug): `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
   - controlled live test: profile-enabled real loot hook path on a bounded target context
 
 Exit criteria:
 - targeted chest tables receive profile-driven changes as configured
 - replace/inject modes obey config restrictions
+- operator loot evaluate/force commands provide concise human-readable summaries by default and keep raw detail behind `general.debug_logging`
 - debug loot evaluate/force commands expose evaluated canonical context, source event, candidate/matched/rejected profiles with reasons, operation decisions, compat-safety decisions, and final applied reward outcomes
 - unsafe loot modes against Apotheosis-sensitive targets are blocked, downgraded, or disabled with structured diagnostics
 - broken loot profiles are isolated and logged without global failure

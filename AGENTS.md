@@ -205,5 +205,8 @@ Phase 1 is complete (stage core + persistence + stage command baseline).
 Phase 2 is complete (trigger engine + unlock flow baseline).  
 Phase 3 is complete (rule engine core + deterministic active-rule introspection + optional world-context evaluation + single-pass stage propagation + debug trace IDs).  
 Phase 4 is complete (ascension runtime offers + queue semantics + minimal GUI/network flow + server-authoritative selection validation + login/respawn reconciliation + ascension command/inspect surface).  
-Current active target is Phase 6 unless the user redirects scope.
+Phase 5 is complete (mutators + mutation pools + spawn-time application + inspect/debug surfaces + spawn-time guardrails).  
+Phase 6 is complete (spawn pressure controls + rule-event guardrails + shared effective-scalar provider).  
+Phase 7 is complete (loot evolution integration + Apotheosis-sensitive loot safety behavior + loot debug evaluate/force surfaces).  
+Current active target is Phase 8 unless the user redirects scope.
 

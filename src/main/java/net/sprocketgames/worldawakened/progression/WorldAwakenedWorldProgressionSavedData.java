@@ -2,7 +2,9 @@ package net.sprocketgames.worldawakened.progression;
 
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Collections;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.Set;
 
 import net.minecraft.core.HolderLookup;
@@ -17,6 +19,8 @@ public final class WorldAwakenedWorldProgressionSavedData extends SavedData
     private static final SavedData.Factory<WorldAwakenedWorldProgressionSavedData> FACTORY = new SavedData.Factory<>(
             WorldAwakenedWorldProgressionSavedData::new,
             WorldAwakenedWorldProgressionSavedData::load);
+    private static final Map<ServerLevel, WorldAwakenedWorldProgressionSavedData> TRANSIENT_FALLBACK =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     static final String KEY_UNLOCKED_STAGES = "unlocked_stages";
     static final String KEY_UNLOCK_TIMESTAMPS = "unlock_timestamps";
@@ -75,7 +79,13 @@ public final class WorldAwakenedWorldProgressionSavedData extends SavedData
     private final Set<String> challengeWorldVoteNo = new LinkedHashSet<>();
 
     public static WorldAwakenedWorldProgressionSavedData get(ServerLevel level) {
-        return canonicalStorageLevel(level).getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
+        ServerLevel storageLevel = canonicalStorageLevel(level);
+        if (storageLevel.getDataStorage() == null) {
+            return TRANSIENT_FALLBACK.computeIfAbsent(
+                    storageLevel,
+                    ignored -> new WorldAwakenedWorldProgressionSavedData());
+        }
+        return storageLevel.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
     }
 
     private static ServerLevel canonicalStorageLevel(ServerLevel level) {

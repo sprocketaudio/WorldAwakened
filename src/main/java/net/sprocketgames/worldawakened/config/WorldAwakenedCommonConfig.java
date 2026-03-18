@@ -74,6 +74,7 @@ public final class WorldAwakenedCommonConfig {
 
     public static final ModConfigSpec.BooleanValue APOTHEOSIS_ENABLED;
     public static final ModConfigSpec.ConfigValue<String> APOTHEOSIS_MODE;
+    public static final ModConfigSpec.ConfigValue<String> APOTHEOSIS_LOOT_UNSAFE_MODE_POLICY;
     public static final ModConfigSpec.BooleanValue ALLOW_WORLD_TIER_CONDITIONS;
     public static final ModConfigSpec.BooleanValue ALLOW_WORLD_TIER_STAGE_UNLOCKS;
     public static final ModConfigSpec.BooleanValue ALLOW_WORLD_TIER_LOOT_SCALING;
@@ -182,6 +183,7 @@ public final class WorldAwakenedCommonConfig {
         builder.push("apotheosis");
         APOTHEOSIS_ENABLED = builder.define("enabled", true);
         APOTHEOSIS_MODE = builder.define("mode", "hybrid");
+        APOTHEOSIS_LOOT_UNSAFE_MODE_POLICY = builder.define("loot_unsafe_mode_policy", "block");
         ALLOW_WORLD_TIER_CONDITIONS = builder.define("allow_world_tier_conditions", true);
         ALLOW_WORLD_TIER_STAGE_UNLOCKS = builder.define("allow_world_tier_stage_unlocks", true);
         ALLOW_WORLD_TIER_LOOT_SCALING = builder.define("allow_world_tier_loot_scaling", true);
