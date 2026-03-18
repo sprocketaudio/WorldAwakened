@@ -1,8 +1,10 @@
 package net.sprocketgames.worldawakened.mutator;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -55,6 +57,7 @@ import net.sprocketgames.worldawakened.data.definition.MutationComponentDefiniti
 import net.sprocketgames.worldawakened.data.definition.MutationPoolDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
+import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentRegistry;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentType;
@@ -67,6 +70,7 @@ public final class WorldAwakenedMutatorService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int MAX_MUTATORS_PER_SPAWN_BUDGET = 8;
     private static final int MAX_COMPONENTS_PER_MUTATOR_BUDGET = 10;
+    private static final int MAX_PRESSURE_SNAPSHOTS = 96;
     private static final double PLAYER_SPAWN_ATTRIBUTION_RADIUS = 128.0D;
     private static final Set<String> SUPPORTED_APPLICATION_CONTEXTS = Set.of("on_spawn");
     private static final Set<Holder<Attribute>> MANAGED_ATTRIBUTES = Set.of(
@@ -80,14 +84,25 @@ public final class WorldAwakenedMutatorService {
 
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
+    private final WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService;
     private final AtomicReference<CachedCompiledGraph> cache = new AtomicReference<>(new CachedCompiledGraph(0L, CompiledGraph.empty()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
+    private final AtomicLong pressureSnapshotCounter = new AtomicLong(0L);
+    private final Deque<PressureEvaluationSnapshot> pressureSnapshots = new ArrayDeque<>();
 
     public WorldAwakenedMutatorService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService) {
+        this(datapackService, stageService, new WorldAwakenedEffectiveDifficultyScalarService());
+    }
+
+    public WorldAwakenedMutatorService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
+        this.difficultyScalarService = difficultyScalarService;
     }
 
     public MutatorRunResult onMobSpawn(ServerLevel level, Mob mob, WorldAwakenedMobSpawnOrigin spawnOrigin) {
@@ -192,6 +207,33 @@ public final class WorldAwakenedMutatorService {
 
     public void markMutatorSpawnOrigin(Entity entity, int parentDepth) {
         WorldAwakenedMutationProvenance.markMutatorSpawnOrigin(entity.getPersistentData(), parentDepth);
+    }
+
+    public Optional<PressureEvaluationSnapshot> latestPressureSnapshot() {
+        synchronized (pressureSnapshots) {
+            return Optional.ofNullable(pressureSnapshots.peekLast());
+        }
+    }
+
+    public Optional<PressureEvaluationSnapshot> pressureSnapshot(long snapshotId) {
+        synchronized (pressureSnapshots) {
+            for (PressureEvaluationSnapshot snapshot : pressureSnapshots) {
+                if (snapshot.snapshotId() == snapshotId) {
+                    return Optional.of(snapshot);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    public List<Long> pressureSnapshotIds() {
+        synchronized (pressureSnapshots) {
+            List<Long> ids = new ArrayList<>(pressureSnapshots.size());
+            for (PressureEvaluationSnapshot snapshot : pressureSnapshots) {
+                ids.add(snapshot.snapshotId());
+            }
+            return List.copyOf(ids);
+        }
     }
 
     public void onMobTick(ServerLevel level, Mob mob) {
@@ -426,6 +468,7 @@ public final class WorldAwakenedMutatorService {
                 request.level().getGameTime(),
                 loadedMods(),
                 configToggles(),
+                stageResolution.attributedPlayer(),
                 request.liveEntity(),
                 previewMob,
                 mutationDepth);
@@ -508,6 +551,13 @@ public final class WorldAwakenedMutatorService {
                 selectedPool,
                 request.mode(),
                 context,
+                traceId);
+        recordPressureSnapshot(
+                context,
+                stageResolution.progressionMode(),
+                selectedPool.id(),
+                request.mode(),
+                chanceResult,
                 traceId);
         if (!chanceResult.passed()) {
             markProcessedIfLive(context.liveMob());
@@ -837,39 +887,111 @@ public final class WorldAwakenedMutatorService {
         return weightedPick(weighted, seed);
     }
 
-    private static MutationChanceResult evaluateMutationChance(
+    private MutationChanceResult evaluateMutationChance(
             CompiledPool selectedPool,
             MutationRunMode mode,
             EvaluationContext context,
             String traceId) {
-        double chance = Math.min(1.0D, Math.max(0.0D, selectedPool.mutationChance()));
+        double baseChance = Math.min(1.0D, Math.max(0.0D, selectedPool.mutationChance()));
+        boolean categoryAllowed = "monster".equals(context.mobCategory());
+        boolean peacefulBlocked = categoryAllowed && context.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL;
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown scalarBreakdown =
+                difficultyScalarService.resolveSpawnPressureScalar(
+                        context.level(),
+                        context.attributedPlayer().orElse(null),
+                        context.dimensionId(),
+                        baseChance,
+                        Map.of(),
+                        0.0D,
+                        1.0D,
+                        new WorldAwakenedEffectiveDifficultyScalarService.SpawnPressureContext(
+                                true,
+                                categoryAllowed,
+                                peacefulBlocked,
+                                "mutator_pool:" + selectedPool.id()));
+        double chance = Math.min(1.0D, Math.max(0.0D, scalarBreakdown.clampedEffectiveValue()));
         if (mode == MutationRunMode.FORCE_POOL || mode == MutationRunMode.FORCE_MUTATOR) {
             return new MutationChanceResult(
                     chance,
                     MutationChanceRollMode.BYPASSED,
                     OptionalDouble.empty(),
-                    true);
+                    true,
+                    baseChance,
+                    Optional.of(scalarBreakdown));
         }
         if (chance >= 1.0D) {
             return new MutationChanceResult(
                     chance,
                     MutationChanceRollMode.SKIPPED,
                     OptionalDouble.empty(),
-                    true);
+                    true,
+                    baseChance,
+                    Optional.of(scalarBreakdown));
         }
         if (chance <= 0.0D) {
             return new MutationChanceResult(
                     chance,
                     MutationChanceRollMode.SKIPPED,
                     OptionalDouble.empty(),
-                    false);
+                    false,
+                    baseChance,
+                    Optional.of(scalarBreakdown));
         }
         double roll = deterministicRoll(context, selectedPool.id(), traceId, "pool_mutation_chance", 0);
         return new MutationChanceResult(
                 chance,
                 MutationChanceRollMode.ROLLED,
                 OptionalDouble.of(roll),
-                roll <= chance);
+                roll <= chance,
+                baseChance,
+                Optional.of(scalarBreakdown));
+    }
+
+    private void recordPressureSnapshot(
+            EvaluationContext context,
+            WorldAwakenedProgressionMode progressionMode,
+            ResourceLocation selectedPoolId,
+            MutationRunMode mode,
+            MutationChanceResult chanceResult,
+            String traceId) {
+        if (chanceResult.scalarBreakdown().isEmpty()) {
+            return;
+        }
+        boolean categoryAllowed = "monster".equals(context.mobCategory());
+        boolean peacefulBlocked = categoryAllowed
+                && context.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL;
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown breakdown = chanceResult.scalarBreakdown().get();
+        PressureEvaluationSnapshot snapshot = new PressureEvaluationSnapshot(
+                pressureSnapshotCounter.incrementAndGet(),
+                System.currentTimeMillis(),
+                traceId,
+                mode,
+                context.dimensionId(),
+                context.pos(),
+                context.biomeId(),
+                context.entityTypeId(),
+                context.mobCategory(),
+                context.spawnOrigin().serializedName(),
+                progressionMode.serializedName(),
+                context.attributedPlayer().map(WorldAwakenedMutatorService::toAttributedPlayerView),
+                sortedResourceLocations(context.stageSnapshot()),
+                selectedPoolId,
+                chanceResult.baseMutationChance(),
+                chanceResult.mutationChance(),
+                chanceResult.rollMode(),
+                chanceResult.rolledValue(),
+                chanceResult.passed(),
+                breakdown,
+                true,
+                categoryAllowed,
+                peacefulBlocked,
+                breakdown.provenance().getOrDefault("source_key", "mutator_pool:" + selectedPoolId));
+        synchronized (pressureSnapshots) {
+            pressureSnapshots.addLast(snapshot);
+            while (pressureSnapshots.size() > MAX_PRESSURE_SNAPSHOTS) {
+                pressureSnapshots.removeFirst();
+            }
+        }
     }
 
     private static List<EligibleMutatorCandidate> selectMutators(
@@ -1864,6 +1986,7 @@ public final class WorldAwakenedMutatorService {
             long gameTick,
             Set<String> loadedMods,
             Map<String, Boolean> configToggles,
+            Optional<ServerPlayer> attributedPlayer,
             Mob liveMob,
             Mob previewMob,
             int mutationDepth) {
@@ -2515,7 +2638,22 @@ public final class WorldAwakenedMutatorService {
             double mutationChance,
             MutationChanceRollMode rollMode,
             OptionalDouble rolledValue,
-            boolean passed) {
+            boolean passed,
+            double baseMutationChance,
+            Optional<WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown> scalarBreakdown) {
+        public MutationChanceResult(
+                double mutationChance,
+                MutationChanceRollMode rollMode,
+                OptionalDouble rolledValue,
+                boolean passed) {
+            this(
+                    mutationChance,
+                    rollMode,
+                    rolledValue,
+                    passed,
+                    mutationChance,
+                    Optional.empty());
+        }
     }
 
     public record AttributedPlayerView(
@@ -2574,6 +2712,33 @@ public final class WorldAwakenedMutatorService {
             int selectorEntityIdBuckets,
             int selectorEntityTagBuckets,
             int wildcardPools) {
+    }
+
+    public record PressureEvaluationSnapshot(
+            long snapshotId,
+            long capturedAtMillis,
+            String traceId,
+            MutationRunMode mode,
+            ResourceLocation dimensionId,
+            BlockPos position,
+            Optional<ResourceLocation> biomeId,
+            ResourceLocation entityTypeId,
+            String mobCategory,
+            String spawnOrigin,
+            String progressionMode,
+            Optional<AttributedPlayerView> attributedPlayer,
+            List<ResourceLocation> stageContext,
+            ResourceLocation selectedPoolId,
+            double basePressure,
+            double effectivePressure,
+            MutationChanceRollMode rollMode,
+            OptionalDouble rolledValue,
+            boolean chancePassed,
+            WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown scalarBreakdown,
+            boolean categoryRestrictionDataAvailable,
+            boolean categoryAllowed,
+            boolean peacefulBlocked,
+            String sourceKey) {
     }
 
     private static Optional<ResourceLocation> readResourceLocation(JsonObject object, String... keys) {

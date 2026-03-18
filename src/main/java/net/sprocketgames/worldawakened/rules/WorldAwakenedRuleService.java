@@ -31,6 +31,7 @@ import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
+import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedMutableRuleState;
@@ -73,12 +74,37 @@ public final class WorldAwakenedRuleService {
             return WorldAwakenedRuleRunResult.empty(traceId);
         }
 
+        List<WorldAwakenedRuleEngine.CompiledRule> candidateRules;
+        if (context.targetedRuleId().isPresent()) {
+            ResourceLocation targetId = context.targetedRuleId().get();
+            candidateRules = compiledRules.stream()
+                    .filter(rule -> rule.id().equals(targetId))
+                    .toList();
+        } else {
+            candidateRules = compiledRules;
+        }
+        int maxRulesPerEvent = Math.max(1, WorldAwakenedCommonConfig.MAXIMUM_RULES_EVALUATED_PER_EVENT.get());
+        if (candidateRules.size() > maxRulesPerEvent) {
+            String scopeBucket = context.player() == null ? "world" : "player";
+            WorldAwakenedLog.warn(
+                    LOGGER,
+                    WorldAwakenedLogCategory.PIPELINE,
+                    "code={} trace={} event={} scope_bucket={} evaluated={} limit={}",
+                    WorldAwakenedDiagnosticCodes.PERF_RULE_EVENT_LIMIT_EXCEEDED,
+                    traceId,
+                    context.eventType(),
+                    scopeBucket,
+                    candidateRules.size(),
+                    maxRulesPerEvent);
+            candidateRules = List.copyOf(candidateRules.subList(0, maxRulesPerEvent));
+        }
+
         WorldAwakenedStageRegistry stageRegistry = stageService.stageRegistry();
         RuleStateSnapshots snapshots = readSnapshots(context.level(), context.player());
 
         WorldAwakenedRuleMatchContext matchContext = buildMatchContext(context, snapshots);
         WorldAwakenedRuleEvaluation evaluation = WorldAwakenedRuleEngine.evaluate(
-                compiledRules,
+                candidateRules,
                 stageRegistry,
                 matchContext,
                 true);
@@ -94,6 +120,7 @@ public final class WorldAwakenedRuleService {
         int warnings = 0;
         int consumed = 0;
         int deferred = 0;
+        int maxActionsPerRule = Math.max(1, WorldAwakenedCommonConfig.MAXIMUM_ACTIONS_PER_RULE.get());
 
         WorldAwakenedRecursionGuard recursionGuard = new WorldAwakenedRecursionGuard(64);
         for (WorldAwakenedMatchedRule matched : evaluation.matchedRules()) {
@@ -116,7 +143,20 @@ public final class WorldAwakenedRuleService {
 
             executed++;
             boolean markConsumed = false;
-            for (WorldAwakenedRuleEngine.CompiledAction action : matched.rule().actions()) {
+            List<WorldAwakenedRuleEngine.CompiledAction> actionsToRun = matched.rule().actions();
+            if (actionsToRun.size() > maxActionsPerRule) {
+                WorldAwakenedLog.warn(
+                        LOGGER,
+                        WorldAwakenedLogCategory.PIPELINE,
+                        "code={} trace={} rule={} action_count={} limit={}",
+                        WorldAwakenedDiagnosticCodes.PERF_RULE_ACTION_COUNT_EXCEEDED,
+                        traceId,
+                        matched.rule().id(),
+                        actionsToRun.size(),
+                        maxActionsPerRule);
+                actionsToRun = List.copyOf(actionsToRun.subList(0, maxActionsPerRule));
+            }
+            for (WorldAwakenedRuleEngine.CompiledAction action : actionsToRun) {
                 switch (action.kind()) {
                     case UNLOCK_STAGE -> {
                         if (action.resourceRef().isEmpty()) {

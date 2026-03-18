@@ -3,7 +3,7 @@
 Datapack format and content contract for user-created progression/content packs.
 
 - Document status: Draft for implementation
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Applies to: Minecraft 1.21.1 + NeoForge + World Awakened (`worldawakened`)
 
 ---
@@ -79,11 +79,13 @@ Note on `pack.mcmeta`:
 World Awakened v1 includes a browser-based authoring companion.
 
 Interop rules:
-- there is one shared datapack format across manual JSON authoring and web-tool authoring
+- there is one shared datapack/data contract across manual JSON authoring, web-tool authoring, runtime-authored state, and hosted live-session payloads
 - tool exports must remain canonical World Awakened datapack JSON, not a proprietary intermediate format
 - deterministic export ordering is recommended to keep diffs stable
 - import workflows should preserve IDs and references unless intentionally edited
 - schema-version mismatches should surface as migration warnings or errors with actionable diagnostics
+- live linked session apply payloads must use the same canonical object shapes as datapack files
+- live linked apply operations are runtime-validated before commit; invalid objects fail closed with diagnostics
 
 Canonical export layout must remain:
 
@@ -198,7 +200,7 @@ Examples:
 - unlock a stage when `somebossmod:ancient_tyrant` dies
 - exclude `othermod:void_beast` from mutation
 - mark a modded entity as a boss through `maps/entity_boss_flags`
-- add modded mobs to invasion compositions by entity ID
+- gate invasion profiles and invasion-tag conditions using modded entity/context signals where relevant
 
 ---
 
@@ -553,6 +555,7 @@ Phase 6 authoring impact:
 - assume scalar influence only on explicit WA-owned outputs (for example pressure, WA-owned intensity/chance paths wired to shared scalar service)
 - do not assume scalar systems can unlock stages or alter trigger eligibility
 - do not assume scalar systems can rewrite unrelated vanilla/modded systems
+- in Phase 7 reward/loot evolution, do not assume global/challenge scalar influence on reward magnitude/chance/quality yet
 - if your content depends on scalar-sensitive encounters, validate behavior under multiple global/challenge settings and scope policies
 
 ---
@@ -1158,6 +1161,7 @@ Compatibility note:
 - when Apotheosis compat is active and a target loot table is Apotheosis-sensitive, use additive modes (`inject`, `add_bonus_pool`)
 - destructive modes (`replace_entries`, `remove_entries`) are restricted on Apotheosis-sensitive targets and may be blocked, downgraded, or disabled by validation policy
 - optional example/default loot profiles may be distributed by World Awakened as datapack-authored presets; user-authored profiles are first-class and not secondary to shipped example-pack names
+- default Phase 7 behavior is additive/inject-first; destructive replacement/removal requires explicit policy enablement
 
 Field defaults:
 - `schema_version`: `1`
@@ -1210,6 +1214,144 @@ Preferred fallback order:
 
 ---
 
+## 11B. Phase 7 Reward Evolution Constraints (Authoring Contract)
+
+Authoring for Phase 7 reward evolution must follow these boundary rules:
+
+- reward systems are downstream of explicit World Awakened reward-capable events (`worldawakened:entity_killed`, `worldawakened:invasion_completed`, and future explicitly documented WA-owned reward events)
+- reward-capable systems must not directly apply final rewards from subsystem-local paths; they contribute reward intent/eligibility for canonical resolution
+- reward profiles must not be treated as a progression engine; they must not unlock stages, alter trigger eligibility, or mutate rule execution identity
+- keep default behavior additive (`inject`, `add_bonus_pool`) unless destructive policy is explicitly enabled by server/operator configuration
+- reward payload intent should remain WA-owned (`bonus drops`, `bonus xp`, explicit reward-table outcomes, or other WA-defined reward payloads)
+- do not author content that requires mutating unrelated vanilla or third-party reward systems to function
+- during Phase 7, do not assume global/challenge scalar influence on reward outputs
+- author profile ordering/weight assumptions for deterministic resolution under identical snapshots
+- assume one canonical reward resolver pass per event (`build context -> gather contributors -> resolve final rewards -> apply once -> trace`)
+- do not assume the same profile/contributor can apply twice in one event pass unless it is explicitly marked repeatable by the active reward contributor/profile contract
+- expect debug surfaces to report source event, matched profile, rejected profiles with reason, and final applied reward outcomes
+
+---
+
+## 11C. Phase 7 Loot Profile Activation and Context Contract
+
+Loot profiles are conditional reward definitions authored in datapacks.
+They define:
+- what can be injected/granted
+- how likely it is (weights/chance)
+- when it applies (conditions)
+
+Activation rule:
+- loot profiles are never manually assigned to entities, mutation pools, mutators, structures, invasion profiles, or invasions
+- loot profiles activate only when their conditions match the current canonical loot context
+- loot profile evaluation operates exclusively against canonical loot context fields; direct attachment-based reward lookup models are not supported
+
+Canonical loot context fields (minimum):
+- `loot_context_type`
+- `target_type`
+- `target_id`
+- `loot_table_id` (when relevant)
+- `entity_type` (when relevant)
+- `entity_is_mutated`
+- `mutation_tags`
+- `player` (nullable when no player is attributable)
+- `dimension`
+- stage context
+- invasion context (active or inactive)
+- compat state
+- scalar inputs explicitly allowed for this phase (`scalar_inputs`; Phase 7 excludes difficulty/challenge scalar influence)
+
+Fail-closed contract:
+- missing required canonical loot-context fields fail closed (`false`) for affected profile branches
+- no partial-evaluation fallback is allowed when required context is missing
+
+Supported v1 loot contexts:
+- entity kill
+- container/structure loot tables
+- invasion rewards
+- stage unlock rewards
+
+Mutated mob reward architecture:
+- mutated mob bonus drops are triggered by mutated-mob provenance
+- final reward resolution still goes through the shared loot profile pipeline
+- do not build a second separate mutated-mob reward engine
+
+Useful condition patterns:
+
+```json
+{
+  "type": "worldawakened:loot_table",
+  "parameters": {
+    "id": "minecraft:chests/simple_dungeon"
+  }
+}
+```
+
+```json
+{
+  "type": "worldawakened:entity_is_mutated",
+  "parameters": {}
+}
+```
+
+```json
+{
+  "type": "worldawakened:invasion_active",
+  "parameters": {}
+}
+```
+
+```json
+{
+  "type": "worldawakened:invasion_active",
+  "parameters": {
+    "profile_id": "worldawakened:undead_siege"
+  }
+}
+```
+
+```json
+{
+  "type": "worldawakened:invasion_tag",
+  "parameters": {
+    "tag": "undead"
+  }
+}
+```
+
+Invasion condition behavior contract:
+- `invasion_active` with empty `parameters` returns `true` only when any invasion is active
+- `invasion_active` with `profile_id` returns `true` only when active invasion profile matches
+- `invasion_tag` returns `true` only when active invasion profile contains the tag
+- all invasion-dependent conditions fail closed (`false`) when invasion state/context is unavailable
+
+Reward entry model guidance:
+- `item`
+- `weight`
+- optional count range (`min`, `max`)
+- optional rarity tags (`rarity_tags` or equivalent profile-entry metadata path when exposed)
+
+Resolver behavior (author-facing):
+1. gameplay event triggers loot evaluation
+2. engine builds canonical loot context
+3. all eligible compiled loot profiles are evaluated
+4. matching profiles contribute entries
+5. resolver combines matching entries deterministically
+6. final result is injected/granted once
+
+Safety rules:
+- multiple loot profiles may match
+- duplicate profile/contributor application is blocked unless explicitly marked repeatable
+- matching fails closed when required context is missing
+- invalid profile references or bad condition parameters disable only the broken object/branch
+
+Authoring guidance:
+- use `worldawakened:loot_table` for structure/chest rewards
+- use `worldawakened:entity_is_mutated` for mutated mob bonus drops
+- use `worldawakened:invasion_active` or `worldawakened:invasion_tag` for invasion reward themes
+- prefer reusable condition-driven profiles over one-off direct attachments
+
+---
+
 ## 12. Object Type: `invasion_profiles`
 
 Path:
@@ -1219,52 +1361,45 @@ Minimum required fields:
 - `id`
 - `display_name`
 - `trigger_mode`
-- `wave_count`
-- `spawn_composition`
+- `duration_seconds`
+- `pressure_modifier`
+
+Preferred v1 fields:
+- `id`
+- `display_name`
+- `enabled`
+- `trigger_mode`
+- `conditions`
+- `stage_filters`
+- `dimensions`
+- `biome_filters`
+- `min_players`
+- `cooldown_seconds`
+- `warning_seconds`
+- `duration_seconds`
+- `pressure_modifier`
+- `reward_profile`
+- `tags`
 
 Example:
 
 ```json
 {
-  "id": "my_pack:overworld_siege_t1",
-  "display_name": { "translate": "invasion.my_pack.overworld_siege_t1" },
+  "id": "worldawakened:undead_siege",
+  "display_name": "Undead Siege",
   "enabled": true,
   "trigger_mode": "random_periodic",
-  "conditions": [
-    {
-      "type": "worldawakened:stage_unlocked",
-      "parameters": {
-        "stage": "my_pack:nether_opened"
-      }
-    }
-  ],
-  "stage_filters": {
-    "all_of": ["my_pack:baseline", "my_pack:nether_opened"]
-  },
-  "apotheosis_tier_filters": {
-    "min": 1
-  },
+  "conditions": [],
+  "stage_filters": {},
   "dimensions": ["minecraft:overworld"],
-  "biome_filters": ["minecraft:plains", "minecraft:savanna"],
+  "biome_filters": [],
   "min_players": 1,
-  "cooldown": { "minutes": 90 },
-  "warning_time": { "seconds": 20 },
-  "wave_count": 4,
-  "wave_interval": { "seconds": 45 },
-  "spawn_budget": 30,
-  "spawn_composition": [
-    { "entity": "minecraft:zombie", "weight": 10, "cost": 1 },
-    { "entity": "minecraft:skeleton", "weight": 8, "cost": 1 },
-    { "entity": "minecraft:spider", "weight": 4, "cost": 1 }
-  ],
-  "elite_chance": 0.15,
-  "mutator_pool_refs": ["my_pack:overworld_night_t2"],
-  "reward_profile": "my_pack:invasion_t1_rewards",
-  "boss_wave": null,
-  "max_active_entities": 60,
-  "safe_zone_rules": {
-    "respect_spawn_protection": true
-  }
+  "cooldown_seconds": 3600,
+  "warning_seconds": 20,
+  "duration_seconds": 600,
+  "pressure_modifier": 1.6,
+  "reward_profile": "worldawakened:undead_siege_rewards",
+  "tags": ["undead", "night", "cursed"]
 }
 ```
 
@@ -1280,6 +1415,18 @@ Allowed `trigger_mode` values:
 Authoring note:
 - optional example/default invasion profiles may be distributed by World Awakened as datapack-authored presets
 - user-authored invasion profiles are first-class definitions and should not rely on code-level preset names
+- invasion profiles are pressure-event definitions, not spawn plans
+- Phase 8 v1 invasions do not support WA-owned wave spawning
+
+Deferred from Phase 8 v1:
+- `wave_count`
+- `wave_interval`
+- `spawn_budget`
+- `spawn_composition`
+- `elite_chance`
+- `boss_wave`
+- `max_active_entities`
+- other WA-owned wave orchestration fields
 
 Field defaults:
 - `schema_version`: `1`
@@ -1289,22 +1436,35 @@ Field defaults:
 - `trigger_mode`: required
 - `conditions`: `[]`
 - `stage_filters`: absent
-- `apotheosis_tier_filters`: absent
 - `dimensions`: `[]`
 - `biome_filters`: `[]`
 - `min_players`: `1`
-- `cooldown`: inherit global invasion cooldown if omitted
-- `warning_time`: inherit global warning setting if omitted
-- `wave_count`: required
-- `wave_interval`: required
-- `spawn_budget`: required
-- `spawn_composition`: required
-- `elite_chance`: `0.0`
-- `mutator_pool_refs`: `[]`
+- `cooldown_seconds`: inherit global invasion cooldown if omitted
+- `warning_seconds`: inherit global warning setting if omitted
+- `duration_seconds`: required
+- `pressure_modifier`: `1.0`
 - `reward_profile`: absent
-- `boss_wave`: absent
-- `max_active_entities`: defaults to `spawn_budget` if omitted
-- `safe_zone_rules`: `{}`
+- `tags`: `[]`
+
+Invasion runtime context (active event minimum):
+- `invasion_active`
+- `invasion_profile_id`
+- `invasion_tags`
+- `invasion_display_name`
+- `invasion_start_time`
+- `invasion_remaining_duration`
+- `warning_active`
+- `pressure_modifier`
+
+Mutation pool interaction:
+- normal mutation pools may remain eligible during invasion
+- invasion-gated pools may become eligible when invasion conditions match
+- profile-specific pools may become eligible only for matching `profile_id`
+- tag-based pools may become eligible for matching invasion tags
+
+Balance guardrail:
+- invasion-gated eligibility and pressure amplification are separate concerns
+- do not assume invasion-only pools automatically get extra scalar multiplication
 
 ---
 
@@ -1362,6 +1522,11 @@ Activation still requires runtime conditions:
 Design guidance:
 - do not create an integration profile just to reference a modded mob or boss by entity ID
 - use integration profiles when you need mod-level toggles, custom hooks, special APIs, or non-standard progression data
+- for invasion-adjacent integration tiers, influence only:
+  - mutation pressure
+  - mutation pool eligibility/scalar gates
+  - reward scaling
+- do not author integration behavior that assumes WA-owned invasion waves, spawn composition engines, or invasion unit orchestration
 
 Field defaults:
 - `schema_version`: `1`
@@ -1732,7 +1897,7 @@ On reload, World Awakened should validate and report:
 - no valid candidate rewards after filtering
 - invalid icon references for ascension rewards or offers
 - unsupported entity IDs/tags
-- invasion profiles with no valid composition
+- invasion profiles with invalid or self-contradictory pressure-event configuration
 - Apotheosis-only conditions while integration disabled
 - unsupported or incompatible schema versions
 - invalid status taxonomy usage:
@@ -1795,7 +1960,7 @@ Pack authors should assume World Awakened random outcomes are controlled by serv
 Exact rule-execution sequence and bucket/index guarantees are defined in [SPECIFICATION.md](SPECIFICATION.md) Section `8.7`.
 
 Implications:
-- mutator rolls, invasion composition, and bonus loot rolls should not reroll repeatedly inside the same evaluation context
+- mutator rolls, invasion profile selection, and bonus loot rolls should not reroll repeatedly inside the same evaluation context
 - the same spawn event should not produce different results just because multiple systems inspect it in the same tick
 - client-side display should never become the source of truth for rule or spawn outcomes
 

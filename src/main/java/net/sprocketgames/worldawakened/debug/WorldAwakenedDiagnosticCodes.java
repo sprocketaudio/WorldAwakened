@@ -18,6 +18,12 @@ public final class WorldAwakenedDiagnosticCodes {
     public static final String POOL_SELECTION_IMPOSSIBLE = "WA_POOL_SELECTION_IMPOSSIBLE";
     public static final String MUTATION_CHANCE_INVALID = "WA_MUTATION_CHANCE_INVALID";
     public static final String MUTATION_CHANCE_FAILED = "WA_MUTATION_CHANCE_FAILED";
+    public static final String DIFFICULTY_GLOBAL_INVALID = "WA_DIFFICULTY_GLOBAL_INVALID";
+    public static final String CHALLENGE_SCOPE_INVALID = "WA_CHALLENGE_SCOPE_INVALID";
+    public static final String CHALLENGE_BOUNDS_INVALID = "WA_CHALLENGE_BOUNDS_INVALID";
+    public static final String CHALLENGE_STEP_INVALID = "WA_CHALLENGE_STEP_INVALID";
+    public static final String CHALLENGE_VOTE_CONFIG_INVALID = "WA_CHALLENGE_VOTE_CONFIG_INVALID";
+    public static final String CHALLENGE_MODE_UNSUPPORTED = "WA_CHALLENGE_MODE_UNSUPPORTED";
     public static final String INVASION_COMPOSITION_INVALID = "WA_INVASION_COMPOSITION_INVALID";
     public static final String COMPONENT_ARRAY_EMPTY = "WA_COMPONENT_ARRAY_EMPTY";
     public static final String COMPONENT_TYPE_UNKNOWN = "WA_COMPONENT_TYPE_UNKNOWN";
@@ -55,10 +61,14 @@ public final class WorldAwakenedDiagnosticCodes {
     public static final String SPAWN_REENTRY_BLOCKED = "WA_SPAWN_REENTRY_BLOCKED";
     public static final String PERF_MUTATOR_COUNT_EXCEEDED = "WA_PERF_MUTATOR_COUNT_EXCEEDED";
     public static final String PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED = "WA_PERF_MUTATOR_COMPONENT_COUNT_EXCEEDED";
+    public static final String PERF_RULE_EVENT_LIMIT_EXCEEDED = "WA_PERF_RULE_EVENT_LIMIT_EXCEEDED";
+    public static final String PERF_RULE_ACTION_COUNT_EXCEEDED = "WA_PERF_RULE_ACTION_COUNT_EXCEEDED";
     public static final String DEBUG_MUTATOR_TARGET_INVALID = "WA_DEBUG_MUTATOR_TARGET_INVALID";
     public static final String DEBUG_POOL_NOT_FOUND = "WA_DEBUG_POOL_NOT_FOUND";
     public static final String DEBUG_MUTATOR_NOT_FOUND = "WA_DEBUG_MUTATOR_NOT_FOUND";
     public static final String DEBUG_CONTEXT_INVALID = "WA_DEBUG_CONTEXT_INVALID";
+    public static final String DEBUG_PRESSURE_CONTEXT_INVALID = "WA_DEBUG_PRESSURE_CONTEXT_INVALID";
+    public static final String DEBUG_DIFFICULTY_SCOPE_INVALID = "WA_DEBUG_DIFFICULTY_SCOPE_INVALID";
 
     private WorldAwakenedDiagnosticCodes() {
     }

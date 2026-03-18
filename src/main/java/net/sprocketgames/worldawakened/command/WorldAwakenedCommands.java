@@ -7,12 +7,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 import com.google.gson.JsonElement;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -60,6 +62,7 @@ import net.sprocketgames.worldawakened.data.definition.StageDefinition;
 import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
+import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedComponentDebugFormatter;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
@@ -93,7 +96,8 @@ public final class WorldAwakenedCommands {
             WorldAwakenedTriggerService triggerService,
             WorldAwakenedRuleService ruleService,
             WorldAwakenedAscensionService ascensionService,
-            WorldAwakenedMutatorService mutatorService) {
+            WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
         WorldAwakenedDebugCommandService debugCommandService = new WorldAwakenedDebugCommandService(stageService, ascensionService);
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("wa")
                 .then(Commands.literal("reload")
@@ -108,10 +112,17 @@ public final class WorldAwakenedCommands {
                         .then(Commands.literal("list")
                                 .executes(context -> runCompatList(context.getSource()))))
                 .then(buildAscensionTree(datapackService, ascensionService))
+                .then(buildDifficultyTree(difficultyScalarService))
                 .then(buildMobTree(mutatorService));
 
         if (WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get()) {
-            root.then(buildDebugTree(datapackService, stageService, ascensionService, mutatorService, debugCommandService));
+            root.then(buildDebugTree(
+                    datapackService,
+                    stageService,
+                    ascensionService,
+                    mutatorService,
+                    difficultyScalarService,
+                    debugCommandService));
         }
 
         dispatcher.register(root);
@@ -812,11 +823,53 @@ public final class WorldAwakenedCommands {
                                         EntityArgument.getEntity(context, "target")))));
     }
 
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDifficultyTree(
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        return Commands.literal("difficulty")
+                .then(Commands.literal("global")
+                        .then(Commands.literal("get")
+                                .executes(context -> runDifficultyGlobalGet(context.getSource(), difficultyScalarService)))
+                        .then(Commands.literal("set")
+                                .requires(source -> source.hasPermission(2))
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg())
+                                        .executes(context -> runDifficultyGlobalSet(
+                                                context.getSource(),
+                                                difficultyScalarService,
+                                                DoubleArgumentType.getDouble(context, "value")))))
+                        .then(Commands.literal("reset")
+                                .requires(source -> source.hasPermission(2))
+                                .executes(context -> runDifficultyGlobalReset(context.getSource(), difficultyScalarService))))
+                .then(Commands.literal("personal")
+                        .then(Commands.literal("get")
+                                .executes(context -> runDifficultyPersonalGet(context.getSource(), difficultyScalarService)))
+                        .then(Commands.literal("set")
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg())
+                                        .executes(context -> runDifficultyPersonalSet(
+                                                context.getSource(),
+                                                difficultyScalarService,
+                                                DoubleArgumentType.getDouble(context, "value"))))))
+                .then(Commands.literal("world")
+                        .then(Commands.literal("get")
+                                .executes(context -> runDifficultyWorldGet(context.getSource(), difficultyScalarService)))
+                        .then(Commands.literal("set")
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg())
+                                        .executes(context -> runDifficultyWorldSet(
+                                                context.getSource(),
+                                                difficultyScalarService,
+                                                DoubleArgumentType.getDouble(context, "value"))))))
+                .then(Commands.literal("vote")
+                        .then(Commands.literal("yes")
+                                .executes(context -> runDifficultyVote(context.getSource(), difficultyScalarService, true)))
+                        .then(Commands.literal("no")
+                                .executes(context -> runDifficultyVote(context.getSource(), difficultyScalarService, false))));
+    }
+
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugTree(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
             WorldAwakenedDebugCommandService debugCommandService) {
         LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug")
                 .requires(source -> source.hasPermission(2) && WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
@@ -892,6 +945,8 @@ public final class WorldAwakenedCommands {
         debug.then(clearBranch);
         debug.then(buildDebugMutatorsTree(datapackService, mutatorService));
         debug.then(buildDebugSpawnTree(mutatorService));
+        debug.then(buildDebugDifficultyTree(difficultyScalarService));
+        debug.then(buildDebugPressureTree(mutatorService, difficultyScalarService));
         return debug;
     }
 
@@ -1146,6 +1201,78 @@ public final class WorldAwakenedCommands {
                                                                 DoubleArgumentType.getDouble(context, "x"),
                                                                 DoubleArgumentType.getDouble(context, "y"),
                                                                 DoubleArgumentType.getDouble(context, "z"))))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugDifficultyTree(
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        return Commands.literal("difficulty")
+                .then(Commands.literal("scalar")
+                        .executes(context -> runDebugDifficultyScalar(
+                                context.getSource(),
+                                difficultyScalarService,
+                                sourcePlayer(context.getSource())))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> runDebugDifficultyScalar(
+                                        context.getSource(),
+                                        difficultyScalarService,
+                                        EntityArgument.getPlayer(context, "player")))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugPressureTree(
+            WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        return Commands.literal("pressure")
+                .then(Commands.literal("last")
+                        .executes(context -> runDebugPressureLast(
+                                context.getSource(),
+                                mutatorService,
+                                difficultyScalarService)))
+                .then(Commands.literal("replay")
+                        .then(Commands.argument("id", LongArgumentType.longArg(1L))
+                                .suggests(suggestPressureSnapshotIds(mutatorService))
+                                .executes(context -> runDebugPressureReplay(
+                                        context.getSource(),
+                                        mutatorService,
+                                        difficultyScalarService,
+                                        LongArgumentType.getLong(context, "id")))))
+                .then(Commands.literal("evaluate")
+                        .executes(context -> runDebugPressureEvaluate(
+                                context.getSource(),
+                                difficultyScalarService,
+                                null,
+                                null,
+                                null,
+                                null,
+                                sourcePlayer(context.getSource())))
+                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                .executes(context -> runDebugPressureEvaluate(
+                                        context.getSource(),
+                                        difficultyScalarService,
+                                        DimensionArgument.getDimension(context, "dimension"),
+                                        null,
+                                        null,
+                                        null,
+                                        sourcePlayer(context.getSource())))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugPressureEvaluate(
+                                                                context.getSource(),
+                                                                difficultyScalarService,
+                                                                DimensionArgument.getDimension(context, "dimension"),
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z"),
+                                                                sourcePlayer(context.getSource())))
+                                                        .then(Commands.argument("player", EntityArgument.player())
+                                                                .executes(context -> runDebugPressureEvaluate(
+                                                                        context.getSource(),
+                                                                        difficultyScalarService,
+                                                                        DimensionArgument.getDimension(context, "dimension"),
+                                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                                        DoubleArgumentType.getDouble(context, "z"),
+                                                                        EntityArgument.getPlayer(context, "player")))))))));
     }
 
     private static int runMobInspect(
@@ -1518,125 +1645,526 @@ public final class WorldAwakenedCommands {
         return result.spawnAdded() ? 1 : 0;
     }
 
+    private static int runDifficultyGlobalGet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty global get requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.GlobalModifierState state = difficultyScalarService.globalState(level);
+        if (!state.enabled()) {
+            source.sendFailure(Component.literal("Global difficulty is unavailable: "
+                    + describeDifficultyRejection(state.diagnosticCode(), state.diagnosticDetail()))
+                    .append(debugCodeSuffix(state.diagnosticCode().isBlank()
+                            ? WorldAwakenedDiagnosticCodes.DIFFICULTY_GLOBAL_INVALID
+                            : state.diagnosticCode())));
+            sendOperatorDetail(source, "detail=" + state.diagnosticDetail());
+            return 0;
+        }
+        sendOperatorSummary(source, "Difficulty global: value=" + formatNumber(state.value()), false);
+        sendOperatorDetail(source, "default="
+                + formatNumber(state.defaultValue())
+                + " bounds=["
+                + formatNumber(state.minValue())
+                + ", "
+                + formatNumber(state.maxValue())
+                + "]");
+        return 1;
+    }
+
+    private static int runDifficultyGlobalSet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            double value) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty global set requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.MutationResult result =
+                difficultyScalarService.setGlobalModifier(level, value, actorName(source));
+        return emitDifficultyMutationResult(source, result, "global");
+    }
+
+    private static int runDifficultyGlobalReset(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty global reset requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.MutationResult result =
+                difficultyScalarService.resetGlobalModifier(level, actorName(source));
+        return emitDifficultyMutationResult(source, result, "global");
+    }
+
+    private static int runDifficultyPersonalGet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty personal get requires a server level context.");
+        ServerPlayer player = sourcePlayer(source);
+        if (level == null || player == null) {
+            source.sendFailure(Component.literal("Personal difficulty commands require a player source.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID)));
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.ChallengeReadResult readResult =
+                difficultyScalarService.readChallengeState(
+                        level,
+                        player,
+                        WorldAwakenedEffectiveDifficultyScalarService.ChallengeScope.PLAYER);
+        return emitChallengeReadResult(source, readResult, "personal");
+    }
+
+    private static int runDifficultyPersonalSet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            double value) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty personal set requires a server level context.");
+        ServerPlayer player = sourcePlayer(source);
+        if (level == null || player == null) {
+            source.sendFailure(Component.literal("Personal difficulty set requires a player source.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID)));
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.MutationResult result =
+                difficultyScalarService.setChallengeModifier(
+                        level,
+                        player,
+                        source.hasPermission(2),
+                        WorldAwakenedEffectiveDifficultyScalarService.ChallengeScope.PLAYER,
+                        value,
+                        actorName(source));
+        return emitDifficultyMutationResult(source, result, "personal");
+    }
+
+    private static int runDifficultyWorldGet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty world get requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.ChallengeReadResult readResult =
+                difficultyScalarService.readChallengeState(
+                        level,
+                        sourcePlayer(source),
+                        WorldAwakenedEffectiveDifficultyScalarService.ChallengeScope.WORLD);
+        return emitChallengeReadResult(source, readResult, "world");
+    }
+
+    private static int runDifficultyWorldSet(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            double value) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty world set requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.MutationResult result =
+                difficultyScalarService.setChallengeModifier(
+                        level,
+                        sourcePlayer(source),
+                        source.hasPermission(2),
+                        WorldAwakenedEffectiveDifficultyScalarService.ChallengeScope.WORLD,
+                        value,
+                        actorName(source));
+        return emitDifficultyMutationResult(source, result, "world");
+    }
+
+    private static int runDifficultyVote(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            boolean voteYes) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened difficulty vote requires a server level context.");
+        ServerPlayer player = sourcePlayer(source);
+        if (level == null || player == null) {
+            source.sendFailure(Component.literal("Vote commands require a player source.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID)));
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.MutationResult result =
+                difficultyScalarService.submitVote(level, player, voteYes, player.getGameProfile().getName());
+        return emitDifficultyMutationResult(source, result, "vote");
+    }
+
+    private static int runDebugDifficultyScalar(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            ServerPlayer targetPlayer) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened debug difficulty scalar requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown breakdown =
+                difficultyScalarService.resolveDifficultyScalar(
+                        level,
+                        targetPlayer,
+                        1.0D,
+                        Map.of(),
+                        0.0D,
+                        WorldAwakenedCommonConfig.NATURAL_SPAWN_SCALING_CAP.get(),
+                        "debug_difficulty_scalar");
+        sendDebugHeader(source, "Difficulty scalar debug");
+        sendDebugSection(source, "context",
+                "player="
+                        + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                        + " scope="
+                        + breakdown.challengeScopeUsed());
+        sendDebugSection(source, "modifiers",
+                "global="
+                        + formatNumber(breakdown.globalModifier())
+                        + " challenge="
+                        + formatNumber(breakdown.challengeModifier())
+                        + " dimension_baseline="
+                        + formatNumber(breakdown.dimensionBaseline()));
+        sendDebugSection(source, "integration_scalars",
+                breakdown.integrationScalars().isEmpty() ? "<none>" : breakdown.integrationScalars().toString());
+        sendDebugSection(source, "effective",
+                "clamped="
+                        + formatNumber(breakdown.clampedEffectiveValue())
+                        + " unclamped="
+                        + formatNumber(breakdown.unclampedEffectiveValue())
+                        + " clamp_reason="
+                        + (breakdown.clampReason().isBlank() ? "<none>" : breakdown.clampReason()));
+        sendDebugSection(source, "policy_gates",
+                breakdown.policyGatesConsulted().isEmpty() ? "<none>" : String.join(", ", breakdown.policyGatesConsulted()));
+        return 1;
+    }
+
+    private static int runDebugPressureLast(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        Optional<WorldAwakenedMutatorService.PressureEvaluationSnapshot> snapshot = mutatorService.latestPressureSnapshot();
+        if (snapshot.isEmpty()) {
+            source.sendFailure(Component.literal("No captured pressure snapshots are available yet. Run /wa debug spawn test <entity_id> first, or wait for natural spawns.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return 0;
+        }
+        return emitPressureSnapshotReplay(source, difficultyScalarService, snapshot.get());
+    }
+
+    private static int runDebugPressureReplay(
+            CommandSourceStack source,
+            WorldAwakenedMutatorService mutatorService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            long snapshotId) {
+        Optional<WorldAwakenedMutatorService.PressureEvaluationSnapshot> snapshot = mutatorService.pressureSnapshot(snapshotId);
+        if (snapshot.isEmpty()) {
+            source.sendFailure(Component.literal("Unknown pressure snapshot id: " + snapshotId + " ")
+                    .append(suggestCommandButton("Show Last", "/wa debug pressure last", "Prefill /wa debug pressure last"))
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return 0;
+        }
+        return emitPressureSnapshotReplay(source, difficultyScalarService, snapshot.get());
+    }
+
+    private static int emitPressureSnapshotReplay(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedMutatorService.PressureEvaluationSnapshot snapshot) {
+        sendDebugHeader(source, Component.literal("Pressure snapshot replay: id="
+                + snapshot.snapshotId()
+                + " trace="
+                + snapshot.traceId())
+                .append(Component.literal(" "))
+                .append(copyButton("Copy ID", Long.toString(snapshot.snapshotId()), "Copy snapshot ID"))
+                .append(Component.literal(" "))
+                .append(suggestCommandButton(
+                        "Replay",
+                        "/wa debug pressure replay " + snapshot.snapshotId(),
+                        "Prefill replay command for this snapshot")));
+        sendDebugSection(source, "capture",
+                "mode=" + snapshot.mode()
+                        + " captured_at_millis=" + snapshot.capturedAtMillis()
+                        + " source=" + snapshot.sourceKey());
+        sendDebugSection(source, "context",
+                "dimension="
+                        + snapshot.dimensionId()
+                        + " pos="
+                        + formatBlockPos(snapshot.position())
+                        + " biome="
+                        + snapshot.biomeId().map(ResourceLocation::toString).orElse("<unknown>")
+                        + " entity="
+                        + snapshot.entityTypeId()
+                        + " category="
+                        + snapshot.mobCategory());
+        sendDebugSection(source, "selection",
+                "origin="
+                        + snapshot.spawnOrigin()
+                        + " selected_pool="
+                        + snapshot.selectedPoolId()
+                        + " progression_mode="
+                        + snapshot.progressionMode()
+                        + " stage_context="
+                        + formatResourceLocations(snapshot.stageContext()));
+        sendDebugSection(source, "attribution",
+                snapshot.attributedPlayer()
+                        .map(player -> player.name() + "(" + player.uuid() + ")")
+                        .orElse("<none>"));
+        sendDebugSection(source, "captured_chance",
+                "base="
+                        + formatNumber(snapshot.basePressure())
+                        + " effective="
+                        + formatNumber(snapshot.effectivePressure())
+                        + " roll_mode="
+                        + snapshot.rollMode()
+                        + " rolled="
+                        + (snapshot.rolledValue().isPresent()
+                                ? formatNumber(snapshot.rolledValue().getAsDouble())
+                                : "<none>")
+                        + " passed="
+                        + snapshot.chancePassed());
+        sendDebugSection(source, "captured_scalar",
+                "base="
+                        + formatNumber(snapshot.scalarBreakdown().baseValue())
+                        + " dimension_baseline="
+                        + formatNumber(snapshot.scalarBreakdown().dimensionBaseline())
+                        + " global_modifier="
+                        + formatNumber(snapshot.scalarBreakdown().globalModifier())
+                        + " challenge_modifier="
+                        + formatNumber(snapshot.scalarBreakdown().challengeModifier())
+                        + " effective="
+                        + formatNumber(snapshot.scalarBreakdown().clampedEffectiveValue()));
+        sendDebugSection(source, "captured_policy",
+                "gates="
+                        + (snapshot.scalarBreakdown().policyGatesConsulted().isEmpty()
+                                ? "<none>"
+                                : String.join(", ", snapshot.scalarBreakdown().policyGatesConsulted()))
+                        + " category_data_available="
+                        + snapshot.categoryRestrictionDataAvailable()
+                        + " category_allowed="
+                        + snapshot.categoryAllowed()
+                        + " peaceful_blocked="
+                        + snapshot.peacefulBlocked());
+
+        if (source.getServer() == null) {
+            source.sendFailure(Component.literal("Replay failed: server context is unavailable.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return 0;
+        }
+        ServerLevel replayLevel = null;
+        for (ServerLevel level : source.getServer().getAllLevels()) {
+            if (level.dimension().location().equals(snapshot.dimensionId())) {
+                replayLevel = level;
+                break;
+            }
+        }
+        if (replayLevel == null) {
+            source.sendFailure(Component.literal("Replay failed: dimension is not loaded: " + snapshot.dimensionId())
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_CONTEXT_INVALID)));
+            return 0;
+        }
+
+        ServerPlayer replayPlayer = null;
+        boolean missingReplayPlayer = false;
+        if (snapshot.attributedPlayer().isPresent()) {
+            try {
+                UUID playerUuid = UUID.fromString(snapshot.attributedPlayer().get().uuid());
+                replayPlayer = source.getServer().getPlayerList().getPlayer(playerUuid);
+                missingReplayPlayer = replayPlayer == null;
+            } catch (IllegalArgumentException ignored) {
+                missingReplayPlayer = true;
+            }
+        }
+
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown replayBreakdown =
+                difficultyScalarService.resolveSpawnPressureScalar(
+                        replayLevel,
+                        replayPlayer,
+                        snapshot.dimensionId(),
+                        snapshot.basePressure(),
+                        snapshot.scalarBreakdown().integrationScalars(),
+                        0.0D,
+                        1.0D,
+                        new WorldAwakenedEffectiveDifficultyScalarService.SpawnPressureContext(
+                                snapshot.categoryRestrictionDataAvailable(),
+                                snapshot.categoryAllowed(),
+                                snapshot.peacefulBlocked(),
+                                snapshot.sourceKey()));
+        String replayPlayerName = replayPlayer == null ? "<none>" : replayPlayer.getGameProfile().getName();
+        boolean replayMissingCapturedPlayer = missingReplayPlayer;
+        sendDebugSection(source, "replay_scalar",
+                "base="
+                        + formatNumber(replayBreakdown.baseValue())
+                        + " dimension_baseline="
+                        + formatNumber(replayBreakdown.dimensionBaseline())
+                        + " global_modifier="
+                        + formatNumber(replayBreakdown.globalModifier())
+                        + " challenge_modifier="
+                        + formatNumber(replayBreakdown.challengeModifier())
+                        + " clamped="
+                        + formatNumber(replayBreakdown.clampedEffectiveValue())
+                        + " unclamped="
+                        + formatNumber(replayBreakdown.unclampedEffectiveValue())
+                        + " clamp_reason="
+                        + (replayBreakdown.clampReason().isBlank() ? "<none>" : replayBreakdown.clampReason()));
+        sendDebugSection(source, "replay_policy",
+                "gates="
+                        + (replayBreakdown.policyGatesConsulted().isEmpty()
+                                ? "<none>"
+                                : String.join(", ", replayBreakdown.policyGatesConsulted()))
+                        + " replay_player="
+                        + replayPlayerName
+                        + " missing_captured_player_context="
+                        + replayMissingCapturedPlayer);
+        return 1;
+    }
+
+    private static int runDebugPressureEvaluate(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z,
+            ServerPlayer player) {
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug pressure evaluate");
+        if (target.isEmpty()) {
+            return 0;
+        }
+        boolean peacefulBlocked = target.get().level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL;
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown breakdown =
+                difficultyScalarService.resolveSpawnPressureScalar(
+                        target.get().level(),
+                        player,
+                        target.get().level().dimension().location(),
+                        1.0D,
+                        Map.of(),
+                        0.0D,
+                        WorldAwakenedCommonConfig.NATURAL_SPAWN_SCALING_CAP.get(),
+                        new WorldAwakenedEffectiveDifficultyScalarService.SpawnPressureContext(
+                                true,
+                                true,
+                                peacefulBlocked,
+                                "debug_pressure_evaluate"));
+        sendDebugHeader(source, "Pressure evaluate debug");
+        sendDebugSection(source, "context",
+                "dimension="
+                        + target.get().level().dimension().location()
+                        + " pos="
+                        + formatBlockPos(target.get().position())
+                        + " player="
+                        + (player == null ? "<none>" : player.getGameProfile().getName()));
+        sendDebugSection(source, "modifiers",
+                "base="
+                        + formatNumber(breakdown.baseValue())
+                        + " dimension_baseline="
+                        + formatNumber(breakdown.dimensionBaseline())
+                        + " global_modifier="
+                        + formatNumber(breakdown.globalModifier())
+                        + " challenge_modifier="
+                        + formatNumber(breakdown.challengeModifier()));
+        sendDebugSection(source, "integration_scalars",
+                breakdown.integrationScalars().isEmpty() ? "<none>" : breakdown.integrationScalars().toString());
+        sendDebugSection(source, "effective",
+                "clamped="
+                        + formatNumber(breakdown.clampedEffectiveValue())
+                        + " unclamped="
+                        + formatNumber(breakdown.unclampedEffectiveValue())
+                        + " clamp_reason="
+                        + (breakdown.clampReason().isBlank() ? "<none>" : breakdown.clampReason()));
+        sendDebugSection(source, "policy",
+                "rejections="
+                        + (breakdown.policyGatesConsulted().isEmpty() ? "<none>" : String.join(", ", breakdown.policyGatesConsulted()))
+                        + " peaceful_blocked="
+                        + breakdown.peacefulGateBlocked()
+                        + " category_data_available="
+                        + breakdown.categoryRestrictionDataAvailable()
+                        + " category_blocked="
+                        + breakdown.categoryGateBlocked());
+        return 1;
+    }
+
     private static void emitMutatorRunResult(
             CommandSourceStack source,
             WorldAwakenedMutatorService.MutatorRunResult result,
             String commandMode,
             boolean randomnessBypassed) {
-        source.sendSuccess(
-                () -> Component.literal("Mutator debug: mode="
-                        + commandMode
-                        + " trace_id="
-                        + result.traceId()
-                        + " dry_run="
-                        + result.dryRun()
-                        + " live_applied="
-                        + result.liveApplied()
-                        + " skipped="
-                        + result.skipped()),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - target_context=entity="
+        sendDebugHeader(source, Component.literal("Mutator debug: mode="
+                + commandMode
+                + " trace_id="
+                + result.traceId())
+                .append(Component.literal(" "))
+                .append(copyButton("Copy Trace", result.traceId(), "Copy mutation trace ID")));
+        sendDebugSection(source, "execution",
+                "dry_run=" + result.dryRun() + " live_applied=" + result.liveApplied() + " skipped=" + result.skipped());
+        sendDebugSection(source, "target",
+                "entity="
                         + result.entityTypeId()
                         + " dimension="
                         + result.dimensionId()
                         + " pos="
-                        + formatBlockPos(result.position())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - spawn_context="
-                        + formatMutatorSpawnContext(
-                                result.spawnOrigin(),
-                                result.progressionMode(),
-                                result.attributedPlayer())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - stage_context=" + formatResourceLocations(result.stageContext())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - external_scalars=<none>"),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - config_gates=mod_enabled="
+                        + formatBlockPos(result.position()));
+        sendDebugSection(source, "spawn_context",
+                formatMutatorSpawnContext(
+                        result.spawnOrigin(),
+                        result.progressionMode(),
+                        result.attributedPlayer()));
+        sendDebugSection(source, "stage_context", formatResourceLocations(result.stageContext()));
+        sendDebugSection(source, "external_scalars",
+                formatScalarBreakdownInline(
+                        result.chanceResult().flatMap(WorldAwakenedMutatorService.MutationChanceResult::scalarBreakdown)));
+        sendDebugSection(source, "config_gates",
+                "mod_enabled="
                         + net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates.modEnabled()
                         + ", mutators_enabled="
                         + WorldAwakenedCommonConfig.ENABLE_MUTATORS.get()
                         + ", debug_commands_enabled="
-                        + WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get()),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - selector_narrowing=indexed_candidates="
+                        + WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
+        sendDebugSection(source, "selector",
+                "indexed_candidates="
                         + result.indexedCandidatePoolCount()
                         + "/total_pools="
                         + result.totalPoolCount()
                         + " candidate_pools="
-                        + formatResourceLocations(result.indexedCandidatePoolIds())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - candidate_pools=" + formatResourceLocations(result.eligiblePoolIds())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - rejected_pools=" + formatRejectedObjects(result.rejectedPools(), "pool")),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - selected_pool=" + result.selectedPoolId().map(ResourceLocation::toString).orElse("<none>")),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - chance_result=" + formatMutationChanceResult(result.chanceResult())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - limit_results=requested_mutator_cap="
+                        + formatResourceLocations(result.indexedCandidatePoolIds()));
+        sendDebugSection(source, "pools.candidate", formatResourceLocations(result.eligiblePoolIds()));
+        sendDebugSection(source, "pools.rejected", formatRejectedObjects(result.rejectedPools(), "pool"));
+        sendDebugSection(source, "pools.selected", result.selectedPoolId().map(ResourceLocation::toString).orElse("<none>"));
+        sendDebugSection(source, "chance", formatMutationChanceResult(result.chanceResult()));
+        sendDebugSection(source, "limits",
+                "requested_mutator_cap="
                         + result.requestedMutatorCap()
                         + " enforced_mutator_cap="
-                        + result.enforcedMutatorCap()),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - candidate_mutators=" + formatResourceLocations(result.eligibleMutatorIds())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - rejected_mutators=" + formatRejectedObjects(result.rejectedMutators(), "mutator")),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - selected_mutators=" + formatResourceLocations(result.selectedMutatorIds())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - selected_components=" + formatAppliedMutations(result.appliedMutations())),
-                false);
-        source.sendSuccess(
-                () -> Component.literal(" - composition_results=" + formatComponentFailures(result.componentFailures())),
-                false);
+                        + result.enforcedMutatorCap());
+        sendDebugSection(source, "mutators.candidate", formatResourceLocations(result.eligibleMutatorIds()));
+        sendDebugSection(source, "mutators.rejected", formatRejectedObjects(result.rejectedMutators(), "mutator"));
+        sendDebugSection(source, "mutators.selected", formatResourceLocations(result.selectedMutatorIds()));
+        sendDebugSection(source, "components.applied", formatAppliedMutations(result.appliedMutations()));
+        sendDebugSection(source, "components.failed", formatComponentFailures(result.componentFailures()));
         if (result.skipped()) {
-            source.sendSuccess(
-                    () -> Component.literal(" - final_outcome=skipped code="
+            sendDebugSection(source, "outcome",
+                    "final=skipped code="
                             + result.skipCode()
                             + " detail="
                             + result.skipDetail()
                             + " randomness_bypassed="
-                            + randomnessBypassed),
-                    false);
+                            + randomnessBypassed);
             return;
         }
         if (result.spawnedEntityUuid().isPresent()) {
-            source.sendSuccess(
-                    () -> Component.literal(" - live_spawn=added="
+            sendDebugSection(source, "live_spawn",
+                    "added="
                             + result.spawnAdded()
                             + " entity_uuid="
-                            + result.spawnedEntityUuid().get()),
-                    false);
+                            + result.spawnedEntityUuid().get());
         }
         String outcome = result.liveApplied()
                 ? "applied"
                 : result.chanceResult().isPresent() && !result.chanceResult().get().passed()
                         ? "chance_failed"
-                : result.selectedMutatorIds().isEmpty()
+                        : result.selectedMutatorIds().isEmpty()
                         ? "no_mutator_selected"
                         : "evaluated";
-        source.sendSuccess(
-                () -> Component.literal(" - final_outcome="
-                        + outcome
-                        + " randomness_bypassed="
-                        + randomnessBypassed),
-                false);
+        sendDebugSection(source, "outcome", "final=" + outcome + " randomness_bypassed=" + randomnessBypassed);
     }
 
     static String formatMutationChanceResult(
@@ -1777,6 +2305,148 @@ public final class WorldAwakenedCommands {
         return String.format(Locale.ROOT, "%.3f", value);
     }
 
+    private static String formatScalarBreakdownInline(
+            Optional<WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown> breakdownOpt) {
+        if (breakdownOpt.isEmpty()) {
+            return "<none>";
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown breakdown = breakdownOpt.get();
+        return "dimension_baseline="
+                + formatNumber(breakdown.dimensionBaseline())
+                + " global="
+                + formatNumber(breakdown.globalModifier())
+                + " challenge="
+                + formatNumber(breakdown.challengeModifier())
+                + " effective="
+                + formatNumber(breakdown.clampedEffectiveValue())
+                + " scope="
+                + breakdown.challengeScopeUsed()
+                + " policy_gates="
+                + (breakdown.policyGatesConsulted().isEmpty() ? "<none>" : String.join("|", breakdown.policyGatesConsulted()));
+    }
+
+    private static int emitChallengeReadResult(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService.ChallengeReadResult result,
+            String scopeLabel) {
+        if (!result.success()) {
+            source.sendFailure(Component.literal("Could not read " + scopeLabel + " difficulty: "
+                    + describeDifficultyRejection(result.code(), result.detail()))
+                    .append(debugCodeSuffix(result.code().isBlank()
+                            ? WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID
+                            : result.code())));
+            sendOperatorDetail(source, "detail=" + result.detail());
+            return 0;
+        }
+        WorldAwakenedEffectiveDifficultyScalarService.ChallengeModifierState state = result.state();
+        String maxChanges = state.maxChanges() <= 0 ? "unlimited" : Integer.toString(state.maxChanges());
+        String voteState = state.voteState().isPresent() ? "active" : "inactive";
+        sendOperatorSummary(source,
+                "Difficulty "
+                        + scopeLabel
+                        + ": value="
+                        + formatNumber(state.value())
+                        + " scope="
+                        + state.resolvedScope()
+                        + " cooldown="
+                        + formatCooldownForOperator(state.cooldownRemainingMillis())
+                        + " changes="
+                        + state.changeCount()
+                        + "/"
+                        + maxChanges
+                        + " vote="
+                        + voteState,
+                false);
+        sendOperatorDetail(source, "bounds=["
+                + formatNumber(state.minValue())
+                + ", "
+                + formatNumber(state.maxValue())
+                + "] step="
+                + formatNumber(state.step())
+                + " allow_raise="
+                + state.allowRaise()
+                + " allow_lower="
+                + state.allowLower()
+                + " allow_player_adjustment="
+                + state.allowPlayerAdjustment()
+                + " vote_required="
+                + state.voteRequired()
+                + " cooldown_remaining_millis="
+                + state.cooldownRemainingMillis());
+        if (state.voteState().isPresent()) {
+            WorldAwakenedEffectiveDifficultyScalarService.ChallengeVoteState vote = state.voteState().get();
+            sendOperatorDetail(source, "active_vote=target="
+                    + formatNumber(vote.targetValue())
+                    + " yes="
+                    + vote.yesVotes().size()
+                    + " no="
+                    + vote.noVotes().size()
+                    + " eligible="
+                    + vote.eligibleVoters().size()
+                    + " timeout_at_millis="
+                    + vote.timeoutAtMillis());
+        } else {
+            sendOperatorDetail(source, "active_vote=<none>");
+        }
+        return 1;
+    }
+
+    private static int emitDifficultyMutationResult(
+            CommandSourceStack source,
+            WorldAwakenedEffectiveDifficultyScalarService.MutationResult result,
+            String branch) {
+        if (!result.success()) {
+            String code = result.code().isBlank() ? WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID : result.code();
+            source.sendFailure(Component.literal("Could not update " + branch + " difficulty: "
+                    + describeDifficultyRejection(result.code(), result.detail()))
+                    .append(debugCodeSuffix(result.code().isBlank() ? WorldAwakenedDiagnosticCodes.DEBUG_DIFFICULTY_SCOPE_INVALID : result.code())));
+            sendOperatorDetail(source, "code=" + code + " detail=" + result.detail());
+            return 0;
+        }
+        if (result.committed()) {
+            sendOperatorSummary(source,
+                    "Difficulty " + branch + " updated: "
+                            + formatNumber(result.previousValue())
+                            + " -> "
+                            + formatNumber(result.currentValue()),
+                    true);
+            return 1;
+        }
+        if (result.voteStarted()) {
+            String targetValue = result.voteState()
+                    .map(WorldAwakenedEffectiveDifficultyScalarService.ChallengeVoteState::targetValue)
+                    .map(WorldAwakenedCommands::formatNumber)
+                    .orElse(formatNumber(result.currentValue()));
+            sendOperatorSummary(source,
+                    Component.literal("Difficulty " + branch + " vote started: target="
+                            + targetValue
+                            + " ")
+                            .append(suggestCommandButton(
+                                    "Vote Yes",
+                                    "/wa difficulty vote yes",
+                                    "Prefill /wa difficulty vote yes"))
+                            .append(Component.literal(" "))
+                            .append(suggestCommandButton(
+                                    "Vote No",
+                                    "/wa difficulty vote no",
+                                    "Prefill /wa difficulty vote no")),
+                    true);
+            return 1;
+        }
+        if (result.voteRecorded()) {
+            sendOperatorSummary(source,
+                    "Difficulty " + branch + " " + describeDifficultyVoteResult(result.code(), result.detail()) + ".",
+                    true);
+            sendOperatorDetail(source, "code="
+                    + (result.code().isBlank() ? "<none>" : result.code())
+                    + " detail="
+                    + (result.detail().isBlank() ? "<none>" : result.detail()));
+            return 1;
+        }
+        sendOperatorSummary(source, "Difficulty " + branch + " unchanged: " + formatNumber(result.currentValue()), false);
+        return 0;
+    }
+
     private static SuggestionProvider<CommandSourceStack> suggestEntityTypeIds() {
         return (context, builder) -> SharedSuggestionProvider.suggestResource(
                 BuiltInRegistries.ENTITY_TYPE.keySet(),
@@ -1857,6 +2527,14 @@ public final class WorldAwakenedCommands {
         };
     }
 
+    private static SuggestionProvider<CommandSourceStack> suggestPressureSnapshotIds(WorldAwakenedMutatorService mutatorService) {
+        return (context, builder) -> suggestStrings(
+                mutatorService.pressureSnapshotIds().stream()
+                        .map(String::valueOf)
+                        .toList(),
+                builder);
+    }
+
     private static SuggestionProvider<CommandSourceStack> suggestPendingRewardIds(WorldAwakenedAscensionService ascensionService) {
         return (context, builder) -> {
             ServerPlayer player = EntityArgument.getPlayer(context, "player");
@@ -1923,6 +2601,46 @@ public final class WorldAwakenedCommands {
             builder.suggest(value);
         }
         return builder.buildFuture();
+    }
+
+    private static void sendOperatorSummary(CommandSourceStack source, String message, boolean broadcastToOps) {
+        sendOperatorSummary(source, Component.literal(message), broadcastToOps);
+    }
+
+    private static void sendOperatorSummary(CommandSourceStack source, Component message, boolean broadcastToOps) {
+        source.sendSuccess(() -> message, broadcastToOps);
+    }
+
+    private static void sendOperatorDetail(CommandSourceStack source, String message) {
+        if (!showVerboseOperatorDetails() || message == null || message.isBlank()) {
+            return;
+        }
+        sendOperatorDetail(source, Component.literal(message).withStyle(ChatFormatting.DARK_GRAY));
+    }
+
+    private static void sendOperatorDetail(CommandSourceStack source, Component message) {
+        if (!showVerboseOperatorDetails()) {
+            return;
+        }
+        MutableComponent line = Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY).append(message);
+        source.sendSuccess(() -> line, false);
+    }
+
+    private static void sendDebugHeader(CommandSourceStack source, String message) {
+        sendDebugHeader(source, Component.literal(message));
+    }
+
+    private static void sendDebugHeader(CommandSourceStack source, Component message) {
+        source.sendSuccess(() -> message, false);
+    }
+
+    private static void sendDebugSection(CommandSourceStack source, String section, String message) {
+        sendDebugSection(source, section, Component.literal(message));
+    }
+
+    private static void sendDebugSection(CommandSourceStack source, String section, Component message) {
+        MutableComponent line = Component.literal(" - " + section + ": ").append(message);
+        source.sendSuccess(() -> line, false);
     }
 
     private static boolean showVerboseOperatorDetails() {
@@ -2066,6 +2784,179 @@ public final class WorldAwakenedCommands {
             case "suppressed_definition_missing" -> "the reward definition is missing so suppression cannot be evaluated";
             default -> detail == null || detail.isBlank() ? "unknown reason" : detail.replace('_', ' ');
         };
+    }
+
+    private static String describeDifficultyRejection(String code, String detail) {
+        String normalizedDetail = detail == null ? "" : detail.trim();
+        if (code == null || code.isBlank()) {
+            return describeDifficultyFallbackDetail(normalizedDetail);
+        }
+        return switch (code) {
+            case "bounds" -> describeDifficultyBounds(normalizedDetail);
+            case "scope_invalid", WorldAwakenedDiagnosticCodes.CHALLENGE_SCOPE_INVALID ->
+                    describeDifficultyScopeRejection(normalizedDetail);
+            case "policy_disallows_change" -> "server policy does not allow this difficulty change";
+            case "cooldown_active" -> describeDifficultyCooldown(normalizedDetail);
+            case "usage_exhausted" -> describeDifficultyUsageRejection(normalizedDetail);
+            case "step_invalid", WorldAwakenedDiagnosticCodes.CHALLENGE_STEP_INVALID ->
+                    describeDifficultyStepRejection(normalizedDetail);
+            case "unauthorized" -> describeDifficultyUnauthorizedRejection(normalizedDetail);
+            case "vote_required" -> "a world vote is required before this change can be applied";
+            case "vote_inactive" -> describeDifficultyVoteInactive(normalizedDetail);
+            case "vote_active" -> "a challenge vote is already active; finish or wait for that vote first";
+            case WorldAwakenedDiagnosticCodes.DIFFICULTY_GLOBAL_INVALID ->
+                    "global difficulty config is invalid; check difficulty.global min/max/default values";
+            case WorldAwakenedDiagnosticCodes.CHALLENGE_BOUNDS_INVALID ->
+                    "challenge config bounds/default are invalid; check difficulty.challenge min/max/default";
+            case WorldAwakenedDiagnosticCodes.CHALLENGE_VOTE_CONFIG_INVALID ->
+                    "challenge vote config is invalid; check threshold and timeout settings";
+            case WorldAwakenedDiagnosticCodes.CHALLENGE_MODE_UNSUPPORTED ->
+                    "challenge scope mode is unsupported; use auto, player, or world";
+            default -> describeDifficultyFallbackDetail(normalizedDetail.isBlank() ? code : normalizedDetail);
+        };
+    }
+
+    private static String describeDifficultyFallbackDetail(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "this path is disabled by current server policy";
+        }
+        return switch (detail) {
+            case "global_modifier_disabled_or_invalid" ->
+                    "global difficulty modifier is disabled or config is invalid";
+            case "challenge_disabled_or_invalid" ->
+                    "challenge modifier is disabled or config is invalid";
+            default -> {
+                if (detail.contains("unscoped")) {
+                    yield "challenge scope mode is unset/invalid; use auto, player, or world";
+                }
+                yield detail.replace('_', ' ');
+            }
+        };
+    }
+
+    private static String describeDifficultyBounds(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "value is out of bounds";
+        }
+        if ("value must be finite".equals(detail)) {
+            return "value must be a real number";
+        }
+        if (detail.contains("within [")) {
+            int start = detail.indexOf('[');
+            int end = detail.indexOf(']');
+            if (start >= 0 && end > start) {
+                return "value must be within " + detail.substring(start, end + 1);
+            }
+        }
+        return "value is out of bounds";
+    }
+
+    private static String describeDifficultyScopeRejection(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "requested scope is not valid for current policy";
+        }
+        if (detail.contains("resolved scope world")) {
+            return "current policy resolves challenge to world scope; use /wa difficulty world ...";
+        }
+        if (detail.contains("resolved scope player") || detail.contains("resolved player scope")) {
+            return "current policy resolves challenge to personal scope; use /wa difficulty personal ...";
+        }
+        if (detail.contains("player context") || detail.contains("player source")) {
+            return "this command needs a player context for personal scope";
+        }
+        return "requested scope is not valid for current policy";
+    }
+
+    private static String describeDifficultyCooldown(String detail) {
+        long remainingMillis = parseCooldownRemainingMillis(detail);
+        if (remainingMillis > 0L) {
+            return "cooldown is still active (" + formatCooldownForOperator(remainingMillis) + " remaining)";
+        }
+        return "cooldown is still active";
+    }
+
+    private static long parseCooldownRemainingMillis(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return 0L;
+        }
+        String prefix = "cooldown_remaining_millis=";
+        if (!detail.startsWith(prefix)) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(detail.substring(prefix.length()).trim()));
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
+    }
+
+    private static String describeDifficultyUsageRejection(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "change limit has been reached";
+        }
+        if (detail.contains("player")) {
+            return "personal change limit has been reached";
+        }
+        if (detail.contains("world")) {
+            return "world change limit has been reached";
+        }
+        return "change limit has been reached";
+    }
+
+    private static String describeDifficultyStepRejection(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "value must align to the configured step grid";
+        }
+        if (detail.contains("step")) {
+            return "value must align to the configured step grid around default difficulty";
+        }
+        return "value must align to the configured step grid";
+    }
+
+    private static String describeDifficultyUnauthorizedRejection(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "you are not authorized for this action";
+        }
+        if (detail.contains("eligible for this vote")) {
+            return "you are not eligible to vote on this change";
+        }
+        return "you are not authorized for this action";
+    }
+
+    private static String describeDifficultyVoteInactive(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "no active vote exists for this action";
+        }
+        if (detail.contains("not active for current policy")) {
+            return "voting is not enabled for the current world-scope policy";
+        }
+        return "no active vote exists for this action";
+    }
+
+    private static String describeDifficultyVoteResult(String code, String detail) {
+        if (code == null || code.isBlank()) {
+            return "vote recorded";
+        }
+        return switch (code) {
+            case "vote_failed" -> "vote failed (" + (detail == null || detail.isBlank() ? "threshold not reached" : detail) + ")";
+            default -> code + (detail == null || detail.isBlank() ? "" : " (" + detail + ")");
+        };
+    }
+
+    private static String formatCooldownForOperator(long cooldownRemainingMillis) {
+        if (cooldownRemainingMillis <= 0L) {
+            return "ready";
+        }
+        long totalSeconds = Math.max(1L, cooldownRemainingMillis / 1000L);
+        long minutes = totalSeconds / 60L;
+        long seconds = totalSeconds % 60L;
+        if (minutes <= 0L) {
+            return seconds + "s";
+        }
+        if (seconds == 0L) {
+            return minutes + "m";
+        }
+        return minutes + "m" + seconds + "s";
     }
 
     private static int runAscensionReconcile(
@@ -3069,6 +3960,13 @@ public final class WorldAwakenedCommands {
 
     private static ServerPlayer sourcePlayer(CommandSourceStack source) {
         return source.getEntity() instanceof ServerPlayer player ? player : null;
+    }
+
+    private static String actorName(CommandSourceStack source) {
+        if (source.getEntity() instanceof ServerPlayer player) {
+            return player.getGameProfile().getName();
+        }
+        return source.getTextName();
     }
 
     private static List<OwnedModifierView> collectOwnedModifierViews(ServerPlayer target) {

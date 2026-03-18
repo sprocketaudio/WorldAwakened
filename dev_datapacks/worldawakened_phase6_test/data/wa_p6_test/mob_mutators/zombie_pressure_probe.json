@@ -1,0 +1,40 @@
+﻿{
+  "schema_version": 1,
+  "id": "wa_p6_test:zombie_pressure_probe",
+  "display_name": "WA P6 Zombie Pressure Probe",
+  "enabled": true,
+  "rarity": "common",
+  "weight": 10,
+  "components": [
+    {
+      "type": "worldawakened:max_health_multiplier",
+      "parameters": {
+        "multiplier": 1.15
+      }
+    },
+    {
+      "type": "worldawakened:effect_particles",
+      "parameters": {
+        "effect_type": "minecraft:strength",
+        "count": 2,
+        "interval_ticks": 16
+      }
+    }
+  ],
+  "eligible_entities": [
+    "minecraft:zombie"
+  ],
+  "required_conditions": [
+    {
+      "type": "worldawakened:stage_unlocked",
+      "parameters": {
+        "stage": "wa_p6_test:phase6_gate"
+      }
+    }
+  ],
+  "applies_to_bosses": false,
+  "applies_to_invaders": false,
+  "application_contexts": [
+    "on_spawn"
+  ]
+}

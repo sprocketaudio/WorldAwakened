@@ -1,0 +1,30 @@
+﻿{
+  "schema_version": 1,
+  "id": "wa_p6_test:action_overflow_rule",
+  "enabled": true,
+  "priority": 2000,
+  "execution_scope": "world",
+  "conditions": [
+    {
+      "type": "worldawakened:stage_unlocked",
+      "parameters": {
+        "stage": "wa_p6_test:phase6_gate"
+      }
+    }
+  ],
+  "actions": [
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_01", "op": "set", "value": 1.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_02", "op": "set", "value": 2.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_03", "op": "set", "value": 3.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_04", "op": "set", "value": 4.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_05", "op": "set", "value": 5.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_06", "op": "set", "value": 6.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_07", "op": "set", "value": 7.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_08", "op": "set", "value": 8.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_09", "op": "set", "value": 9.0 } },
+    { "type": "worldawakened:set_world_scalar", "parameters": { "key": "wa_p6_test_overflow_10", "op": "set", "value": 10.0 } },
+    { "type": "worldawakened:mark_rule_consumed", "parameters": {} }
+  ],
+  "weight": 1,
+  "chance": 1
+}

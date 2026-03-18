@@ -3,7 +3,7 @@
 Practical guide to using the `/wa` command tree for inspection, testing, recovery, and administration.
 
 - Document status: Active human-friendly operator handbook
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Command usage, targeting, recovery, and testing support
 
 ---
@@ -85,6 +85,8 @@ It should:
 It should not:
 - turn ordinary player-facing notifications into debug spam
 
+Some command outputs may include clickable helper actions (for example copy ID or prefill command buttons). Those are shortcuts only; the normal typed commands still work the same way.
+
 ## 2. Understand Targeting First
 
 Most operator mistakes come from targeting the wrong thing.
@@ -118,7 +120,7 @@ Examples:
 
 ```text
 /wa stage list player Dev
-/wa trigger fire wa_test:unlock_phase4_gate player Dev
+/wa trigger fire <trigger_id> player Dev
 /wa ascension inspect Dev
 ```
 
@@ -159,7 +161,7 @@ What these tell you:
 - whether the player has pending or resolved ascension instances
 - which WA-owned carriers are currently active on the player, including client-visual carriers such as passive night vision that now drive a lightmap-backed client render path
 
-## 3A. Phase 5 Mutator Inspect Expectations
+## 3A. Mutator Inspect Expectations
 
 Treat `/wa mob inspect` as the first mutator diagnosis tool.
 
@@ -179,12 +181,12 @@ Minimum fields you should expect to see:
 
 If one of these fields is missing, treat that as an observability gap and investigate before trusting balancing results.
 
-Preflight check before using Phase 5 debug commands:
+Preflight check before using mutator debug commands:
 - run `/wa debug`
 - confirm `mutators` and `spawn` appear as child literals
-- if `/wa debug` only shows `clear` and `reset`, restart on a current Phase 5 build; datapack reload does not refresh command registration
+- if `/wa debug` only shows `clear` and `reset`, restart on a current mod version; datapack reload does not refresh command registration
 
-Use these Phase 5 debug surfaces when a spawn path is unclear:
+Use these mutator debug surfaces when a spawn path is unclear:
 
 ```text
 /wa debug mutators evaluate <entity_id>
@@ -220,6 +222,28 @@ Operator workflow when pools match but mobs still do not mutate:
 2. check `selected_pool` and `chance_result`
 3. if `chance_result` shows `passed=false`, you hit chance gating rather than selector/budget rejection
 4. run `/wa debug mutators force_pool <entity_id> <pool_id>` if you need to bypass chance while debugging
+
+## 3D. Web Session Commands
+
+Use this when the hosted web editor supports live linked runtime sessions.
+
+Baseline commands:
+
+```text
+/wa web edit
+/wa web session status
+/wa web session revoke
+```
+
+What each command is for:
+- `/wa web edit`: create a short-lived linked editing session and return a hosted editor URL
+- `/wa web session status`: inspect whether the linked session is active, stale, expired, or revision-mismatched
+- `/wa web session revoke`: explicitly invalidate an active session token/link when needed
+
+Operator expectations:
+- browser connects to the hosted editor/backend, not directly to your game server API
+- runtime remains apply authority and validates all inbound changes before commit
+- stale sessions should fail safely and must not silently overwrite newer runtime state
 
 ## 4. Baseline Mutation Commands
 

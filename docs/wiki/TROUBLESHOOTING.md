@@ -3,7 +3,7 @@
 Practical checks for when World Awakened does not behave the way you expected.
 
 - Document status: Active human-friendly troubleshooting guide
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Validation, command behavior, targeting mistakes, and common runtime surprises
 
 ---
@@ -16,7 +16,7 @@ Practical checks for when World Awakened does not behave the way you expected.
 
 Those three questions solve a large percentage of problems.
 
-## Phase 5-9 Controlled Verification Ladder
+## Controlled Verification Ladder
 
 Use this order whenever command-driven verification surfaces are available:
 1. use `inspect` first to confirm current state
@@ -27,10 +27,10 @@ Use this order whenever command-driven verification surfaces are available:
 Why this order works:
 - `inspect` tells you what the runtime believes right now
 - `evaluate` tests eligibility logic without mutating gameplay state
-- `force` isolates one pool/profile/wave/provider while still enforcing policy/safety rules
+- `force` isolates one pool/profile/provider while still enforcing policy/safety rules
 - `live_test` confirms end-to-end behavior on the real runtime path
 
-Phase 5 (mutators/spawn):
+Mutators and spawn checks:
 - use `/wa debug mutators evaluate ...` for candidate narrowing
 - use `/wa debug mutators force_pool ...` for pool-level debugging
 - use `/wa debug mutators force_mutator ...` for mutator/component debugging
@@ -43,24 +43,34 @@ Practical targeting note:
 - `/wa mob inspect` with no target uses the mob under the executing player's crosshair
 - if that is inconvenient or you are using console/automation, use `/wa mob inspect <target>` instead
 
-Phase 6 (pressure/difficulty/challenge):
-- use `/wa debug pressure evaluate ...` for spawn-pressure debugging
+Pressure, difficulty, and challenge checks:
+- use `/wa debug pressure last` to inspect the latest runtime-captured spawn-pressure snapshot
+- use `/wa debug pressure replay <id>` to replay a specific captured spawn-pressure snapshot
+- use `/wa debug pressure evaluate ...` for manual probe/debug contexts
 - use `/wa debug difficulty scalar ...` for effective-scalar composition debugging
 - use `/wa difficulty ...` commands for policy, bounds, cooldown, and permission testing
 
-Phase 7 (loot):
+Loot checks:
 - use `/wa debug loot evaluate ...` for profile matching/debug
 - use `/wa debug loot force_profile ...` for one-profile isolation testing
+- verify the evaluated context includes canonical fields (`loot_context_type`, `target_type`, `target_id`, `loot_table_id`, `entity_is_mutated`, `mutation_tags`, `player/dimension`, stage/invasion context)
+- confirm which reward contributors were gathered for the event (mutator/elite/invasion/loot-profile paths)
+- if an expected second reward does not appear, check whether non-repeatable duplicate-prevention blocked the contributor/profile in that same event pass
 
-Phase 8 (invasions):
+Invasion checks:
 - use `/wa debug invasion evaluate ...` for scheduler/profile debugging
-- use `/wa debug invasion force_wave ...` for wave-composition debugging
 - use `/wa invasion start <profile>` and `/wa invasion stop` for live end-to-end verification
 
-Phase 9 (compat/integrations):
+Compat and integration checks:
 - use `/wa debug compat evaluate ...` for integration-gate debugging
 - use `/wa debug scalar provider ...` for external provider/scalar input debugging
 - use `/wa compat list` and `/wa apotheosis tier inspect` for high-level activation confirmation
+
+Web linked-session checks:
+- use `/wa web session status` to confirm whether a linked editor session is active, expired, or stale
+- if apply fails with revision mismatch, refresh editor state from runtime before retrying
+- if a session should no longer be trusted, use `/wa web session revoke` and create a new session
+- live mode selector lists should come from runtime registry metadata; if they look stale, refresh session metadata and confirm runtime connection state
 
 ## Problem: `/wa reload validate` Reports Errors
 
@@ -76,6 +86,45 @@ What to do:
 
 Good habit:
 - always start testing with validation clean
+
+## Problem: Linked Web Apply Fails With Revision Mismatch
+
+What it means:
+- runtime changed after your browser loaded its session snapshot
+- your browser is trying to apply an older revision
+
+What to do:
+1. keep your local edits noted if needed
+2. reload the linked project/session from runtime
+3. re-apply your intended edits on the latest revision
+4. apply again
+
+Important:
+- this is a safety guard, not random failure
+- stale sessions must not overwrite newer runtime state
+
+## Problem: Linked Web Session Shows Expired Or Stale
+
+What it means:
+- the short-lived session token expired
+- or the runtime/backend link is no longer active
+
+What to do:
+1. run `/wa web session status`
+2. if stale/expired, run `/wa web edit` to create a new link
+3. if needed, run `/wa web session revoke` first to invalidate old links
+
+## Problem: Live Editor Selectors Miss Modded IDs
+
+What it usually means:
+- session registry metadata is stale or incomplete
+- editor fell back to offline metadata
+
+What to do:
+1. confirm linked session is active (`/wa web session status`)
+2. refresh or reopen the linked editor URL
+3. confirm runtime registry metadata sync completed
+4. if still wrong, create a fresh linked session
 
 Common mutator cap pitfall:
 - `mutators.max_mutators_per_mob` is the global default, not a hard per-pool lock
@@ -101,16 +150,16 @@ Checks:
 ## Problem: `/wa debug` Only Shows `clear` And `reset`
 
 What it means:
-- your runtime command registration is still pre-Phase-5
+- your command tree is from an older mod version
 - datapack reload succeeded, but the process did not load the newer command tree
 
 Why this happens:
-- you are running an older compiled mod build
-- or you updated source/data and only ran `/reload` (which does not re-register command nodes)
+- you are running an older mod jar
+- or you updated data and only ran `/reload` (which does not re-register command nodes)
 
 What to do:
 1. stop the game/server
-2. rebuild and relaunch from current source/build
+2. relaunch with the current mod build/jar
 3. reconnect and run `/wa debug` again
 4. confirm `mutators` and `spawn` now appear under `/wa debug`
 

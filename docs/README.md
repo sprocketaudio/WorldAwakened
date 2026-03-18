@@ -3,7 +3,7 @@
 Documentation index, read-order contract, and cross-update policy for all repository markdown docs.
 
 - Document status: Active governance index
-- Last updated: 2026-03-13
+- Last updated: 2026-03-18
 - Scope: Required documentation intake, cross-references, and currency rules
 
 ---
@@ -54,7 +54,7 @@ Task execution rule:
 Core contracts:
 - [SPECIFICATION.md](SPECIFICATION.md): Primary design and runtime behavior contract.
 - [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md): Canonical datapack shape and authoring contract.
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md): Browser authoring/validation tool contract.
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md): Hosted web authoring/validation contract (offline projects + live linked runtime sessions).
 - [README.md](../README.md): Project summary and status.
 - [AGENTS.md](../AGENTS.md): Contributor and coding-agent operating contract.
 

@@ -3,7 +3,7 @@
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
 - Document status: Active implementation spec (Phase 5 complete, Phase 6 active)
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -23,7 +23,7 @@ World Awakened Framework for Minecraft 1.21.1 + NeoForge
   - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md) for scope-indexing, hot-path limits, and performance guardrails
   - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md) for diagnostic taxonomy and stable code naming
   - [PRESET_CATALOG.md](PRESET_CATALOG.md) when shipped external example-pack presets/templates or their status taxonomy changes
-  - [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) for browser authoring-tool workflows, import/export behavior, and validation UX contracts
+  - [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) for hosted web authoring workflows (offline + live-linked), import/export behavior, session/apply safety rules, and validation UX contracts
   - [FUTURE_IDEAS.md](FUTURE_IDEAS.md) when promoting, removing, or reclassifying deferred ideas
   - [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) when promoting, removing, or reshaping the deferred in-game/admin runtime UI feature
   - [README.md](../README.md) for high-level goals, status, and roadmap summary
@@ -58,7 +58,7 @@ The framework must:
 - support user-extensible rules through datapacks
 - expose optional world-context inputs (for example world day and player distance from spawn) as datapack rule conditions, not primary trigger types
 - support Apotheosis World Tiers as an optional condition/scalar input
-- provide a browser-based datapack authoring and validation tool that round-trips the canonical World Awakened datapack format
+- provide a hosted web-based datapack authoring and validation platform that supports offline import/export and live-linked runtime editing while round-tripping the canonical World Awakened datapack/data contract
 - keep gameplay logic on server side
 - keep balance/content externalized to data files
 
@@ -213,18 +213,18 @@ Canonical scopes:
 - intended use: spawn-time eligibility and mutation application decisions
 
 `loot`
-- guaranteed runtime objects: loot context (table/source/target snapshot); world context; optional player/entity
+- guaranteed runtime objects: canonical loot context snapshot including `loot_context_type`, `target_type`, `target_id`, `loot_table_id` (when applicable), `entity_type` (when applicable), `entity_is_mutated`, `mutation_tags`, `player` (nullable when no player is attributable), `dimension`, stage snapshot, invasion context (active or inactive), compat state, and any scalar inputs allowed for this phase
 - legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `loot`
 - persistence domain: ephemeral loot evaluation unless an action explicitly mutates persistent state
 - missing-context behavior: player-dependent conditions fail closed when player context is unavailable
 - intended use: loot profile injection/reward decisions
 
 `invasion`
-- guaranteed runtime objects: invasion scheduler/wave context; world context; optional targeted player set
+- guaranteed runtime objects: invasion scheduler/event context; world context; optional targeted player set
 - legal conditions/actions: any shared condition/action whose `allowed_scopes` includes `invasion`
 - persistence domain: world invasion state, cooldowns, and profile runtime state
 - missing-context behavior: player-targeted branches fail closed when no player context is present
-- intended use: invasion scheduling, wave selection, and invasion reward scaling
+- intended use: invasion scheduling, active-event context management, pressure-event modifiers, and invasion reward gating
 
 `event_context`
 - guaranteed runtime objects: generic trigger/rule snapshot with explicitly documented fields
@@ -283,7 +283,7 @@ Condition catalog status labels use Section `3F` taxonomy.
 | `stage_locked` | True when the target stage is not active in the resolved scope snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "stage": "<resource_location>" }` | `{ "type":"worldawakened:stage_locked","parameters":{"stage":"my_pack:end_reached"} }` | `implemented` | False when the resolved scope has no stage snapshot. |
 | `ascension_reward_owned` | True when player scope owns the reward ID. | `player`,`entity`,`spawn_event`,`event_context`,`invasion` | `{ "reward": "<resource_location>" }` | `{ "type":"worldawakened:ascension_reward_owned","parameters":{"reward":"my_pack:ember_blood"} }` | `implemented` | False when player context is unavailable. |
 | `ascension_offer_pending` | True when player has a pending runtime offer matching definition ID. | `player`,`event_context` | `{ "offer": "<resource_location>" }` | `{ "type":"worldawakened:ascension_offer_pending","parameters":{"offer":"my_pack:tier2_offer"} }` | `implemented` | False when player context is unavailable. |
-| `invasion_active` | True when an invasion runtime is currently active. | `world`,`invasion`,`event_context` | `{ "profile"?: "<resource_location>" }` | `{ "type":"worldawakened:invasion_active","parameters":{"profile":"my_pack:nightfall"} }` | `implemented` | False when invasion runtime context is unavailable. |
+| `invasion_active` | True when an invasion runtime is currently active. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "profile_id"?: "<resource_location>" }` | `{ "type":"worldawakened:invasion_active","parameters":{"profile_id":"my_pack:nightfall"} }` | `implemented` | False when invasion runtime context is unavailable. |
 | `mutation_present` | True when the target entity carries at least one matching mutation ID/tag. | `entity`,`spawn_event`,`loot`,`event_context` | `{ "mutation_id"?: "<resource_location>", "mutation_tag"?: "<string>" }` | `{ "type":"worldawakened:mutation_present","parameters":{"mutation_tag":"worldawakened:elite"} }` | `planned` | False when entity mutation metadata is unavailable. |
 | `rule_consumed` | True when a rule consumed flag exists for the resolved scope key. | `world`,`player`,`entity`,`event_context` | `{ "rule": "<resource_location>" }` | `{ "type":"worldawakened:rule_consumed","parameters":{"rule":"my_pack:lock_after_first_run"} }` | `planned` | False when rule-state snapshot is unavailable. |
 | `trigger_consumed` | True when one-shot trigger state exists for the resolved scope key. | `world`,`player`,`event_context` | `{ "trigger": "<resource_location>" }` | `{ "type":"worldawakened:trigger_consumed","parameters":{"trigger":"my_pack:first_nether_entry"} }` | `planned` | False when trigger-state snapshot is unavailable. |
@@ -344,6 +344,8 @@ Condition catalog status labels use Section `3F` taxonomy.
 | --- | --- | --- | --- | --- | --- | --- |
 | `random_chance` | Deterministic probabilistic gate for the evaluation snapshot. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "chance": "<0.0-1.0>" }` | `{ "type":"worldawakened:random_chance","parameters":{"chance":0.35} }` | `implemented` | False when deterministic roll context is unavailable. |
 | `event_type` | Match event type identifier in current event snapshot. | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "event": "<resource_location_or_string>" }` | `{ "type":"worldawakened:event_type","parameters":{"event":"worldawakened:entity_killed"} }` | `planned` | False when event-type field is unavailable. |
+| `loot_table` | Match the active loot table ID in current loot context. | `loot`,`event_context` | `{ "id": "<resource_location>" }` | `{ "type":"worldawakened:loot_table","parameters":{"id":"minecraft:chests/simple_dungeon"} }` | `planned` | False when loot-table context is unavailable. |
+| `invasion_tag` | Match invasion-tag metadata in invasion or invasion-reward context (required condition contract for Phase 8 v1 completion). | `spawn_event`,`loot`,`invasion`,`event_context` | `{ "tag": "<string>" }` | `{ "type":"worldawakened:invasion_tag","parameters":{"tag":"undead"} }` | `planned` | False when invasion-tag context is unavailable. |
 | `recent_trigger` | Match whether a named trigger recently fired within a bounded window. | `world`,`player`,`event_context` | `{ "trigger": "<resource_location>", "within_seconds"?: "<integer>" }` | `{ "type":"worldawakened:recent_trigger","parameters":{"trigger":"my_pack:nether_entry","within_seconds":60} }` | `planned` | False when recent-trigger cache is unavailable. |
 | `source_scope_match` | Match the source scope of the current wrapped event context. | `event_context` | `{ "scope": "<world/player/entity/spawn_event/loot/invasion>" }` | `{ "type":"worldawakened:source_scope_match","parameters":{"scope":"player"} }` | `planned` | False when source scope metadata is unavailable. |
 
@@ -1237,7 +1239,7 @@ Explicitly allowed in Phase 6:
 - spawn-pressure scalar outputs
 - category pressure modifiers
 - World Awakened-owned mutation intensity/chance/weight outputs explicitly wired to the shared scalar provider
-- World Awakened-owned invasion scaling parameters (for example wave budget/intensity values) explicitly wired to the shared scalar provider
+- World Awakened-owned invasion pressure-event scaling parameters (for example active-event pressure modifiers) explicitly wired to the shared scalar provider
 - other World Awakened-owned chance/weight/intensity outputs explicitly wired to the shared scalar provider
 
 Difficulty and challenge modifiers must never affect progression contracts:
@@ -1719,7 +1721,7 @@ Resolution order:
 
 ### 7.5 Selector and Entity Matching Semantics
 
-Selectors determine which entities, mobs, or bosses are targeted by triggers, rules, mutators, and invasion composition filters.
+Selectors determine which entities, mobs, or bosses are targeted by triggers, rules, mutators, and invasion profile context filters.
 
 Supported match types:
 - explicit entity ID
@@ -2133,68 +2135,97 @@ Failure behavior:
 
 ### Loot Evaluation Pipeline
 
-Loot modification must occur through a bounded read-then-assemble flow:
-1. receive loot context
+Canonical loot context contract (minimum fields):
+- `loot_context_type`
+- `target_type`
+- `target_id`
+- `loot_table_id` (when relevant)
+- `entity_type` (when relevant)
+- `entity_is_mutated`
+- `mutation_tags`
+- `player` (nullable when no player is attributable)
+- `dimension`
+- stage context snapshot
+- invasion context snapshot (always present as active or inactive state)
+- compat state snapshot
+- scalar inputs explicitly allowed for this phase (`scalar_inputs`; Phase 7 reward pipeline excludes difficulty/challenge scalar influence)
+
+Evaluation lock:
+- all loot-profile matching and reward-profile condition evaluation must operate exclusively against this canonical loot context snapshot
+- missing required context fields fail closed (`false`) for the affected branch; no partial-evaluation fallback is allowed
+
+Supported v1 loot contexts:
+- entity kill
+- container/structure loot tables
+- invasion rewards
+- stage unlock rewards
+
+Canonical short evaluation model:
+1. gameplay event triggers loot evaluation
+2. engine builds canonical loot context
+3. all eligible compiled loot profiles are evaluated by conditions
+4. matching profiles contribute weighted entries/intents
+5. resolver combines matching entries deterministically
+6. final result is injected/granted once
+
+Loot/reward modification must occur through one bounded canonical reward-resolution flow:
+1. receive reward-capable event context
 2. identify target loot table or drop context
-3. build evaluation context snapshot
+3. build reward evaluation context snapshot
 4. resolve active stage context
-5. resolve external scalars
-6. match eligible loot profiles
-7. sort by priority when relevant
-8. apply config restrictions
-9. apply integration safety restrictions for sensitive targets (including Apotheosis when active)
-10. resolve replace, inject, and remove semantics
-11. emit final modified loot result
+5. gather reward contributors (for example matched loot profiles and other explicit WA reward-intent contributors)
+6. normalize contributor intents into one reward-resolution candidate set
+7. sort contributors and profile branches deterministically
+8. apply config restrictions and integration safety restrictions for sensitive targets (including Apotheosis when active)
+9. enforce per-event duplicate-prevention and repeatability policy (`non-repeatable` by default, explicit repeatable marker required to apply more than once)
+10. resolve final replace/inject/remove/bonus semantics into one final reward result
+11. apply rewards once from the resolved result
+12. emit trace and final modified loot/reward output
 
 Required behavior:
-- loot profile evaluation remains read-only until the final assembly step
+- reward-capable systems must not apply rewards directly; they only contribute reward intent/eligibility markers
+- one canonical resolver owns final reward assembly and application
+- loot profile evaluation and contributor evaluation remain read-only until the final apply-once step
+- loot profiles are condition-driven definitions and must not require or support direct manual assignment to entities, mutation pools, mutators, structures, invasion profiles, or invasions
+- direct attachment-based reward lookup paths are forbidden in Phase 7
 - replace semantics apply before inject semantics when both are present in the same resolved context
 - invalid loot entries disable the containing loot profile and do not trigger automatic substitution
 - if an unsafe loot mode is blocked by compat safety rules, fallback handling must be explicit and logged; Apotheosis-owned tier-gated behavior must remain intact
-
-Covered loot source types:
-- chest and structure loot
-- invasion rewards
-- mutated mob bonus drops
-- boss bonus rolls
-- stage unlock rewards
+- a reward contributor/profile must not apply more than once per event unless explicitly marked repeatable
+- matching must fail closed when required context fields are missing
+- invalid profile references or bad condition parameters disable only the broken profile/branch and must not disable the entire reward system
+- mutated mob bonus drops are triggered by mutated-mob provenance, but final reward resolution still runs through this shared loot profile pipeline (no separate mutated-mob reward engine)
 
 ### Invasion Evaluation Pipeline
 
-Invasion logic must be explicit because it affects global pacing, entity counts, and player-facing events.
+Invasion logic must be explicit because it affects global pacing, mutation pressure, and player-facing event state.
 
-Invasion scheduler pipeline:
-1. tick scheduler or receive trigger signal
+Invasion pressure-event lifecycle:
+1. scheduler tick or command trigger starts evaluation
 2. check global invasion feature gate
-3. check active invasion cap
-4. check cooldowns
-5. build world or player target context
-6. match invasion trigger rules
-7. match invasion profiles
-8. resolve profile priority and chance
-9. schedule invasion instance
-10. emit warning phase
-11. spawn waves on interval
-12. track active invasion state
-13. resolve rewards, failure, and cleanup
+3. check current active-state and cooldown gates
+4. build world/player scheduler context snapshot
+5. evaluate invasion trigger conditions
+6. match/select invasion profile deterministically
+7. activate invasion runtime state
+8. emit optional warning period
+9. apply temporary invasion pressure modifier
+10. expose invasion runtime context to mutation/reward/debug paths
+11. maintain active duration
+12. end invasion
+13. cleanup runtime state and remove temporary pressure modifier
 14. enter cooldown state
 
-Wave spawn sub-pipeline:
-1. build wave context snapshot
-2. resolve profile-defined composition
-3. apply stage scalars
-4. apply global and challenge modifier scalars
-5. apply Apotheosis scalars when active
-6. roll unit composition
-7. apply mutator pools to eligible invasion units
-8. enforce hard caps and safe-zone rules
-9. spawn wave
-10. record active entity tracking
-
 Hard rules:
-- invasion scheduling and wave spawning are separate phases
-- warning phase must occur before the first wave when the profile requires it
-- failed wave spawn must degrade gracefully rather than leaving the invasion permanently stuck active
+- Phase 8 v1 invasions are event-state systems, not WA-owned spawn orchestration systems
+- World Awakened must not implement WA-owned wave spawning in Phase 8 v1
+- World Awakened must not implement WA-owned spawn orchestration in Phase 8 v1
+- World Awakened must not implement invasion spawn composition control in Phase 8 v1
+- World Awakened must not perform WA-owned invasion entity spawning in Phase 8 v1
+- vanilla and other mods continue owning actual mob spawning
+- World Awakened invasion logic influences spawn outcomes only through context and pressure modifiers
+- invasion-gated mutation pools become eligible through shared conditions/context, not through hidden spawn scripts
+- failed activation/end/cleanup paths must degrade safely without leaving the invasion permanently stuck active
 
 ### Stage Unlock Propagation Rules
 
@@ -2372,7 +2403,7 @@ Required rejection reason categories:
 - exclusive conflict
 - hard cap reached
 - invalid referenced object
-- safe-zone blocked
+- invasion cooldown active
 
 Traceable systems:
 - trigger evaluation
@@ -2381,7 +2412,7 @@ Traceable systems:
 - mutator selection
 - loot profile selection
 - invasion scheduling
-- invasion wave spawning
+- invasion active-state maintenance
 - stage unlock attempts
 
 Command and debug output must summarize rather than dumping raw internals unless explicitly requested in operator mode.
@@ -2866,8 +2897,8 @@ Scalar order example:
 
 - elite spawn chance scalar
 - mutator chance scalar
-- invasion wave budget scalar
-- reward quality scalar
+- invasion pressure-event modifier scalar
+- reward quality scalar (reserved for post-Phase 7 reward-scaling work)
 
 ### 11.4 Scalar Composition Contract
 
@@ -2880,7 +2911,9 @@ Rules:
 - global difficulty modifier is world-scoped baseline
 - challenge modifier is optional and resolved by scope/policy
 - stage progression still controls unlock-state and eligibility, not these scalar layers
+- trigger eligibility remains progression/condition-driven and must not be rewritten by scalar layers
 - all consumers resolve via the shared scalar provider; no local composition-order variants are allowed
+- Phase 7 reward/loot pipelines are explicitly excluded from difficulty/challenge scalar influence until a later phase promotes reward-scaling domains.
 
 ---
 
@@ -2926,6 +2959,52 @@ Guardrails:
 - allow destructive loot modes only when explicitly verified compat-safe in a documented future exception
 - enforce explicit fallback behavior (block, downgrade, or disable) with structured diagnostics when a profile is unsafe
 
+### 12.5 Phase 7 Reward Evolution Refinement Contract
+
+Reward evolution remains a downstream event system in Phase 7 and does not become a second progression engine.
+
+Event-source boundary:
+- reward evaluation is triggered only by explicit World Awakened reward-capable events
+- canonical early sources include `worldawakened:entity_killed` and `worldawakened:invasion_completed`
+- additional sources are allowed only when explicitly defined as World Awakened-owned reward-capable events
+
+Single-resolver guardrail:
+- all reward-capable subsystem branches (mutator/elite/invasion/loot-profile and future explicit reward contributors) must flow through one canonical reward-resolution pipeline
+- reward-capable subsystems contribute reward intent/eligibility markers; they do not directly apply final rewards
+- the canonical resolver is the only path that may apply final reward outcomes
+- per-event duplicate contributor/profile application is blocked by default unless explicitly marked repeatable
+
+Loot profile activation model:
+- loot profiles are conditional reward definitions authored in datapacks (`what`, `when`, and weighted likelihood), not direct assignment records
+- loot profiles are never manually attached to entities, mutation pools, mutators, structures, invasion profiles, or invasions
+- loot profiles activate only when their conditions match the canonical loot evaluation context
+- canonical Phase 7 loot context minimum keys: `loot_context_type`, `target_type`, `target_id`, `loot_table_id` (when relevant), `entity_type` (when relevant), `entity_is_mutated`, `mutation_tags`, `player` (nullable when no player is attributable), `dimension`, stage snapshot, invasion context (active or inactive), compat state, and scalar input policy context
+- all loot-profile condition evaluation must run exclusively against the canonical loot context snapshot
+- missing required context in a profile branch must fail closed (`false`) and must not trigger partial branch evaluation
+- useful Phase 7 condition patterns include `worldawakened:loot_table`, `worldawakened:entity_is_mutated`, `worldawakened:invasion_active` (optionally with `profile_id`), and `worldawakened:invasion_tag`
+
+Progression-boundary rules:
+- reward resolution must not unlock stages
+- reward resolution must not alter trigger eligibility
+- reward resolution must not mutate rule execution identity or same-pass rule snapshots
+
+Default behavior and ownership rules:
+- default loot behavior is additive/inject-only
+- World Awakened may add bonus drops, bonus XP, explicit reward-table outcomes, or other WA-owned reward payloads
+- World Awakened must not remove or replace vanilla drops by default
+- destructive replacement/removal behavior requires explicit policy enablement
+- reward logic must remain WA-owned and must not mutate unrelated vanilla or third-party systems
+
+Determinism and attribution rules:
+- for a given evaluation snapshot, reward resolution must be deterministic
+- profile/contributor selection ordering and weighted decisions must use deterministic ordering/roll semantics
+- each applied reward branch must remain attributable to source event, matched profile, and applied outcome
+- final reward application occurs once per resolved event pass, not once per contributing subsystem
+
+Phase boundary rule:
+- difficulty/challenge scalar layers do not influence Phase 7 reward outputs
+- reward scaling domains may be introduced only in a later explicitly documented phase
+
 ---
 
 ## 13. Invasion Event System
@@ -2946,22 +3025,102 @@ Separate from vanilla raids.
 - `trigger_mode`
 - `conditions[]`
 - `stage_filters`
-- `apotheosis_tier_filters`
 - `dimensions[]`
 - `biome_filters[]`
 - `min_players`
-- `cooldown`
-- `warning_time`
-- `wave_count`
-- `wave_interval`
-- `spawn_budget`
-- `spawn_composition[]`
-- `elite_chance`
-- `mutator_pool_refs[]`
+- `cooldown_seconds`
+- `warning_seconds`
+- `duration_seconds`
+- `pressure_modifier`
 - `reward_profile`
-- `boss_wave` (optional)
-- `max_active_entities`
-- `safe_zone_rules`
+- `tags[]`
+
+Phase 8 v1 invasion profile rule:
+- invasion profiles are pressure-event definitions, not spawn plans
+- Phase 8 v1 invasion profiles must not require wave or spawn-composition fields
+
+### 13.2A Invasion Runtime Context Contract (Phase 8 v1)
+
+During active invasion, runtime context must expose at minimum:
+- `invasion_active`
+- `invasion_profile_id`
+- `invasion_tags`
+- `invasion_display_name`
+- `invasion_start_time`
+- `invasion_remaining_duration`
+- `warning_active`
+- `pressure_modifier`
+
+This context must be readable by:
+- mutation pool conditions
+- loot/reward profile conditions
+- debug/inspect command surfaces
+
+### 13.2B Required Invasion Condition Shapes (Phase 8 v1)
+
+The shared condition model must support both forms in Phase 8 v1:
+
+General active check:
+
+```json
+{
+  "type": "worldawakened:invasion_active",
+  "parameters": {}
+}
+```
+
+Profile-specific active check:
+
+```json
+{
+  "type": "worldawakened:invasion_active",
+  "parameters": {
+    "profile_id": "worldawakened:undead_siege"
+  }
+}
+```
+
+Behavior:
+- no active invasion -> `false`
+- active invasion + no `profile_id` -> `true`
+- active invasion + `profile_id` provided -> `true` only when active profile matches
+- missing invasion state/context fails closed (`false`)
+
+Required invasion tag condition in v1:
+
+```json
+{
+  "type": "worldawakened:invasion_tag",
+  "parameters": {
+    "tag": "undead"
+  }
+}
+```
+
+Behavior:
+- `true` when the active invasion profile contains the requested tag
+- `false` when no invasion is active
+- `false` when the tag is absent on the active profile
+- fail closed safely when invasion context is unavailable
+
+### 13.2C Invasion-Gated Mutation Pool Balance Rule
+
+Invasion-gated mutation pools gain eligibility from invasion context and conditions.
+
+Hard rule:
+- invasion-gated eligibility must not automatically apply additional scalar amplification
+- eligibility and scalar amplification are separate concerns and must remain independently authored/policy-controlled
+
+### 13.2D Regression Anti-Patterns (Phase 7/8/10 Lock)
+
+Do not reintroduce:
+- direct attachment systems for rewards
+- wave-based invasion spawning
+- hidden scalar stacking across unrelated subsystems
+- duplicated/parallel reward pipelines
+- schema divergence between runtime contracts and web-tool payloads
+- hardcoded entity or loot catalogs for live linked authoring
+- web-tool behavior that bypasses runtime validation or becomes gameplay authority
 
 ### 13.3 Trigger Modes
 
@@ -2976,8 +3135,8 @@ Separate from vanilla raids.
 ### 13.4 Reward Strategy
 
 - profile-driven reward generation
-- scale by stage and/or Apotheosis tier
-- optional guaranteed chase item chance
+- optional reward gating based on active invasion profile/tags
+- no wave-completion coupling in Phase 8 v1
 
 ---
 
@@ -3015,7 +3174,7 @@ Generic support includes:
 - rules targeting modded entity tags
 - boss kill triggers based on configured IDs/tags/maps
 - mutator eligibility for modded entities via IDs/tags
-- invasion spawn composition using modded entity IDs
+- invasion profile conditions/tags that reference modded entity context where applicable
 - loot and reward rules conditioned on modded entity context where supported
 
 This means many content mods that add mobs or bosses can be supported by pack authors without any Java compat module.
@@ -3046,7 +3205,10 @@ Dedicated profile requirements:
 - `mod_id = apotheosis`
 - world-tier condition provider
 - world-tier trigger provider
-- optional scalar provider for loot/mutators/invasions
+- optional scalar provider for:
+  - mutation pressure outputs
+  - mutation pool eligibility/scalar gates
+  - reward scaling outputs
 - compat-safe identification of Apotheosis-sensitive loot targets when metadata is available
 
 ---
@@ -3166,6 +3328,8 @@ allow_world_tier_conditions = true
 allow_world_tier_stage_unlocks = true
 allow_world_tier_loot_scaling = true
 loot_unsafe_mode_policy = "block" # block | downgrade_additive | disable_profile_branch
+# Phase 9 pressure-event meaning: influences mutation pressure/pool eligibility/reward scaling only
+# and must not assume wave spawning/composition/unit orchestration.
 allow_world_tier_invasion_scaling = true
 allow_world_tier_mutator_scaling = true
 ```
@@ -3349,9 +3513,10 @@ Required support:
 - trigger mode
 - conditions
 - stage filters
-- Apotheosis tier filters
-- waves
-- composition
+- dimensions/biome filters
+- warning/duration/cooldown
+- pressure modifier
+- tags
 - rewards
 - cooldowns
 
@@ -3549,6 +3714,8 @@ Command semantics:
 - dense raw IDs, source keys, reason codes, and provenance belong in inspect/debug surfaces first; concise operator commands may append extra raw detail only when `general.debug_logging = true`
 - `general.debug_logging = true` must enrich concise operator output, not replace it with dense-only output
 - new command surfaces must not leak copy/debug affordances into normal gameplay notifications when the same action is already available through the intended player-facing path
+- command implementation should route operator/debug output through shared helper formatting paths to keep the three-layer model consistent across subsystems
+- player/operator failure lines should use human-readable rejection mapping language; raw diagnostic codes/details remain inspect/debug-oriented payloads
 - `ascension revoke <reward_id>` must reverse the chosen reward and reopen matching resolved offer instances when such instances exist
 - `ascension reopen <instance_id>` must move a resolved offer instance back to pending and restore access to that instance's candidate choices
 - `ascension clear <instance_id>` must remove pending or resolved offer history for that exact runtime instance without reopening it
@@ -3595,6 +3762,8 @@ Required behavior:
 #### 18.2B Phase 6 - Spawn Pressure / Difficulty / Challenge
 
 Required commands:
+- `/wa debug pressure last`
+- `/wa debug pressure replay <id>`
 - `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
 - `/wa debug difficulty scalar [player]`
 - `/wa difficulty global get`
@@ -3608,10 +3777,13 @@ Required commands:
 - `/wa difficulty vote no`
 
 Required behavior:
+- `pressure last` reports the most recent captured live spawn-pressure snapshot from the runtime mutator path and replays scalar resolution against current policy/state
+- `pressure replay <id>` reports a captured snapshot by ID and replays scalar resolution against current policy/state
 - `pressure evaluate` dry-runs spawn-pressure composition for a target context
 - `difficulty scalar` reports resolved effective scalar inputs and final output for the target context
 - difficulty commands must expose rejection reasons for bounds, permissions, cooldowns, vote requirements, and unsupported scope combinations
 - `pressure evaluate` output must include: base values, dimension baseline, global modifier, challenge modifier, integration scalar inputs, final effective scalar, policy rejection reasons, resolved target context, peaceful/category gate outcomes, and category-data fail-closed status
+- `pressure last` / `pressure replay` must expose captured runtime context (`dimension`, `position`, `entity`, `category`, `spawn origin`, attributed player context, stage snapshot, selected pool, chance roll mode/result) plus replay scalar output
 - `difficulty scalar` output must include: resolved scope, global modifier, challenge modifier, integration inputs, final effective scalar, policy gates consulted, and active cooldown/usage/vote state when applicable
 - debug/evaluate outputs must use the same compiled runtime structures and scalar service used by live execution; parity mismatch is a regression bug
 
@@ -3631,21 +3803,22 @@ Supported target types include:
 Required behavior:
 - `loot evaluate` dry-runs the real loot-profile pipeline for the given target context
 - `force_profile` evaluates one specific loot profile against the target context
-- both commands must report additive/replace/remove decisions, compatibility safety restrictions, and final outcome summary
+- both commands must report evaluated canonical context (`loot_context_type`, `target_type`, `target_id`, `loot_table_id` when relevant, entity/mutation/invasion context, dimension/stage context, compat/scalar policy context), source reward event, gathered contributors, candidate/matched/rejected profile decisions, additive/replace/remove decisions, compatibility safety restrictions, and final outcome summary
 - when Apotheosis compat is active, these commands must surface why a profile branch was blocked, downgraded, or allowed
+- rejection output must include explicit reason categories for profile misses (for example scope/context mismatch, condition fail, policy block, unsupported reward event)
+- output must make clear when duplicate-prevention blocked a non-repeatable contributor/profile in the same event pass
 
 #### 18.2D Phase 8 - Invasions
 
 Required commands:
 - `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
-- `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
 - `/wa invasion start <profile>`
 - `/wa invasion stop`
 
 Required behavior:
 - `invasion evaluate` dry-runs scheduler/profile eligibility and reports why the invasion would or would not activate
-- `force_wave` dry-runs or controlled-runs one wave composition pass with mutator and scalar resolution visible
 - live `start`/`stop` commands remain the operational verification path for end-to-end invasion behavior
+- evaluate and inspect output must expose scheduler decisions, cooldown gates, selected active profile, warning state, active tags, pressure modifier, duration/cooldown state, and invasion-gated mutation pool eligibility/rejections (including newly eligible or "unlocked due to invasion context" pools)
 
 #### 18.2E Phase 9 - Compat / Integrations
 
@@ -3782,7 +3955,7 @@ Canonical limits, buckets, and guardrails are defined in [PERFORMANCE_BUDGETS.md
 ### 19.3 Safety Guards
 
 - global reroll limits must exist for mutator selection
-- invasion spawn budgets must enforce hard caps
+- invasion duration/cooldown/pressure modifier policy bounds must enforce hard limits
 - spawn pressure scalars must obey config hard limits
 - rule recursion must be prevented
 - repeated evaluation within the same tick should not reroll the same context outcome
@@ -3843,7 +4016,7 @@ Migration behavior must prefer graceful degradation over crashes.
 
 Random behavior includes:
 - mutator selection
-- invasion composition
+- invasion profile selection
 - loot bonus rolls
 
 Requirements:
@@ -3954,14 +4127,14 @@ Phase 7 manual verification set:
 
 Phase 8 manual verification set:
 - evaluate invasion eligibility
-- force a wave
 - run controlled invasion `start`/`stop`
-- inspect scheduler, cap, and safe-zone behavior
+- inspect scheduler, warning, duration, cooldown, and pressure-modifier behavior
 
 Phase 9 manual verification set:
 - inspect compat activation
 - evaluate integration-gated behavior
 - inspect scalar provider outputs
+- confirm invasion-adjacent integration influence is limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling
 - verify fail-closed behavior when compat is missing or disabled
 
 ### 20A.2 Recommended Automated Coverage Additions
@@ -4016,13 +4189,36 @@ Hard rule:
 The World Awakened web authoring tool is a required v1 companion deliverable.
 
 Hard design boundary:
-- website: authoring and validation
-- mod: loading and execution
-- both must use one shared datapack format
+- website: authoring, validation, and editor workflow authority
+- mod/runtime: execution and apply-commit authority
+- hosted tooling must never become a second gameplay authority
+- website must consume runtime/exported schema contracts and must not become an independent schema authority
+- live-linked apply operations must be validated by runtime before commit
+- one shared datapack/data contract must be used across raw datapacks, runtime-authored state, and hosted-session payloads
 
 Release position:
 - required for v1 release
 - implemented late, after core gameplay systems and schema contracts are stable
+
+Required editing modes:
+- offline project mode (import/export authoring without a running game)
+- live linked session mode (runtime-connected editing through a short-lived hosted session)
+
+Hosted networking contract for live mode:
+- browser connects only to hosted World Awakened frontend/backend
+- mod/runtime connects outbound to hosted backend relay
+- normal supported flow must not require exposing a dedicated public API port on the game/server
+
+Live session safety contract:
+- unique session ID and short-lived signed token
+- session expiry and revision/version tracking
+- stale-session and revision-mismatch protection (fail safely with diagnostics)
+- runtime validation required before commit
+- branch/object-level isolation for invalid payload portions where possible
+
+Registry-aware authoring contract:
+- live linked sessions must surface runtime-provided registry metadata (entity types/tags, items, blocks, dimensions, biomes, loot tables, effects, and other WA-relevant sets)
+- live-mode selectors must prefer runtime-provided metadata over static baked catalogs
 
 Normative detail:
 - full contract for workflows, UI modules, validation layers, schema/versioning, import/export layout, templates, and acceptance criteria is defined in `docs/WEB_AUTHORING_TOOL_SPEC.md`
@@ -4128,8 +4324,8 @@ Phase impact expectations:
 - Phase 5: preserve strict ownership boundaries so mutator and reward application reconcile only World Awakened-owned state, use WA-owned carriers where needed, and fail closed when external capabilities, hooks, or carrier classes are unavailable
 - Phase 6: rule-event and spawn guardrails must satisfy performance budget and debug-observability contracts
 - Phase 7-9: downstream systems (loot/invasion/compat) must preserve bounded evaluation and traceable rejection diagnostics
-- Phase 10: web authoring validation must surface composition/performance contract warnings with canonical diagnostics mapping
-- Phase 11: hardening must confirm telemetry/debug surfaces and large-pack stability against performance contracts
+- Phase 10: web authoring must include hosted offline and live-linked session workflows, registry-aware selectors, and runtime-validated apply/revision safeguards while still surfacing composition/performance diagnostics
+- Phase 11: hardening must confirm telemetry/debug surfaces, large-pack stability, linked-session safety (auth/token/revision/apply), and regression coverage for earlier-phase guardrails
 
 Outcome rule:
 - all future systems must extend these shared contracts instead of defining subsystem-specific condition/action/scope/composition/status variants
@@ -4185,6 +4381,7 @@ Exit criteria:
 - implement command-driven verification surfaces for pressure/difficulty/challenge:
   - inspect: `/wa debug difficulty scalar [player]`
   - evaluate: `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
+  - replay: `/wa debug pressure last`, `/wa debug pressure replay <id>`
   - force/override: `/wa difficulty global set <value>`, `/wa difficulty global reset`, `/wa difficulty personal set <value>`, `/wa difficulty world set <value>`, `/wa difficulty vote yes|no`
   - controlled live test: policy-gated difficulty updates followed by real spawn/rule-path verification
 - implement hard safety caps and loop guards
@@ -4223,9 +4420,18 @@ Exit criteria:
 ### Phase 7 - Loot Evolution
 - implement `loot_profiles` loading and condition matching
 - integrate profile actions into loot table modification hooks
-- implement mutated mob bonus drop path and profile-based scaling
+- implement mutated mob bonus drop path and WA-owned reward payload application
 - apply replace, remove, and inject semantics in the documented assembly order
 - enforce additive composition rules for Apotheosis-sensitive targets when compat is active
+- implement canonical loot-context builder with required Phase 7 fields (`loot_context_type`, `target_type`, `target_id`, `loot_table_id`, `entity_type`, `entity_is_mutated`, `mutation_tags`, `player`, `dimension`, stage context, invasion context, compat state, scalar input policy context)
+- evaluate rewards only from explicit WA-owned reward-capable events (`entity_killed`, `invasion_completed`, and future explicitly documented WA reward events)
+- require reward-capable systems to contribute reward intent markers only (no direct reward application bypass)
+- implement one canonical reward resolver pipeline (`context -> gather contributors -> resolve -> apply once -> trace`)
+- keep loot-profile activation condition-driven only (no direct per-entity/per-mutator/per-structure/per-invasion attachment model)
+- keep reward resolution downstream-only (no stage unlock/trigger-eligibility/rule-identity mutation side effects)
+- keep default behavior inject/additive unless explicit destructive policy is enabled
+- keep Phase 7 reward outputs scalar-isolated from global/challenge difficulty modifiers
+- enforce non-repeatable-by-default contributor/profile behavior unless explicitly marked repeatable
 - implement command-driven verification surfaces for loot:
   - inspect: loot debug inspect output
   - evaluate: `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
@@ -4235,32 +4441,41 @@ Exit criteria:
 Exit criteria:
 - targeted chest tables receive profile-driven changes as configured
 - replace/inject modes obey config restrictions
-- debug loot evaluate/force commands expose candidate profiles, operation decisions, compat-safety decisions, and final assembled outcomes
+- debug loot evaluate/force commands expose evaluated canonical context, source event, candidate/matched/rejected profiles with reasons, operation decisions, compat-safety decisions, and final applied reward outcomes
 - unsafe loot modes against Apotheosis-sensitive targets are blocked, downgraded, or disabled with structured diagnostics
 - broken loot profiles are isolated and logged without global failure
+- repeated identical snapshots resolve identical reward decisions and assembled outcomes
+- duplicate reward outcomes from same-event multi-contributor overlap are blocked unless the contributor/profile is explicitly repeatable
 
 ### Phase 8 - Invasion System (One Mode MVP)
 - implement invasion scheduler and active invasion state tracking
 - ship at least one robust trigger mode (`random_periodic` + `command_forced`)
-- implement wave spawning, warning window, and reward profile output
-- separate scheduler phase from wave spawn phase and guard both against stuck-active failures
+- implement warning window, temporary pressure modifier, invasion context surfaces, and reward profile output
+- keep invasions as pressure events only; no WA-owned wave spawning, spawn orchestration, spawn composition control, or WA-owned invasion entity spawning in Phase 8 v1
 - implement command-driven verification surfaces for invasions:
   - inspect: invasion inspect output
   - evaluate: `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
-  - force: `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
   - controlled live test: `/wa invasion start <profile>` and `/wa invasion stop`
 
 Exit criteria:
 - `/wa invasion start <profile>` and `/wa invasion stop` operate reliably
-- warning and wave cadence follow profile configuration
-- invasion evaluate/force outputs expose scheduler eligibility, cooldown/cap gates, wave composition, and safe-zone outcomes
-- invasion entity cap and safe-zone guards are enforced
+- warning windows work when configured
+- pressure modifier applies and removes cleanly
+- invasion-gated mutation pools activate only during invasion context
+- `invasion_active` profile-specific matching and `invasion_tag` matching work in v1
+- invasion context is available to reward and debug systems
+- no WA-owned wave spawning, spawn orchestration, spawn composition control, or WA-owned invasion entity spawning is implemented in Phase 8 v1
 
 ### Phase 9 - Compatibility Framework and Apotheosis
 - implement generic integration activation pipeline (`mod loaded` + config + profile)
 - implement integration profiles and compatibility registry reporting
 - implement Apotheosis world tier provider (conditions, triggers, scalar inputs)
 - implement Apotheosis loot compatibility detection for sensitive targets and enforce compose-not-override behavior
+- integration tier influence domains for invasion-adjacent behavior are limited to:
+  - mutation pressure
+  - mutation pool eligibility/scalar gates
+  - reward scaling
+- compatibility logic must not assume WA-owned invasion waves, invasion spawn composition engines, or invasion unit orchestration
 - support ascension offer triggers from compatible external tier providers where configured
 - support mapping modes (`independent`, `derived_stage`, `scalar`, `hybrid`)
 - keep dedicated boss/mob mod compat additive; do not move generic entity-based support behind compat modules
@@ -4275,16 +4490,29 @@ Exit criteria:
 - Apotheosis-specific objects are safely skipped or evaluate false when inactive
 - Apotheosis-managed tier-gated loot behavior is preserved on sensitive targets while World Awakened additive rewards still apply
 - external tier integrations can feed rule and ascension eligibility safely when enabled
+- external tier integrations influence invasion-adjacent behavior only through mutation pressure, mutation pool eligibility/scalar gates, and reward scaling outputs
 - compat/scalar debug commands expose loaded-mod/config/profile/provider gates and explain fail-closed results
 - `/wa compat list` and `/wa apotheosis tier inspect` are functional
 
 ### Phase 10 - Web Authoring Tool (Browser Companion)
-- implement web authoring project model and canonical object collections
+- implement centrally hosted React/TypeScript editor frontend
+- implement hosted backend session/relay service for linked runtime editing
+- implement web authoring project model with three project kinds (offline local, imported datapack, live linked runtime)
 - implement schema-backed validation layers (schema, semantic, cross-object reference)
 - implement import pipelines for folder, zip, and selected JSON object files
 - implement deterministic export generation for canonical datapack layout
-- implement visual editors, structured editors, and raw JSON editor synchronization
+- implement visual editors, structured editors, and raw JSON editor synchronization across both offline and live linked modes
 - implement condition and component builders with implemented/planned/deprecated markers
+- implement runtime-linked session flow:
+  - start link via `/wa web edit` baseline command
+  - load current runtime-authored WA state into hosted editor
+  - apply validated changes back through backend relay
+  - enforce revision checks and stale-session safeguards
+- keep runtime command guidance aligned:
+  - required baseline: `/wa web edit`
+  - optional future variants: `/wa web edit live`, `/wa web edit export`, `/wa web session status`, `/wa web session revoke`
+- implement registry-aware selector support fed by runtime metadata in live mode
+- implement live-mode project/session status surfaces (runtime version, schema version, modpack metadata, registry freshness, last sync, pending changes, apply history)
 - implement performance budget validation and warnings in authoring workflows:
   - scope bucket size estimation warnings
   - actions-per-rule warnings
@@ -4299,6 +4527,12 @@ Exit criteria:
 - performance budget warnings are surfaced with actionable object-level context
 - users can switch between visual, structured, and raw JSON layers without losing semantic fidelity
 - deterministic export output remains stable for unchanged project content
+- operators can start a linked web editing session from runtime command surface
+- hosted editor can load current runtime-authored WA state from linked session
+- live-mode selectors show runtime/modpack-aware registry values
+- runtime rejects invalid linked apply operations safely with diagnostics
+- successful linked apply operations commit cleanly into running runtime state
+- stale/conflicting browser sessions fail safely with clear revision diagnostics
 
 ### Phase 11 - Hardening, Examples, and Release Prep
 - complete validation rule coverage and improve error quality
@@ -4306,6 +4540,13 @@ Exit criteria:
 - complete docs pass across spec/readme/authoring/agents
 - perform performance sanity checks for reload and spawn-path logic
 - validate large-pack hot-path behavior against performance contracts (thousands of authored objects)
+- harden linked-session auth/token expiry and relay security boundaries
+- polish revision-conflict handling and stale-session UX messaging
+- polish linked apply safety/retry behavior and diagnostics quality
+- evaluate deployment hardening including optional self-hosted backend/frontend pathways
+- run regression verification that Phase 7 reward boundaries still hold after live-linked apply/reload (downstream event-only reward triggers, canonical single resolver, no progression mutation side effects)
+- run regression verification that Phase 8 invasion behavior remains pressure-event-only after live-linked apply/reload (no WA-owned wave spawning assumptions)
+- run regression verification that Phase 9 compat influence boundaries remain intact after live-linked apply/reload (invasion-adjacent influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling)
 - implement minimum performance-debug command surfaces:
   - `/wa debug perf`
   - `/wa debug rules`
@@ -4318,6 +4559,8 @@ Exit criteria:
 - docs are synchronized and reflect implemented behavior
 - performance-debug outputs expose bucket sizes, evaluation counts, and mutation budget telemetry
 - migration and downgrade behavior degrade safely without corrupting saves
+- linked-session expiry/revision/apply failure modes are explicit, safe, and operator-inspectable
+- hardening verification confirms no regressions of Phase 7-9 gameplay guardrails when content is edited via hosted live-linked sessions
 
 ### Cross-Phase Quality Gates
 - each phase ends with successful compile/build and server startup smoke test
@@ -4351,7 +4594,7 @@ Must-have:
 - optional world-context conditions as datapack rule inputs (non-core progression drivers)
 - debug commands
 - datapack-driven rules
-- browser-based datapack authoring, validation, import, and export tooling using the same canonical datapack format as runtime
+- hosted web authoring, validation, import/export, and live-linked runtime-session editing using the same canonical datapack/data contract as runtime
 
 Deferred:
 - full hybrid conflict resolver

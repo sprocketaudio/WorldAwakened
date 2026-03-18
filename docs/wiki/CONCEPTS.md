@@ -3,7 +3,7 @@
 Plain-language explanation of how World Awakened thinks about progression, triggers, rules, and ascension.
 
 - Document status: Active human-friendly concept guide
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Mental model for operators and datapack authors
 
 ---
@@ -139,21 +139,21 @@ The framework does not make ascension world-global in v1.
 
 ## Offer Template vs Runtime Offer Instance
 
-This distinction matters a lot in Phase 4 testing.
+This distinction matters a lot in ascension testing.
 
 ### Offer template
 
 The datapack definition.
 
 Example:
-- `wa_test:starter_path`
+- `your_pack:starter_path`
 
 ### Runtime offer instance
 
 The actual pending or resolved offer saved on a player.
 
 Examples:
-- one player may have a pending instance of `wa_test:starter_path`
+- one player may have a pending instance of `your_pack:starter_path`
 - later that same player may have a resolved instance created from the same offer template
 
 Why the commands use `instance_id` for selection:
@@ -268,6 +268,33 @@ A good rule:
 - use operator commands to run the system
 - use debug commands to clean up or reset the system
 
+## Web Authoring Modes: Offline vs Live Linked
+
+The web authoring platform has two different editing modes.
+
+### Offline mode
+
+Use this for import/export workflows without a running server.
+
+You can:
+- build or import a datapack project
+- validate content
+- export deterministic datapack files
+
+### Live linked mode
+
+Use this when you need to edit the currently loaded World Awakened authored state on a running server.
+
+You can:
+- start a linked session from runtime (`/wa web edit`)
+- load runtime-authored state and runtime registry metadata into the hosted editor
+- apply changes back to runtime with runtime-side validation
+
+Important authority rule:
+- editor is authoring/validation workflow authority
+- runtime is apply/commit and gameplay execution authority
+- linked sessions are short-lived and revision-checked so stale browser state cannot silently overwrite newer runtime state
+
 ## Single-Pass Rule Behavior
 
 World Awakened does not keep re-running the same event pass until everything settles.
@@ -283,6 +310,44 @@ This is why testing often looks like:
 4. observe the rule now consuming or activating
 
 That behavior is intentional and deterministic.
+
+## Reward Evolution Boundaries
+
+Reward evolution is downstream behavior, not progression logic.
+
+Keep this model:
+- reward paths run only from explicit WA reward-capable events (for example entity kill or invasion completion flows)
+- mutators/elites/invasions/loot profiles do not each pay rewards directly; they contribute to one shared resolver pass
+- reward paths can add WA-owned outcomes (bonus drops, bonus XP, explicit reward payloads)
+- reward paths do not unlock stages or rewrite trigger/rule identity
+- default behavior stays additive/inject-first unless destructive policy is explicitly enabled
+- reward outputs do not use global/challenge difficulty scalars until reward-scaling rules are explicitly enabled in spec
+- final rewards are applied once from the resolved result
+- same contributor/profile will not apply twice in one event unless explicitly marked repeatable
+
+Canonical reward context (minimum) includes:
+- `loot_context_type`, `target_type`, `target_id`
+- `loot_table_id`, `entity_type`, `entity_is_mutated`, `mutation_tags`
+- `player` (if present), `dimension`, stage snapshot, invasion context
+- compat state and scalar input policy context (current spec keeps reward scaling disabled)
+
+If a reward result appears wrong, inspect/debug should always be able to answer:
+- which source event ran
+- which contributors were gathered
+- which profile matched
+- which profiles were rejected and why
+- which final reward outcomes were applied
+
+## Invasions As Pressure Events
+
+Invasions are event-state pressure systems.
+
+Keep this model:
+- World Awakened activates and tracks invasion state, warning time, duration, and cooldown
+- World Awakened applies a temporary invasion pressure modifier while the event is active
+- World Awakened exposes invasion context (`invasion_active`, `invasion_profile_id`, `invasion_tags`, warning/duration state, pressure modifier)
+- vanilla and other mods still own actual mob spawning
+- invasion-gated mutation pools become eligible through invasion conditions; they are not spawned by a WA wave engine
 
 ## The Mental Model To Keep
 

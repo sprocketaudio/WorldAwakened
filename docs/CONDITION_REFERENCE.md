@@ -3,7 +3,7 @@
 Canonical reference for shared condition node IDs, parameter schemas, scope legality, and status markers.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-18
 - Scope: Shared condition contracts across runtime, validation, and tooling
 
 ---
@@ -204,15 +204,19 @@ Wrapper status:
 #### `invasion_active`
 - **Category:** `Progression / state`
 - **Purpose:** True when an invasion runtime is currently active.
-- **Valid scopes:** `world`, `invasion`, `event_context`
-- **Parameters:** `profile` (`resource_location`, optional)
-- **Defaults / Notes:** Current implemented runtime checks active-state boolean; profile filtering is a future refinement.
+- **Valid scopes:** `world`, `player`, `entity`, `spawn_event`, `loot`, `invasion`, `event_context`
+- **Parameters:** `profile_id` (`resource_location`, optional)
+- **Defaults / Notes:** Canonical parameter key is `profile_id`; `profile` may be accepted as compatibility alias where implemented.
+- **Behavior:** no active invasion -> `false`; active invasion + no `profile_id` -> `true`; active invasion + `profile_id` -> `true` only when active profile matches.
 - **Missing-context behavior:** False when invasion runtime context is unavailable.
-- **Compatibility Notes:** Use with invasion scheduler/wave contexts where possible.
+- **Compatibility Notes:** Use with invasion scheduler/active-event contexts, mutation-pool gating, and loot/reward gating.
 - **Status:** `implemented`
-- **Example Snippet:**
+- **Example Snippets:**
 ```json
-{ "type": "worldawakened:invasion_active", "parameters": { "profile": "my_pack:nightfall" } }
+{ "type": "worldawakened:invasion_active", "parameters": {} }
+```
+```json
+{ "type": "worldawakened:invasion_active", "parameters": { "profile_id": "my_pack:nightfall" } }
 ```
 
 #### `mutation_present`
@@ -715,6 +719,35 @@ Wrapper status:
 { "type": "worldawakened:event_type", "parameters": { "event": "worldawakened:entity_killed" } }
 ```
 
+#### `loot_table`
+- **Category:** `Random / event context`
+- **Purpose:** Matches the active loot table ID in current loot evaluation context.
+- **Valid scopes:** `loot`, `event_context`
+- **Parameters:** `id` (`resource_location`, required)
+- **Defaults / Notes:** Intended for structure/container loot targeting in profile conditions.
+- **Missing-context behavior:** False when loot-table context is unavailable.
+- **Compatibility Notes:** Phase 7 targeted shared condition for condition-driven loot profile activation.
+- **Status:** `planned`
+- **Example Snippet:**
+```json
+{ "type": "worldawakened:loot_table", "parameters": { "id": "minecraft:chests/simple_dungeon" } }
+```
+
+#### `invasion_tag`
+- **Category:** `Random / event context`
+- **Purpose:** Matches invasion-tag metadata attached to current invasion or invasion-reward context.
+- **Valid scopes:** `spawn_event`, `loot`, `invasion`, `event_context`
+- **Parameters:** `tag` (`string`, required)
+- **Defaults / Notes:** Use for invasion-gated mutation pool and reward theme gating (for example `undead`, `nether`, `swarm`).
+- **Behavior:** returns `true` when active invasion profile contains the tag; returns `false` when no invasion is active; returns `false` when active profile lacks the tag.
+- **Missing-context behavior:** False when invasion-tag metadata is unavailable.
+- **Compatibility Notes:** Phase 8 v1 required condition for reusable pressure-event tag matching; fail closed when invasion state is absent.
+- **Status:** `planned`
+- **Example Snippet:**
+```json
+{ "type": "worldawakened:invasion_tag", "parameters": { "tag": "undead" } }
+```
+
 #### `recent_trigger`
 - **Category:** `Random / event context`
 - **Purpose:** Matches whether a trigger fired within a bounded recent window.
@@ -879,7 +912,7 @@ Condition-specific caveats:
 - `recent_trigger` depends on trigger-history cache/state.
 - `random_chance` must remain deterministic per evaluation context.
 - `structure_context` should include explicit `structure` to avoid ambiguous pass behavior.
-- `invasion_active` currently evaluates active invasion state; profile filtering is planned refinement.
+- `invasion_active` currently evaluates active invasion state; canonical profile filtering key is `profile_id` with `profile` compatibility alias support where implemented.
 
 Runtime compatibility paths not yet promoted into canonical shared catalog:
 
@@ -901,7 +934,7 @@ Authoring recommendation:
 | `stage_locked` | Progression/state | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
 | `ascension_reward_owned` | Progression/state | player, entity, spawn_event, event_context, invasion | implemented |
 | `ascension_offer_pending` | Progression/state | player, event_context | implemented |
-| `invasion_active` | Progression/state | world, invasion, event_context | implemented |
+| `invasion_active` | Progression/state | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
 | `mutation_present` | Progression/state | entity, spawn_event, loot, event_context | planned |
 | `rule_consumed` | Progression/state | world, player, entity, event_context | planned |
 | `trigger_consumed` | Progression/state | world, player, event_context | planned |
@@ -937,6 +970,8 @@ Authoring recommendation:
 | `integration_active` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
 | `random_chance` | Random/event context | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
 | `event_type` | Random/event context | spawn_event, loot, invasion, event_context | planned |
+| `loot_table` | Random/event context | loot, event_context | planned |
+| `invasion_tag` | Random/event context (required for Phase 8 v1 completion) | spawn_event, loot, invasion, event_context | planned |
 | `recent_trigger` | Random/event context | world, player, event_context | planned |
 | `source_scope_match` | Random/event context | event_context | planned |
 | `all_of` | Logical wrapper | compositional wrapper node | planned |

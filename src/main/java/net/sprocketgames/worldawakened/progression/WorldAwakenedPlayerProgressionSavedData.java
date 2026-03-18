@@ -126,6 +126,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private static final String KEY_SUPPRESSED_ASCENSION_COMPONENTS = "suppressed_ascension_components";
         private static final String KEY_ASCENSION_REWARD_SUPPRESSION_TIMESTAMPS = "ascension_reward_suppression_timestamps";
         private static final String KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS = "ascension_component_suppression_timestamps";
+        private static final String KEY_CHALLENGE_MODIFIER = "challenge_modifier";
+        private static final String KEY_CHALLENGE_COOLDOWN_UNTIL_MILLIS = "challenge_cooldown_until_millis";
+        private static final String KEY_CHALLENGE_CHANGE_COUNT = "challenge_change_count";
+        private static final String KEY_CHALLENGE_UPDATED_AT_MILLIS = "challenge_updated_at_millis";
+        private static final String KEY_CHALLENGE_UPDATED_BY = "challenge_updated_by";
 
         private final WorldAwakenedPlayerProgressionSavedData owner;
 
@@ -154,6 +159,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         private final Map<ResourceLocation, Set<String>> suppressedAscensionComponentsByReward = new LinkedHashMap<>();
         private final Map<ResourceLocation, Long> ascensionRewardSuppressionTimestamps = new LinkedHashMap<>();
         private final Map<String, Long> ascensionComponentSuppressionTimestamps = new LinkedHashMap<>();
+        private double challengeModifier = 1.0D;
+        private long challengeCooldownUntilMillis = 0L;
+        private int challengeChangeCount = 0;
+        private long challengeUpdatedAtMillis = 0L;
+        private String challengeUpdatedBy = "";
 
         private PlayerStageState(WorldAwakenedPlayerProgressionSavedData owner) {
             this.owner = owner;
@@ -184,6 +194,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
             suppressedAscensionComponentsByReward.clear();
             ascensionRewardSuppressionTimestamps.clear();
             ascensionComponentSuppressionTimestamps.clear();
+            challengeModifier = 1.0D;
+            challengeCooldownUntilMillis = 0L;
+            challengeChangeCount = 0;
+            challengeUpdatedAtMillis = 0L;
+            challengeUpdatedBy = "";
 
             unlockedStages.addAll(WorldAwakenedProgressionNbt.readResourceLocationSet(tag, KEY_UNLOCKED_STAGES));
             unlockTimestamps.putAll(WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_UNLOCK_TIMESTAMPS));
@@ -242,6 +257,11 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
                     WorldAwakenedProgressionNbt.readStageLongMap(tag, KEY_ASCENSION_REWARD_SUPPRESSION_TIMESTAMPS));
             ascensionComponentSuppressionTimestamps.putAll(
                     WorldAwakenedProgressionNbt.readStringLongMap(tag, KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS));
+            challengeModifier = tag.contains(KEY_CHALLENGE_MODIFIER) ? tag.getDouble(KEY_CHALLENGE_MODIFIER) : 1.0D;
+            challengeCooldownUntilMillis = tag.getLong(KEY_CHALLENGE_COOLDOWN_UNTIL_MILLIS);
+            challengeChangeCount = tag.getInt(KEY_CHALLENGE_CHANGE_COUNT);
+            challengeUpdatedAtMillis = tag.getLong(KEY_CHALLENGE_UPDATED_AT_MILLIS);
+            challengeUpdatedBy = tag.getString(KEY_CHALLENGE_UPDATED_BY);
 
             if (pendingAscensionOfferInstances.isEmpty() && !pendingAscensionOffers.isEmpty()) {
                 for (ResourceLocation offerId : pendingAscensionOffers) {
@@ -432,6 +452,13 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
                     tag,
                     KEY_ASCENSION_COMPONENT_SUPPRESSION_TIMESTAMPS,
                     ascensionComponentSuppressionTimestamps);
+            tag.putDouble(KEY_CHALLENGE_MODIFIER, challengeModifier);
+            tag.putLong(KEY_CHALLENGE_COOLDOWN_UNTIL_MILLIS, challengeCooldownUntilMillis);
+            tag.putInt(KEY_CHALLENGE_CHANGE_COUNT, challengeChangeCount);
+            tag.putLong(KEY_CHALLENGE_UPDATED_AT_MILLIS, challengeUpdatedAtMillis);
+            if (!challengeUpdatedBy.isBlank()) {
+                tag.putString(KEY_CHALLENGE_UPDATED_BY, challengeUpdatedBy);
+            }
         }
 
         private void rebuildAscensionSummarySets() {
@@ -587,6 +614,46 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
 
         public Map<String, Long> ascensionComponentSuppressionTimestamps() {
             return ascensionComponentSuppressionTimestamps;
+        }
+
+        public double challengeModifier() {
+            return challengeModifier;
+        }
+
+        public void setChallengeModifier(double challengeModifier) {
+            this.challengeModifier = challengeModifier;
+        }
+
+        public long challengeCooldownUntilMillis() {
+            return challengeCooldownUntilMillis;
+        }
+
+        public void setChallengeCooldownUntilMillis(long challengeCooldownUntilMillis) {
+            this.challengeCooldownUntilMillis = challengeCooldownUntilMillis;
+        }
+
+        public int challengeChangeCount() {
+            return challengeChangeCount;
+        }
+
+        public void setChallengeChangeCount(int challengeChangeCount) {
+            this.challengeChangeCount = challengeChangeCount;
+        }
+
+        public long challengeUpdatedAtMillis() {
+            return challengeUpdatedAtMillis;
+        }
+
+        public void setChallengeUpdatedAtMillis(long challengeUpdatedAtMillis) {
+            this.challengeUpdatedAtMillis = challengeUpdatedAtMillis;
+        }
+
+        public String challengeUpdatedBy() {
+            return challengeUpdatedBy;
+        }
+
+        public void setChallengeUpdatedBy(String challengeUpdatedBy) {
+            this.challengeUpdatedBy = challengeUpdatedBy == null ? "" : challengeUpdatedBy;
         }
 
         @Override

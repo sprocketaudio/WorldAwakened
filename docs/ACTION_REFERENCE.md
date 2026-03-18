@@ -3,7 +3,7 @@
 Canonical reference for shared action node IDs, scope legality, execution semantics, and status markers.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-12
+- Last updated: 2026-03-18
 - Scope: Shared action contracts across runtime, validation, and tooling
 
 ---
@@ -204,6 +204,9 @@ Shared ordering guarantees used across entries:
 - Stage unlock/lock effects apply during action application and are visible to later event passes, not retroactively to already-evaluated same-pass rule conditions.
 - Rule execution includes recursion protection (`WorldAwakenedRecursionGuard`) and bounded processing semantics.
 - Planned action handlers that are accepted-but-deferred must not silently pretend to have executed effects.
+- Phase 7 loot/reward actions must run only on explicit WA-owned reward-capable downstream events and must not introduce progression mutations (stage unlocks, trigger-eligibility rewrites, rule-identity mutation).
+- Phase 7 loot/reward actions are scalar-isolated from global/challenge difficulty modifiers until reward-scaling is explicitly promoted in a later phase.
+- Phase 7 reward-capable subsystems must contribute reward intent/eligibility into one canonical resolver; they must not bypass that resolver with direct final reward application.
 
 ## 11. Status Taxonomy Usage
 
@@ -394,7 +397,7 @@ Current action catalog state:
 
 #### `worldawakened:set_temp_invasion_modifier`
 - **Category:** Progression / state
-- **Purpose:** Apply a temporary invasion scalar modifier.
+- **Purpose:** Apply a temporary invasion pressure-event scalar modifier.
 - **Valid scopes:** `invasion`, `world`, `event_context`
 - **Parameters:** `key` (`string`, required), `value` (`number`, required), `duration_seconds` (`number`, optional)
 - **Idempotency:** `non-idempotent`
@@ -407,7 +410,7 @@ Current action catalog state:
 ```json
 {
   "type": "worldawakened:set_temp_invasion_modifier",
-  "parameters": { "key": "wave_health", "value": 1.25, "duration_seconds": 60 }
+  "parameters": { "key": "invasion_pressure", "value": 1.25, "duration_seconds": 60 }
 }
 ```
 
@@ -538,8 +541,8 @@ Current action catalog state:
 - **Parameters:** `profile` (`resource_location`, required)
 - **Idempotency:** `non-idempotent`
 - **Persistence:** Ephemeral loot assembly.
-- **Ordering / Execution Notes:** Must preserve deterministic loot profile merge order.
-- **Defaults / Notes:** Additive/replacement behavior is controlled by profile/runtime policy.
+- **Ordering / Execution Notes:** Must preserve deterministic loot profile merge order and feed the canonical reward resolver candidate set rather than applying final rewards directly.
+- **Defaults / Notes:** Additive/replacement behavior is controlled by profile/runtime policy; default Phase 7 expectation is additive/inject-first unless destructive policy is explicitly enabled.
 - **Compatibility Notes:** Current `rules` validator temporarily accepts this action only in `spawn_event` scope; runtime currently defers/no-ops.
 - **Status:** `planned`
 - **Example Snippet:**
@@ -557,8 +560,8 @@ Current action catalog state:
 - **Parameters:** `table` (`resource_location`, required)
 - **Idempotency:** `non-idempotent`
 - **Persistence:** Ephemeral reward/drop output generation.
-- **Ordering / Execution Notes:** Must remain bounded by anti-recursion safeguards.
-- **Defaults / Notes:** Table IDs should be explicit and stable.
+- **Ordering / Execution Notes:** Must remain bounded by anti-recursion safeguards and obey canonical per-event apply-once resolution flow.
+- **Defaults / Notes:** Table IDs should be explicit and stable; reward-table branches should be attributable to source event + matched profile context in debug/inspect outputs.
 - **Compatibility Notes:** Current `rules` validator accepts this for `entity|spawn_event`; runtime currently defers/no-ops.
 - **Status:** `planned`
 - **Example Snippet:**
@@ -576,8 +579,8 @@ Current action catalog state:
 - **Parameters:** `reward_type` (`string`, required), `payload` (`object`, required)
 - **Idempotency:** `non-idempotent`
 - **Persistence:** Typically mutates persistent player/world state (reward-handler specific).
-- **Ordering / Execution Notes:** Handler-level dedupe policy must be explicit.
-- **Defaults / Notes:** Payload contract is handler-specific and must be schema-validated by handler type.
+- **Ordering / Execution Notes:** Handler-level dedupe policy must be explicit and aligned with canonical per-event duplicate-prevention/repeatability policy.
+- **Defaults / Notes:** Payload contract is handler-specific and must be schema-validated by handler type; reward payloads must remain WA-owned and must not mutate unrelated vanilla/third-party reward systems.
 - **Compatibility Notes:** Planned shared action ID; currently rejected by `trigger_rules` and `rules` validators.
 - **Status:** `planned`
 - **Example Snippet:**
@@ -600,7 +603,7 @@ Current action catalog state:
 - **Parameters:** `profile` (`resource_location`, required)
 - **Idempotency:** `non-idempotent`
 - **Persistence:** Mutates persistent world invasion runtime state.
-- **Ordering / Execution Notes:** Must obey invasion concurrency/priority caps.
+- **Ordering / Execution Notes:** Must obey invasion active-state and cooldown/concurrency policy gates.
 - **Defaults / Notes:** Profile should reference an authored invasion definition ID.
 - **Compatibility Notes:** Current `rules` validator accepts only `world` scope; runtime currently defers/no-ops.
 - **Status:** `planned`

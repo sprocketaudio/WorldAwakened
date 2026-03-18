@@ -3,7 +3,7 @@
 Canonical reference for structured diagnostic code families, severity semantics, and publication rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Validation and diagnostics contracts across runtime, commands, and tooling
 
 ---
@@ -333,11 +333,20 @@ Publication labels used below:
 | `WA_INVALID_REFERENCE` | implemented | reference resolution | warning or error | cross-object | context-dependent | Missing referenced mutator/reward/profile/stage or ID/path mismatch. | Disable dependent object on hard missing refs; keep warning-only mismatches non-blocking. | Fix target IDs and ensure referenced object exists/enabled. | Current generic reference code in loader. |
 | `WA_POOL_SELECTION_IMPOSSIBLE` | implemented | mutation pool | error | validation/runtime guard | yes | Pool has no selectable/valid entries after filtering. | Disable invalid pool/object branch. | Add valid entries/weights and fix filters. | Emitted in pool validation paths. |
 | `WA_MUTATION_CHANCE_INVALID` | implemented | mutation pool chance | error | validation | yes | `mutation_chance` missing numeric type or outside `[0.0, 1.0]`. | Disable owning pool object. | Author a numeric value in range `0.0..1.0` or omit field for default `1.0`. | Canonical validation code for pool chance field. |
-| `WA_INVASION_COMPOSITION_INVALID` | implemented | invasion profile | error | validation | yes | Invalid `spawn_composition` entries or zero valid entries. | Disable offending invasion profile. | Provide valid selectors and composition entries. | Emitted during invasion profile checks. |
+| `WA_INVASION_COMPOSITION_INVALID` | implemented (legacy name) | invasion profile | error | validation | yes | Invalid invasion pressure-event profile fields or contradictory active-event configuration. | Disable offending invasion profile. | Provide valid duration/cooldown/warning/pressure/tags/condition configuration. | Legacy code name retained for compatibility; semantics are pressure-event profile validity after Phase 8 rewrite. |
 | `WA_INTEGRATION_INACTIVE` | implemented | integration | error | validation | branch-level | Integration-specific data authored while integration disabled/missing. | Skip/disable integration-specific branch only. | Enable integration or remove integration-specific nodes. | Must not become hard dependency failure. |
 | `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED` | published | Apotheosis compat | warning or error | validation/runtime guard | branch-level | Unsafe destructive operation (`replace_entries`, `remove_entries`) blocked on sensitive target. | Block operation branch; preserve Apotheosis behavior. | Use additive/safe mode or retarget profile. | Required canonical Apotheosis safety code. |
 | `WA_APOTHEOSIS_LOOT_MODE_UNSAFE` | published | Apotheosis compat | warning or error | validation/runtime guard | branch-level | Selected loot mode conflicts with safety policy for sensitive targets. | Downgrade to safe additive mode or disable branch per policy. | Choose policy-compliant mode. | Required canonical Apotheosis safety code. |
 | `WA_APOTHEOSIS_LOOT_TARGET_SENSITIVE` | published | Apotheosis compat | info or warning | validation/debug | no (by itself) | Target identified as Apotheosis-sensitive context. | Inform policy evaluation; may combine with blocking codes. | Confirm target metadata and intended behavior. | Required canonical Apotheosis sensitivity code. |
+| `WA_REWARD_EVENT_UNSUPPORTED` | published | reward event boundary | warning or error | runtime/debug | branch-level | Reward pipeline invoked from non-reward-capable or unsupported event type. | Skip reward branch and keep unrelated systems unchanged. | Trigger rewards only from explicit WA-owned reward-capable events. | Phase 7 downstream-event boundary code. |
+| `WA_REWARD_CONTEXT_MISSING` | published | reward context contract | warning | runtime/debug | branch-level | Required canonical loot-context field(s) missing for the evaluated reward branch. | Fail closed for the affected profile/contributor branch only. | Ensure canonical loot-context builder provides required fields for that event type. | Supports explicit fail-closed behavior for incomplete reward contexts. |
+| `WA_REWARD_DIRECT_APPLY_BLOCKED` | published | reward pipeline guard | error | runtime/debug | branch-level | Reward-capable subsystem attempted to apply final rewards directly instead of contributing resolver intent. | Block direct-apply branch; keep resolver-owned pipeline authoritative. | Route subsystem output through reward intent/contributor path only. | Enforces single canonical reward-resolution pipeline. |
+| `WA_REWARD_CONTRIBUTOR_DUPLICATE_BLOCKED` | published | reward duplicate prevention | info or warning | runtime/debug | branch-level | Same contributor/profile attempted to apply more than once in one event pass without repeatable permission. | Keep first accepted application and block duplicate branch. | Mark the contributor/profile explicitly repeatable only when multi-apply behavior is intentional. | Canonical per-event duplicate-prevention code for Phase 7 reward resolution. |
+| `WA_REWARD_REPEATABLE_METADATA_INVALID` | published | reward repeatability metadata | error | validation | yes | Contributor/profile repeatability metadata is malformed or contradicts active policy contract. | Disable offending contributor/profile branch. | Fix repeatability metadata shape/policy usage. | Validation-side companion to duplicate-prevention runtime guards. |
+| `WA_REWARD_PROGRESSION_MUTATION_BLOCKED` | published | reward/progression boundary | error | runtime/debug | branch-level | Reward branch attempted progression mutation (stage unlock, trigger-eligibility mutation, or rule-identity mutation). | Block illegal mutation path; keep reward pass bounded and inspectable. | Move progression mutations back to progression/rule flows. | Protects Phase 7 reward-as-downstream-only contract. |
+| `WA_REWARD_POLICY_DESTRUCTIVE_MODE_BLOCKED` | published | reward policy safety | warning or error | validation/runtime guard | branch-level | Destructive reward/loot mode requested without explicit policy enablement. | Block destructive branch or downgrade to additive mode per policy. | Enable explicit policy or use additive authoring modes. | Complements Apotheosis-specific safety codes for general default inject-only behavior. |
+| `WA_REWARD_SCALAR_PHASE_DISABLED` | published | reward scalar phase gate | warning | validation/runtime guard | branch-level | Reward branch tried to use difficulty/challenge scalar influence during Phase 7. | Skip scalar-adjusted branch; continue non-scalar reward path when possible. | Remove scalar-dependent reward tuning until reward-scaling phase is promoted. | Phase-boundary guard for Phase 7 reward implementation. |
+| `WA_REWARD_DETERMINISM_VIOLATION` | canonical-target | reward determinism | error | runtime/debug | branch-level | Identical reward evaluation snapshots produced mismatched selection or outcome state. | Abort/degrade affected reward branch and emit full trace diagnostics. | Fix ordering/weight/roll handling to restore deterministic output. | Regression-class failure for reward pipeline parity and reproducibility. |
 
 ### 7F. Runtime Safety Guards and Migration/Deprecation
 
@@ -440,7 +449,7 @@ Canonical granular codes referenced above and reserved for future emitters/tooli
 | `WA_DEBUG_LOOT_TARGET_INVALID` | published | debug loot target | error | debug/runtime guard | command-level | Loot debug target type/ID/context is invalid. | Reject loot debug command. | Use a supported target type and valid ID. | Phase 7 loot target validation code. |
 | `WA_DEBUG_LOOT_PROFILE_NOT_FOUND` | published | debug loot profile | error | debug/runtime guard | command-level | Forced loot profile ID not found. | Reject force-profile command. | Use a valid loaded loot profile ID. | Phase 7 force-profile code. |
 | `WA_DEBUG_INVASION_PROFILE_NOT_FOUND` | published | debug invasion profile | error | debug/runtime guard | command-level | Referenced invasion profile does not exist. | Reject invasion evaluate/force command. | Use a valid invasion profile ID. | Phase 8 invasion profile code. |
-| `WA_DEBUG_WAVE_INDEX_INVALID` | published | debug invasion wave | error | debug/runtime guard | command-level | Requested wave index is out of bounds or incompatible with profile shape. | Reject force-wave command. | Use a valid wave index for the selected profile. | Phase 8 force-wave code. |
+| `WA_DEBUG_INVASION_STATE_INVALID` | published | debug invasion state | error | debug/runtime guard | command-level | Invasion debug command requested an invalid runtime control/state transition (for example start while already active in a non-repeatable mode). | Reject invalid invasion control command. | Use supported invasion control flow (`evaluate`, `start`, `stop`) for current runtime state. | Phase 8 pressure-event command guard code. |
 | `WA_DEBUG_COMPAT_NOT_FOUND` | published | debug compat integration | error | debug/runtime guard | command-level | Requested integration ID is unknown. | Reject compat evaluate command. | Use a valid integration ID from `/wa compat list`. | Phase 9 compat-evaluate code. |
 | `WA_DEBUG_SCALAR_PROVIDER_NOT_FOUND` | published | debug scalar provider | error | debug/runtime guard | command-level | Requested scalar provider key is unknown/unavailable. | Reject scalar-provider command. | Use a valid provider key in the active runtime. | Phase 9 provider-inspect code. |
 
@@ -510,6 +519,15 @@ When introducing or changing published diagnostics:
 | `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED` | warning or error | compat/apotheosis | branch-level |
 | `WA_APOTHEOSIS_LOOT_MODE_UNSAFE` | warning or error | compat/apotheosis | branch-level |
 | `WA_APOTHEOSIS_LOOT_TARGET_SENSITIVE` | info or warning | compat/apotheosis | no |
+| `WA_REWARD_EVENT_UNSUPPORTED` | warning or error | reward event boundary | branch-level |
+| `WA_REWARD_CONTEXT_MISSING` | warning | reward context contract | branch-level |
+| `WA_REWARD_DIRECT_APPLY_BLOCKED` | error | reward pipeline guard | branch-level |
+| `WA_REWARD_CONTRIBUTOR_DUPLICATE_BLOCKED` | info or warning | reward duplicate prevention | branch-level |
+| `WA_REWARD_REPEATABLE_METADATA_INVALID` | error | reward repeatability metadata | yes |
+| `WA_REWARD_PROGRESSION_MUTATION_BLOCKED` | error | reward/progression boundary | branch-level |
+| `WA_REWARD_POLICY_DESTRUCTIVE_MODE_BLOCKED` | warning or error | reward policy safety | branch-level |
+| `WA_REWARD_SCALAR_PHASE_DISABLED` | warning | reward scalar phase gate | branch-level |
+| `WA_REWARD_DETERMINISM_VIOLATION` | error | reward determinism | branch-level |
 | `WA_RULE_RECURSION_BLOCKED` | warning | runtime safety | branch-level |
 | `WA_PERF_RULE_BUCKET_OVERSIZE` | warning | performance/rule bucket | no (by default) |
 | `WA_PERF_RULE_EVENT_LIMIT_EXCEEDED` | warning | performance/rule evaluation | branch-level |

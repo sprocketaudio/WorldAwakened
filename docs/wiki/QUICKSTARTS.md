@@ -3,7 +3,7 @@
 Shortest-path guides for the most common first-time workflows.
 
 - Document status: Active human-friendly quickstart guide
-- Last updated: 2026-03-12
+- Last updated: 2026-03-18
 - Scope: Setup, first datapack, first tests, and first recovery loop
 
 ---
@@ -54,13 +54,13 @@ What you should expect:
 
 If it does not load, go to [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-## 3. Install The Dev Phase 4 Test Pack
+## 3. Install A Local Test Pack
 
 Goal:
-- get a deterministic local test pack for phases 1 through 4
+- load a pack you control so your test IDs and outcomes are predictable
 
 Steps:
-1. Copy [dev_datapacks/worldawakened_phase4_test](../../dev_datapacks/worldawakened_phase4_test) into your world's `datapacks/` folder.
+1. Copy your chosen World Awakened datapack into your world's `datapacks/` folder.
 2. Run:
 
 ```text
@@ -70,7 +70,7 @@ Steps:
 
 What you should expect:
 - `errors=0`
-- loaded counts include one stage, one trigger rule, one rule, three ascension rewards, and three ascension offers
+- loaded counts include your authored objects (for example stages, trigger rules, rules, rewards, and offers)
 
 ## 4. First Global Stage Test
 
@@ -95,10 +95,10 @@ Steps:
 /wa dump active_rules global
 ```
 
-3. Fire the player-scoped manual trigger from a real player context:
+3. Fire a player-scoped manual trigger from a real player context:
 
 ```text
-/wa trigger fire wa_test:unlock_phase4_gate player Dev
+/wa trigger fire <trigger_id> player Dev
 ```
 
 4. Recheck state:
@@ -129,7 +129,7 @@ Suggested flow:
 
 ```text
 /wa stage list player Dev
-/wa trigger fire wa_test:unlock_phase4_gate player Dev
+/wa trigger fire <trigger_id> player Dev
 /wa stage list player Dev
 ```
 
@@ -152,16 +152,16 @@ Steps:
 
 2. Either note the runtime `instance_id`, or use the simpler `active` command.
 3. Runtime `instance_id` values are opaque command-safe IDs, so you can paste or type them directly if you need the exact instance.
-4. Choose one reward:
+4. Choose one reward ID from your loaded offer:
 
 ```text
-/wa ascension choose Dev <instance_id> wa_test:tempered_core
+/wa ascension choose Dev <instance_id> <reward_id>
 ```
 
 or:
 
 ```text
-/wa ascension active Dev wa_test:tempered_core
+/wa ascension active Dev <reward_id>
 ```
 
 5. Inspect again:
@@ -211,7 +211,46 @@ Use this when:
 - you want a broad clean rerun
 - you are in active development, not live operations
 
-## 8. Where To Go Next
+## 8. Web Authoring Modes
+
+Use this when the hosted web authoring platform is available in your build/deployment.
+
+Goal:
+- choose the right editing mode for the job
+- avoid stale-session conflicts during live linked edits
+
+Offline project mode:
+1. Open the hosted editor normally.
+2. Create or import a datapack project.
+3. Validate and export.
+
+Use offline mode when:
+- you do not need a running game/server
+- you want repeatable file-based import/export iteration
+
+Live linked session mode:
+1. In-game, run:
+
+```text
+/wa web edit
+```
+
+2. Open the returned hosted URL.
+3. Wait for linked session state + runtime registry metadata to load.
+4. Edit and validate in the browser.
+5. Apply changes back to runtime.
+
+Use live linked mode when:
+- you need current runtime-authored data
+- you want runtime/modpack-aware selector options
+- you want apply-time runtime validation feedback immediately
+
+Safety reminders:
+- linked sessions are short-lived
+- stale sessions should fail safely on apply
+- if apply reports revision mismatch, refresh from runtime before retrying
+
+## 9. Where To Go Next
 
 - For command usage: [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md)
 - For authored examples: [DATAPACK_COOKBOOK.md](DATAPACK_COOKBOOK.md)

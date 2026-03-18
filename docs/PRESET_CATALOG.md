@@ -3,7 +3,7 @@
 Reference catalog for higher-level authored presets and templates built from shared framework primitives.
 
 - Document status: Active reference catalog
-- Last updated: 2026-03-13
+- Last updated: 2026-03-18
 - Scope: Preset/template composition patterns and shipped/example status taxonomy
 
 ---
@@ -311,7 +311,7 @@ Each entry follows this format:
 - **Key Components:** `worldawakened:extra_revival_buffer`, `worldawakened:debuff_resistance`, `worldawakened:mutation_resistance_bonus`, `worldawakened:max_health_bonus`.
 - **Key Conditions:** Usually late gate (`worldawakened:world_day_gte` and/or stage milestone).
 - **Related Objects:** Nearest shipped analog: `worldawakened:void_resilience`.
-- **Example Use Case:** Endgame survival-focused players handling elite waves or future invasions.
+- **Example Use Case:** Endgame survival-focused players handling elite surges or future invasion pressure events.
 - **Notes:** Permanent benefit profile: anti-wipe survivability. Player fantasy: indomitable veteran. Synergy: tank-focused offer bundles.
 
 ## 8. Multi-Object Template Coverage (Categories C-G)
@@ -354,7 +354,7 @@ Each entry follows this format:
 #### `endgame_invader_pool`
 - **Category:** Mutation pool template
 - **Source Status:** `example-only`
-- **Design Intent:** Late-game/high-event mutation bundle for invasion or wave content.
+- **Design Intent:** Late-game/high-event mutation bundle for invasion pressure-event content.
 - **Composition Summary:** Compose invasion-themed and end-elite mutators under high day thresholds and invasion-active gates.
 - **Key Components:** Through mutator refs: summoning + heavy defense + elemental burst + aura/retaliation.
 - **Key Conditions:** `worldawakened:invasion_active`, `worldawakened:world_day_gte`, optional `worldawakened:stage_unlocked` milestone.
@@ -469,7 +469,7 @@ Each entry follows this format:
 - **Key Components:** None (action/condition composition template).
 - **Key Conditions:** `worldawakened:stage_unlocked`, optional `worldawakened:player_count_online`, optional `worldawakened:random_chance`.
 - **Related Objects:** `rules`, `invasion_profiles`, actions `worldawakened:trigger_invasion_profile` or `worldawakened:schedule_invasion_check`.
-- **Example Use Case:** Start retaliation wave after endgame stage unlock.
+- **Example Use Case:** Start a retaliation invasion pressure event after endgame stage unlock.
 - **Notes:** Invasion action handlers are planned; keep template marked conceptual until runtime lands.
 
 #### `world_context_mutation_pressure_cycle` (shipped rule family)
@@ -490,7 +490,7 @@ Each entry follows this format:
 - **Source Status:** `conceptual`
 - **Design Intent:** Deterministic retaliation event for major stage milestones.
 - **Composition Summary:** Invasion profile plus world rule that triggers it on stage unlock.
-- **Key Components:** Via wave mutator refs, reward profile refs, and spawn composition definitions.
+- **Key Components:** Via invasion pressure modifier fields, invasion tags, reward profile refs, and invasion-gated mutation pool conditions.
 - **Key Conditions:** `worldawakened:stage_unlocked`, `worldawakened:player_count_online`, optional `worldawakened:current_dimension`.
 - **Related Objects:** `invasion_profiles`, `rules`, `mutation_pools`, optional `loot_profiles`.
 - **Example Use Case:** One-time retaliation siege after defeating a progression boss.
@@ -501,7 +501,7 @@ Each entry follows this format:
 - **Source Status:** `conceptual`
 - **Design Intent:** Ambient invasion pressure on a bounded periodic cadence.
 - **Composition Summary:** Scheduler-driven invasion checks with chance and cooldown gates.
-- **Key Components:** Through invasion profile wave/mutator definitions.
+- **Key Components:** Through invasion profile duration/cooldown/pressure/tag definitions and invasion-gated mutation pool references.
 - **Key Conditions:** `worldawakened:world_day_gte`, `worldawakened:player_count_online`, `worldawakened:random_chance`.
 - **Related Objects:** `invasion_profiles`, rules using `worldawakened:schedule_invasion_check`.
 - **Example Use Case:** Long-running servers where periodic conflict is desired without milestone triggers.
@@ -511,7 +511,7 @@ Each entry follows this format:
 - **Category:** Invasion profile template
 - **Source Status:** `conceptual`
 - **Design Intent:** High-intensity late-game assault combining elite mutator themes.
-- **Composition Summary:** Endgame profile chaining elite pools, stronger wave mixes, and optional bonus rewards.
+- **Composition Summary:** Endgame profile chaining elite pools, stronger pressure modifiers, and optional bonus rewards.
 - **Key Components:** Through mutator refs such as `summoner_juggernaut`, `juggernaut_preset`, elemental elites.
 - **Key Conditions:** `worldawakened:stage_unlocked` (endgame milestone), optional `worldawakened:invasion_active` exclusivity checks.
 - **Related Objects:** `invasion_profiles`, `mutation_pools`, `rules`, optional ascension follow-up offers.

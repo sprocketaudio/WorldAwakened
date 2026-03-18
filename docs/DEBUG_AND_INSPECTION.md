@@ -3,7 +3,7 @@
 Canonical contract for runtime inspection surfaces, debug command minimums, trace payloads, and provenance visibility.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Runtime debug, inspect output, and trace observability contracts
 
 ---
@@ -57,8 +57,9 @@ Hard rule:
 | Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
 | Loot profiles | loot debug output | profile ID, loot target | matched/rejected, compat safety outcome, applied operations | `planned` |
-| Invasions | invasion inspect output | profile ID, invasion instance ID | scheduler state, wave state, caps/cooldown outcomes | `planned` |
+| Invasions | invasion inspect output | profile ID, invasion instance ID | scheduler state, active-event state, pressure modifier, duration/cooldown outcomes | `planned` |
 | Compat/integrations | `/wa compat list`, integration inspect | integration ID/mod ID | active/inactive reason, gate path, fallback path | `implemented`/`planned` |
+| Web linked sessions | `/wa web edit`, `/wa web session status` | session ID, runtime version, schema version, revision | linked/stale/revoked state, apply outcome, mismatch diagnostics | `planned` |
 
 Note:
 - command naming may evolve, but equivalent functionality and payload fields are required.
@@ -76,6 +77,7 @@ The command tree must provide at least:
 - mutator provenance inspection (when mutators are active)
 - invasion profile/runtime inspection (when invasions are active)
 - integration activation inspection
+- linked web-session state inspection (when Phase 10 live mode is active)
 
 Current baseline command surface:
 - `/wa reload validate`
@@ -110,6 +112,14 @@ Current baseline command surface:
 - `/wa debug mutators force_pool <entity_id> <pool_id> [dimension] [x] [y] [z]`
 - `/wa debug mutators force_mutator <entity_id> <mutator_id> [dimension] [x] [y] [z]`
 - `/wa debug spawn test <entity_id> [dimension] [x] [y] [z]`
+- `/wa debug pressure last`
+- `/wa debug pressure replay <id>`
+- `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
+- `/wa debug difficulty scalar [player]`
+- `/wa difficulty global get|set|reset`
+- `/wa difficulty personal get|set`
+- `/wa difficulty world get|set`
+- `/wa difficulty vote yes|no`
 - `/wa compat list`
 
 Notes:
@@ -120,6 +130,11 @@ Notes:
   - `selected_pool`
   - `chance_result` (`mutation_chance`, rolled value or `<skipped>/<bypassed>`, `passed=<bool>`)
   - `final_outcome=chance_failed` when pool selection succeeded but mutation chance failed
+- pressure replay contract:
+  - `pressure last` reads the newest captured spawn-pressure snapshot from the runtime ring buffer
+  - `pressure replay <id>` resolves one captured snapshot by ID from that same buffer
+  - both commands must show captured runtime inputs plus replay scalar output from the same live scalar-service path
+  - replay paths fail closed with diagnostics when required runtime context is missing
 - command chance behavior contract:
   - `evaluate` respects authored `mutation_chance`
   - `force_pool` bypasses pool chance
@@ -131,6 +146,7 @@ Notes:
 - inspect output must surface active owned carriers separately from chosen rewards so operators can see both the stable owned key and the carrier type ID
 - client-visual carriers such as `worldawakened:night_vision_passive` belong in inspect/debug output the same way as server-owned carriers; only the execution layer differs, including whether the carrier is feeding a lightmap-backed client render path
 - operator-facing ascension command output should expose clickable copy and suggest-command actions for runtime IDs and common next actions where the client supports chat click events
+- operator-facing difficulty vote and pressure replay outputs may expose clickable suggest/copy actions for common next steps (for example vote yes/no or replay ID copy/prefill)
 - operator command arguments that target loaded authored objects or pending runtime instances should provide Brigadier suggestions from the current loaded runtime state
 - the `/wa debug` tree is registered only when `general.enable_debug_commands = true`
 
@@ -139,19 +155,15 @@ Planned minimum additions as systems complete:
 - `/wa debug rules`
 - `/wa invasion inspect <profile|active>`
 - `/wa loot inspect <target>`
+- `/wa web edit`
+- `/wa web session status`
+- `/wa web session revoke`
 - `/wa debug trace <trace_id>`
-- `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
-- `/wa debug difficulty scalar [player]`
 - `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
 - `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
-- `/wa debug invasion force_wave <profile_id> [wave_index] [dimension] [x] [y] [z]`
 - `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
 - `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
-- `/wa difficulty global get|set|reset`
-- `/wa difficulty personal get|set`
-- `/wa difficulty world get|set`
-- `/wa difficulty vote yes|no`
 
 Performance-debug payload minimums:
 - scope bucket sizes
@@ -173,6 +185,15 @@ Operator/debug split:
 - when `general.debug_logging = true`, keep the concise operator line and add the raw-detail line or suffix after it; do not replace the operator layer with dense-only output
 - new command surfaces must not duplicate player-facing action prompts inside normal gameplay notifications when the same action is already present in the intended player-facing UX
 - when `general.enable_debug_commands = false`, the debug tree must not be available
+
+Readability and autocomplete guardrails for future stages:
+- operator (`/wa` non-debug) outputs must default to one concise human-readable summary line; dense key/value details belong behind `general.debug_logging`
+- debug outputs may be dense, but should group context/result lines clearly and avoid dumping long ungrouped payloads in a single line
+- debug commands that consume dynamic runtime IDs (for example replay, instance, trace, snapshot IDs) should provide Brigadier suggestions from current runtime state wherever practical
+- rejection messages should present a human-readable reason first and keep raw code/detail as optional debug detail
+- command implementations should reuse shared output helper methods for operator/debug layering instead of ad-hoc per-command formatting
+- player/operator-facing failures should be emitted through human-readable rejection mapping helpers; raw code/detail belongs to verbose/debug lines
+- clickable copy/suggest/run affordances should be added where they improve operator/debug flow, while normal player-facing notifications remain plain and minimal
 
 ---
 
@@ -232,19 +253,29 @@ Pressure/difficulty:
 - cooldown/usage/vote state when applicable
 
 Loot:
+- source reward-capable event ID/type
+- evaluated canonical loot context (`loot_context_type`, `target_type`, `target_id`, `loot_table_id`, `entity_type`, `entity_is_mutated`, `mutation_tags`, `player`, `dimension`, stage context, invasion context, compat state, scalar input policy context)
+- gathered reward contributors (subsystem source + contributor/profile identity)
 - candidate profiles
+- matched profile(s)
+- rejected profile(s) with first terminal rejection reason
+- duplicate-prevention/repeatability decisions (including blocked non-repeatable contributors)
 - `replace`/`inject`/`remove`/`add_bonus_pool` decisions
 - compat safety restrictions
 - fallback action taken
+- applied WA-owned reward outcomes (bonus drops/xp/reward tables/payload summaries)
+- explicit `applied_once=true/false` result marker for the canonical resolver pass
 - final assembled loot outcome summary
 
 Invasions:
 - scheduler eligibility
-- cooldown/cap checks
+- cooldown checks
 - selected profile
-- wave composition
-- mutator application to invasion units
-- entity cap and safe-zone outcomes
+- warning state and remaining duration
+- active invasion tags
+- active pressure modifier
+- invasion-gated mutation pool eligibility and rejection reasons
+- mutation pools newly eligible ("unlocked due to invasion context") in the evaluated snapshot
 
 Compat/integrations:
 - mod loaded state
@@ -261,6 +292,7 @@ Command-path behavior rules:
 - when command-path and live-path outcomes diverge, both outputs should include enough candidate/rejection detail to isolate pipeline mismatch regressions
 - debug/evaluate/inspect paths must use the same compiled runtime structures and scalar resolver used by live execution
 - debug/evaluate/inspect paths must not use alternate math or debug-only fallback resolvers for pressure/difficulty/challenge
+- loot/reward evaluate/force surfaces must preserve deterministic profile ordering and deterministic decision outcomes for identical snapshots
 
 ---
 
@@ -330,10 +362,13 @@ Required rejection categories:
 - one-shot consumed
 - chance failed
 - conflict-set rejected
+- policy block
 - duplicate policy rejected
 - budget exceeded
 - no-op result
 - invalid reference
+- unsupported reward event
+- duplicate contributor blocked
 - safe-zone/cap restriction
 - upstream spawn cancelled
 - upstream spawn transformed
@@ -452,7 +487,7 @@ For loot and invasions:
 - profile IDs
 - compatibility safety decisions
 - applied operations and blocked operations
-- active caps/safety guards
+- active cooldown/pressure guards
 
 ---
 
@@ -520,7 +555,7 @@ This contract aligns to future implementation phases as follows:
 - Phase 6: rule-event guardrail diagnostics, pressure/difficulty/challenge inspect coverage, and strict debug/live runtime-parity guarantees
 - Phase 7-9: loot/invasion/compat inspection surfaces and rejection-path visibility
 - Phase 10: tooling-facing validation/debug payload alignment for authoring workflows
-- Phase 11: required `/wa debug perf`, `/wa debug rules`, `/wa debug mutators` surfaces and telemetry hardening
+- Phase 11: required `/wa debug perf`, `/wa debug rules`, `/wa debug mutators` surfaces and telemetry hardening, plus linked-session failure diagnostics (`expired token`, `revision mismatch`, `apply rejected`) that remain inspectable without losing Phase 7-9 rejection-path visibility
 
 Roadmap sync rule:
 - if a phase adds or changes inspect/debug surfaces, update this file and `SPECIFICATION.md` together.

@@ -3,7 +3,7 @@
 Deferred and long-term feature backlog for World Awakened.
 
 - Document status: Non-normative backlog
-- Last updated: 2026-03-14
+- Last updated: 2026-03-15
 - Purpose: Record future feature ideas without expanding MVP scope
 
 ---
@@ -309,6 +309,30 @@ Hard constraints if promoted:
 
 Scope note:
 - deferred idea only; not part of the active v1 `mutation_pools` schema
+
+### 1.13 Future Idea: Expanded Difficulty Scaling
+
+Concept:
+Expand difficulty/challenge scalar coverage beyond current spawn mutation chance, but only when each target is explicitly wired to the shared scalar service.
+
+Current live scaling target:
+- `mutation_pools.mutation_chance`
+
+Possible future scaling targets (only if explicitly wired in code):
+- `mutation_pools.max_mutators_per_entity`
+- `mob_mutators.reward_modifier.loot_bonus_chance`
+- `mob_mutators.reward_modifier.xp_multiplier`
+- `loot_profiles.weight_multiplier`
+- `loot_profiles.quality_scalar`
+- `invasion_profiles.elite_chance`
+- `invasion_profiles.spawn_budget`
+- `invasion_profiles.max_active_entities`
+
+Hard rules if promoted:
+- all scaling must use the shared scalar service
+- only World Awakened-owned numeric outputs may be scaled
+- stage unlocks, trigger eligibility, and progression state must never be scaled
+- do not add config toggles until multiple independent systems actually use scaling
 
 ---
 

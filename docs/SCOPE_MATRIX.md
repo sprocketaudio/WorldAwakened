@@ -3,7 +3,7 @@
 Canonical reference for shared execution scopes, guaranteed context, and condition/action legality.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Scope: Shared scope model used by runtime, validators, and tooling
 
 ---
@@ -218,13 +218,25 @@ Each scope entry in this file defines:
 - Scope id: `loot`
 - Purpose: Loot generation and loot-table/profile evaluation.
 - Guaranteed context:
-  - loot context snapshot
-  - target loot table/drop source
+  - canonical loot context snapshot with `loot_context_type`
+  - `target_type` and `target_id` for deterministic context identity
+  - `loot_table_id` when a table-backed loot path is active
+  - `entity_type` when entity-backed loot context exists
+  - `entity_is_mutated` and `mutation_tags` when mutation provenance exists
+  - `player` context key (nullable when no player is attributable)
   - world reference
+  - dimension context
+  - stage context snapshot
+  - invasion context snapshot (always present as active or inactive state)
+  - compat state snapshot for policy-sensitive reward paths
+  - scalar input policy context (`scalar_inputs`; Phase 7 keeps reward scaling disabled)
+  - source reward-capable event metadata when the pass is reward-event-driven
 - Optional context:
-  - player, entity, structure, and stage snapshots when supplied by loot source/event
+  - concrete entity reference
+  - structure metadata
 - Typical producers/consumers:
   - loot profile evaluators and reward integration passes
+  - canonical reward resolver pass that gathers contributors and applies final outcomes once
 - Allowed condition categories:
   - Progression/state
   - World/time/environment
@@ -233,28 +245,31 @@ Each scope entry in this file defines:
   - Random/event context where loot event metadata exists
 - Allowed action categories:
   - Loot/reward actions
+  - reward-capable branches contribute resolver intents/eligibility; final reward application is canonical-resolver owned
   - No unrelated world mutation unless an action explicitly documents `loot` legality and world mutation semantics
 - Persistence domain:
   - runtime loot assembly by default; persistent mutations only for actions that explicitly define them
 - Invalid/missing-context behavior:
   - if player/entity context is absent, dependent conditions evaluate `false`
+  - if a reward-event-dependent branch has no supported event metadata, that branch fails closed
+  - missing required canonical loot-context fields fail closed for the affected branch; partial-evaluation fallback is not allowed
   - out-of-scope action usage is a validation error
 - Notes/example:
-  - Example: loot evaluation checks `stage_unlocked` + `entity_is_mutated` then uses `inject_loot_profile` when legal.
+  - Example: loot evaluation checks `loot_table` + `entity_is_mutated` + `invasion_tag` when available, then uses `inject_loot_profile` when legal.
 
 ### F. `invasion`
 
 - Scope id: `invasion`
-- Purpose: Invasion scheduling, activation, and wave-processing logic.
+- Purpose: Invasion scheduling, activation, and pressure-event state management.
 - Guaranteed context:
   - world reference
   - invasion runtime/scheduler state
+  - active invasion profile/runtime metadata (`profile_id`, tags, warning state, remaining duration, pressure modifier) when invasion is active
 - Optional context:
   - targeted player set
-  - wave entity context
   - stage/scalar snapshots
 - Typical producers/consumers:
-  - invasion scheduler and active invasion passes
+  - invasion scheduler and active-event maintenance passes
   - invasion-related rule/event processing
 - Allowed condition categories:
   - Progression/state
@@ -270,6 +285,7 @@ Each scope entry in this file defines:
   - invasion runtime state and world-owned state
 - Invalid/missing-context behavior:
   - player/entity-dependent checks fail closed when no target player/entity is attached
+  - invasion-dependent conditions fail closed when no active invasion state is present
   - invalid-scope usage remains a validation error even during live invasion processing
 - Notes/example:
   - Example: invasion scheduler checks `invasion_active` + `player_count_online` then runs `schedule_invasion_check`.

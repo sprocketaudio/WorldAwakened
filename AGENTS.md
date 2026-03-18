@@ -5,7 +5,7 @@ This repository is building **World Awakened**, a Minecraft 1.21.1 + NeoForge fr
 
 This file defines how coding agents should operate in this repo.
 
-- Last updated: 2026-03-13
+- Last updated: 2026-03-18
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
 ## Read Order Before Any Task
@@ -39,7 +39,7 @@ If there is a conflict, follow this priority:
 ## Core Product Rules
 - Keep gameplay authority on the server.
 - Keep content and balance data-driven via datapacks and config.
-- Keep one shared datapack format between the mod runtime and the web authoring tool.
+- Keep one shared datapack/data contract across raw datapacks, mod runtime state, and hosted web-tool session payloads.
 - Keep one shared framework contract for conditions, actions, scopes, component composition semantics, and status taxonomy across all systems.
 - Never hardcode stage names, ordering, or progression paths.
 - Internal logic must use stage IDs, not display names.
@@ -60,7 +60,7 @@ If there is a conflict, follow this priority:
 ## Architecture Boundaries
 - Java defines behavior engines and execution flow (`HOW`).
 - Datapacks define stage/rule/profile content (`WHAT`).
-- The web authoring tool is an authoring and validation layer only; it must not become runtime gameplay authority.
+- The web authoring tool is an authoring/validation/editor layer (offline and live-linked) only; it must not become runtime gameplay authority.
 - The core mod jar must not ship gameplay-active datapack content.
 - Example/default content should be distributed as optional external datapacks using the same schema exposed to pack authors.
 - TOML config defines server/operator overrides and kill-switches.
@@ -77,10 +77,10 @@ If there is a conflict, follow this priority:
 6. Phase 5: Mutators + mutation pools + spawn-time application + inspect tools + spawn-time performance budgets (`max_mutators_per_spawn`, `max_components_per_mutator`)
 7. Phase 6: Spawn pressure controls with hard guardrails + rule-event performance limits (`maximum_rules_evaluated_per_event`, `maximum_actions_per_rule`) + shared effective-scalar provider for global/optional challenge modifiers
 8. Phase 7: Loot evolution integration + Apotheosis-sensitive loot safety behavior
-9. Phase 8: Invasion scheduler/waves MVP implementation
-10. Phase 9: Compatibility framework + Apotheosis world tier/external tier support + loot-target sensitivity enforcement
-11. Phase 10: Web authoring tool (browser companion) + schemas/validation/import-export + visual/structured/raw editors + templates + performance-budget warnings
-12. Phase 11: Validation hardening + docs + example datapack + release prep + `/wa debug perf|rules|mutators`
+9. Phase 8: Invasion pressure-event MVP implementation (scheduler + active-state + temporary pressure modifier; no WA-owned wave spawning)
+10. Phase 9: Compatibility framework + Apotheosis world tier/external tier support + loot-target sensitivity enforcement (invasion-adjacent influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling)
+11. Phase 10: Hosted web authoring platform (browser companion) + React/TypeScript frontend + backend session relay + offline and live-linked session editing + schemas/validation/import-export + visual/structured/raw editors + templates + performance-budget warnings
+12. Phase 11: Validation hardening + docs + example datapack + release prep + linked-session auth/token/revision/apply hardening + regression checks for Phase 7-9 guardrails + `/wa debug perf|rules|mutators`
 
 ## Engineering Expectations
 - Prefer small, testable, additive changes.
@@ -129,6 +129,11 @@ All new `/wa` command surfaces must follow the documented output-layer contract:
 - operator command feedback stays concise by default
 - dense raw IDs, provenance, and reason paths belong in inspect/debug surfaces first
 - `general.debug_logging` may append extra raw detail to operator output, but must not replace the concise operator layer or leak debug-heavy output into normal gameplay notifications
+- in `WorldAwakenedCommands`, prefer shared output helpers (`sendOperatorSummary`, `sendOperatorDetail`, `sendDebugHeader`, `sendDebugSection`) instead of ad-hoc inline formatting so future stages keep consistent presentation layers
+- commands that consume dynamic runtime IDs should provide Brigadier suggestions from runtime state wherever practical (for example replay IDs, trace IDs, runtime instance IDs)
+- rejection/failure text for player/operator-facing command output must use human-readable mapping helpers (for example `describe*` formatters); raw codes/details are debug payloads first
+- clickable rich-text affordances (copy/prefill/run) should be used for operator/inspect/debug workflows where they reduce mistakes, not in normal gameplay notifications
+- when extending command trees in later phases, preserve and reuse these helper patterns rather than introducing subsystem-local formatting styles
 
 ## Code Organization Target
 Use `net.sprocketgames.worldawakened` package root and keep systems separated:
@@ -147,7 +152,7 @@ When behavior changes, update:
 9. [docs/PERFORMANCE_BUDGETS.md](docs/PERFORMANCE_BUDGETS.md) for hot-path limits, rule indexing, and runtime guardrail changes
 10. [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md) for diagnostics taxonomy/code changes
 11. [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md) for canonical preset/template status/composition changes
-12. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) for browser authoring/validation/import-export workflow changes
+12. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) for browser authoring/validation/import-export and live-linked session workflow changes
 13. [docs/README.md](docs/README.md) for read order or cross-update matrix changes
 14. [docs/wiki/README.md](docs/wiki/README.md) and affected files under `docs/wiki/` for human-friendly operator/author/testing/troubleshooting guidance
 15. [README.md](README.md) for user-facing scope/status changes
@@ -163,7 +168,7 @@ When behavior changes, update:
 - Any spec expansion must update all impacted docs in the same task/commit:
   - [docs/README.md](docs/README.md) (documentation set map and cross-update contract)
   - [docs/wiki/README.md](docs/wiki/README.md) and affected files under `docs/wiki/` when user-facing workflows, explanations, command usage, testing patterns, recipes, or troubleshooting are impacted
-  - [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) (browser authoring/validation companion contract)
+  - [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) (hosted web authoring/validation companion contract, including offline and live-linked session workflows)
   - [docs/DATAPACK_AUTHORING.md](docs/DATAPACK_AUTHORING.md) (user datapack schema/content contract)
   - [docs/COMPONENT_REFERENCE.md](docs/COMPONENT_REFERENCE.md) (canonical mutation/ascension component reference; keep implemented vs planned accurate)
   - [docs/COMPOSITION_AND_STACKING.md](docs/COMPOSITION_AND_STACKING.md) (shared composition resolver contract for duplicates/conflicts/ordering/budget/no-op behavior)
@@ -186,6 +191,7 @@ When behavior changes, update:
 - This layer must cover concepts, quickstarts, operator guidance, cookbook patterns, troubleshooting, and FAQ content.
 - Write this layer for humans first: plain language, practical examples, decision rules, and recovery steps.
 - Do not leave an important behavior explained only in deep technical docs when operators or pack authors are likely to hit it in normal use.
+- Avoid roadmap/implementation jargon in `docs/wiki/` (for example phase labels or internal build/process language); explain features and workflows in user/operator terms.
 
 ## Backlog Rule
 - `docs/FUTURE_IDEAS.md` is not active scope by itself.

@@ -20,6 +20,7 @@ import net.sprocketgames.worldawakened.config.WorldAwakenedClientConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDataReloadListener;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
+import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorEventHandlers;
@@ -38,7 +39,10 @@ public final class WorldAwakenedMod {
     public static final WorldAwakenedAscensionService ASCENSION_SERVICE = new WorldAwakenedAscensionService(DATAPACK_SERVICE, STAGE_SERVICE);
     public static final WorldAwakenedRuleService RULE_SERVICE = new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE);
     public static final WorldAwakenedTriggerService TRIGGER_SERVICE = new WorldAwakenedTriggerService(DATAPACK_SERVICE, STAGE_SERVICE, RULE_SERVICE, ASCENSION_SERVICE);
-    public static final WorldAwakenedMutatorService MUTATOR_SERVICE = new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE);
+    public static final WorldAwakenedEffectiveDifficultyScalarService EFFECTIVE_DIFFICULTY_SCALAR_SERVICE =
+            new WorldAwakenedEffectiveDifficultyScalarService();
+    public static final WorldAwakenedMutatorService MUTATOR_SERVICE =
+            new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE, EFFECTIVE_DIFFICULTY_SCALAR_SERVICE);
 
     public WorldAwakenedMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
@@ -82,7 +86,8 @@ public final class WorldAwakenedMod {
                 TRIGGER_SERVICE,
                 RULE_SERVICE,
                 ASCENSION_SERVICE,
-                MUTATOR_SERVICE);
+                MUTATOR_SERVICE,
+                EFFECTIVE_DIFFICULTY_SCALAR_SERVICE);
     }
 }
 

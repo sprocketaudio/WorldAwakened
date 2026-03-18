@@ -3,8 +3,8 @@
 Canonical contract for hot-path runtime limits, indexing guarantees, and evaluation guardrails.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
-- Scope: Rule engine and spawn-time mutation performance contracts
+- Last updated: 2026-03-18
+- Scope: Rule engine, spawn-time mutation, and loot/reward evaluation performance contracts
 
 ---
 
@@ -214,6 +214,29 @@ Performance/safety goal:
 
 --- 
 
+## 4A. Phase 7 Loot/Reward Evaluation Guardrail
+
+Phase 7 reward evolution runs on hot gameplay-event paths and must remain bounded.
+
+Hard requirements:
+- reward evaluation must start from explicit WA-owned reward-capable events only
+- all reward-capable subsystems must feed one canonical resolver pipeline (intent/contributor gather -> resolve -> apply once)
+- canonical loot-context builder must produce stable field shapes (`loot_context_type`, `target_type`, `target_id`, `loot_table_id`, `entity_type`, mutation context, player/dimension, stage/invasion context, compat state, scalar input policy context) across all reward-capable sources
+- loot/reward matching must run on reload-compiled structures and target-indexed candidate sets
+- runtime must not scan all `loot_profiles` for each reward-capable event when narrower target indexing exists
+- contributor collection must be bounded and deterministic; subsystem-local direct apply bypass paths are forbidden
+- identical evaluation snapshots must produce identical matched/rejected profile decisions and final reward outcomes
+- same-event duplicate contributor/profile applications must be blocked by default unless explicit repeatable policy allows them
+- destructive reward modes must pass explicit policy checks without introducing unbounded retries
+- Phase 7 reward evaluation must not invoke difficulty/challenge scalar composition paths
+- reward evaluation must not mutate progression state (stage unlocks/trigger eligibility/rule identity)
+
+Observability requirements:
+- debug/evaluate outputs for loot/reward flows should expose source event, candidate ordering, rejection reasons, and final applied WA-owned reward outcomes
+- performance diagnostics for loot/reward passes should remain trace-correlated with the same root evaluation trace IDs used by other subsystems
+
+--- 
+
 ## 5. Action Chain Depth
 
 Rule/action recursion must remain bounded.
@@ -270,8 +293,9 @@ Canonical payloads and trace integration must align with [DEBUG_AND_INSPECTION.m
 This contract aligns to future implementation phases as follows:
 - Phase 5: enforce spawn-time mutator/component count guardrails and deterministic overflow behavior
 - Phase 6: enforce per-event rule/action budget guardrails with deterministic truncation boundaries, diagnostics-first policy, and stable ordering guarantees
+- Phase 7: enforce deterministic and bounded loot/reward profile evaluation on explicit reward-capable event paths
 - Phase 10: expose performance-budget warnings in web authoring validation workflows
-- Phase 11: harden performance telemetry and ship `/wa debug perf|rules|mutators` observability surfaces
+- Phase 11: harden performance telemetry and ship `/wa debug perf|rules|mutators` observability surfaces, including regression checks that live-linked apply/reload workflows do not bypass compiled hot-path indexing, budget limits, or deterministic ordering guarantees from Phases 5-9
 
 Roadmap sync rule:
 - if phase scope changes affect hot-path limits or budget policy, update this file and `SPECIFICATION.md` in the same change.

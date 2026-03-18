@@ -2,7 +2,7 @@
 
 World Awakened is a NeoForge mod framework for Minecraft 1.21.1 focused on **server-authoritative progression-driven difficulty**.
 
-- Last updated: 2026-03-14
+- Last updated: 2026-03-18
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
 The core model is:
@@ -22,7 +22,7 @@ Phase 5 core complete.
 Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery. Phase 5 is now implemented: compiled selector-index mutator narrowing, per-pool `mutation_chance` gating (default `1.0`), spawn-time mutator application budgets, deterministic provenance metadata (`WA_MUTATION_*` keys), recursion/re-entry guards, data-driven vanilla-slot mob equipment via `worldawakened:equip_item`, silhouette outline mutation visuals via `worldawakened:glow_style`, simple vanilla effect-style visual emitters via `worldawakened:effect_particles`, advanced raw particle emitters via `worldawakened:ambient_particles`, and command-driven mutator verification (`/wa mob inspect`, `/wa debug mutators evaluate|force_pool|force_mutator`, `/wa debug spawn test`) including explicit chance-pass/chance-fail debug output.
 Architecture baseline correction is applied: mutation definitions and ascension reward definitions are component-based authored objects, and the framework jar remains content-empty until a datapack is installed.
 Current active milestone is Phase 6 (Spawn pressure and difficulty guardrails).
-The browser-based web authoring tool is part of v1 scope and is planned as a late-phase companion deliverable after core runtime systems stabilize.
+The hosted React-based web authoring tool is part of v1 scope and is planned as a late-phase companion deliverable after core runtime systems stabilize, with both offline import/export authoring and live linked runtime-session editing in Phase 10.
 
 ## Primary Documentation
 - Documentation index and required read order: [docs/README.md](docs/README.md)
@@ -47,7 +47,7 @@ The browser-based web authoring tool is part of v1 scope and is planned as a lat
 - `docs/README.md` defines required read order, cross-update matrix, and shared reference-doc format expectations.
 - `docs/wiki/README.md` defines the human-friendly wiki layer and when it must be updated.
 - `docs/SPECIFICATION.md` is the source-of-truth design contract.
-- `docs/WEB_AUTHORING_TOOL_SPEC.md` is the detailed contract for the v1 browser authoring/validation companion.
+- `docs/WEB_AUTHORING_TOOL_SPEC.md` is the detailed contract for the v1 hosted web authoring/validation companion (offline + live-linked modes).
 - `docs/DATAPACK_AUTHORING.md` is the source-of-truth authoring format contract for user datapacks.
 - `docs/COMPONENT_REFERENCE.md` is the canonical component catalog and must be updated whenever a component type/schema changes.
 - `docs/COMPOSITION_AND_STACKING.md` is the canonical component composition resolver contract (duplicate/conflict/order/budget/no-op).
@@ -93,12 +93,12 @@ Based on current `gradle.properties`:
 - Spawn-time mutation definitions (`mob_mutators`) composed from mutation components
 - Loot evolution through profile-driven injection/replacement rules
 - Apotheosis loot compatibility that composes additively and preserves Apotheosis-owned tier-gated loot behavior when integration is active
-- One configurable invasion/raid-like event loop
+- One configurable invasion pressure-event loop
 - Generic support for modded bosses and mobs through entity IDs, tags, and datapack-defined boss classification
 - Optional compatibility layer with explicit toggles
 - Optional Apotheosis World Tier integration (conditions + scalar inputs)
 - Debug command suite for inspection, validation, and targeted operator recovery/reset
-- Browser-based datapack authoring/validation/import/export companion using the same canonical datapack format as runtime
+- Hosted React-based datapack authoring/validation platform with offline import/export and live linked runtime-session editing, using one shared datapack/data contract with runtime
 - A framework jar that remains inert until a server/world installs a datapack
 
 ## Non-Goals for v1
@@ -115,11 +115,11 @@ Based on current `gradle.properties`:
 5. Phase 4 (Complete): Ascension Choice System + minimal GUI/packet flow + permanent reward reconciliation
 6. Phase 5 (Complete): Mutators + mutation pools + spawn application + mob inspect + mutator evaluate/force/live-test commands + spawn-time performance budgets (`max_mutators_per_spawn`, `max_components_per_mutator`)
 7. Phase 6: Spawn pressure controls + rule-event budget guardrails (`maximum_rules_evaluated_per_event`, `maximum_actions_per_rule`) + shared effective-scalar service for global/optional challenge modifiers
-8. Phase 7: Loot evolution profiles and bonus drop integration (including safe additive behavior on Apotheosis-sensitive targets)
-9. Phase 8: Invasion system (scheduler, waves, and command mode MVP)
-10. Phase 9: Compatibility framework + Apotheosis world tier and external tier providers (including loot-target sensitivity enforcement)
-11. Phase 10: Browser web authoring tool (project model, visual/structured/raw editors, validation/import/export, performance-budget warnings)
-12. Phase 11: Hardening, example datapack, and release-prep docs + `/wa debug perf|rules|mutators` surfaces
+8. Phase 7: Loot evolution profiles and bonus reward integration as downstream WA-owned event pipelines (inject-first defaults, deterministic attribution, and scalar-isolated reward resolution in Phase 7)
+9. Phase 8: Invasion pressure-event system (scheduler, active state, warning window, temporary pressure modifiers, and command mode MVP)
+10. Phase 9: Compatibility framework + Apotheosis world tier and external tier providers (integration-tier influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling; no wave assumptions)
+11. Phase 10: Hosted web authoring platform (React/TypeScript frontend + backend session relay, offline project mode, live linked runtime-session editing, registry-aware selectors, visual/structured/raw editors, validation/import/export, performance-budget warnings)
+12. Phase 11: Hardening, example datapack, and release-prep docs + linked-session auth/conflict/apply polish + Phase 7-9 guardrail regression verification + `/wa debug perf|rules|mutators` surfaces
 
 ## Dev Notes
 - Keep all gameplay authority server-side.
@@ -135,6 +135,10 @@ Based on current `gradle.properties`:
 - Optional world-context conditions are rule inputs only; they are not primary progression systems and fail closed (`false`) when context is unavailable.
 - When Apotheosis compat is active, World Awakened loot must compose with Apotheosis and never silently override or remove Apotheosis-owned tier-gated loot behavior.
 - Unsafe Apotheosis-sensitive loot operations are handled by explicit policy outcomes (block, downgrade to additive, or disable branch) with diagnostics.
+- Phase 7 reward/loot resolution is downstream-event-only (`entity_killed`, `invasion_completed`, and explicitly documented WA reward-capable events), must not mutate progression logic, and remains unaffected by global/challenge scalar layers until a later phase explicitly enables reward scaling.
+- Phase 7 reward-capable subsystems contribute reward intent only; one canonical resolver gathers contributors, resolves deterministic final outcomes, applies rewards once per event, and blocks duplicate non-repeatable contributors.
+- Phase 7 loot profiles are condition-driven and evaluate against one canonical loot context (`loot_context_type`, `target_type`, `target_id`, `loot_table_id`, entity/mutation context, player/dimension, stage/invasion context, compat/scalar policy context) rather than direct subsystem attachment.
+- Phase 8 invasions are event-state pressure systems in v1; World Awakened does not spawn invasion waves and instead exposes invasion context + temporary pressure modifiers that existing spawn systems resolve against.
 - Hot-path evaluation should run on compiled cached structures, not runtime JSON parsing.
 - Save compatibility should degrade gracefully when datapacks change, including stage aliases for renames.
 - Integrations must be optional and fail-safe when absent.

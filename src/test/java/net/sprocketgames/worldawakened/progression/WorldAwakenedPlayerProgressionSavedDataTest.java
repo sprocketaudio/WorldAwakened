@@ -72,6 +72,11 @@ class WorldAwakenedPlayerProgressionSavedDataTest {
         state.ascensionComponentSuppressionTimestamps().put(
                 "component|" + chosenReward + "|0|worldawakened:max_health_bonus",
                 1500L);
+        state.setChallengeModifier(1.20D);
+        state.setChallengeCooldownUntilMillis(5000L);
+        state.setChallengeChangeCount(2);
+        state.setChallengeUpdatedAtMillis(4500L);
+        state.setChallengeUpdatedBy("operator");
 
         CompoundTag encoded = data.toTag();
         WorldAwakenedPlayerProgressionSavedData decoded = WorldAwakenedPlayerProgressionSavedData.fromTag(encoded);
@@ -104,6 +109,11 @@ class WorldAwakenedPlayerProgressionSavedDataTest {
                 1500L,
                 decodedState.ascensionComponentSuppressionTimestamps()
                         .get("component|" + chosenReward + "|0|worldawakened:max_health_bonus"));
+        assertEquals(1.20D, decodedState.challengeModifier());
+        assertEquals(5000L, decodedState.challengeCooldownUntilMillis());
+        assertEquals(2, decodedState.challengeChangeCount());
+        assertEquals(4500L, decodedState.challengeUpdatedAtMillis());
+        assertEquals("operator", decodedState.challengeUpdatedBy());
     }
 
     @Test
