@@ -20,3 +20,6 @@ Copy `worldawakened_example_pack` into a world's `datapacks/` folder, then run:
 - example rule chains for mutator pressure and ascension offer cycles
 
 These files are examples and starter content, not mandatory runtime content.
+
+For the dedicated invasion scheduler validation pack and runbook, use:
+- `dev_datapacks/worldawakened_phase8_test`

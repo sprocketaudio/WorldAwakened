@@ -18,10 +18,7 @@ class InvasionProfileDefinitionCodecTest {
                   "id": "testpack:night_surge",
                   "display_name": "Night Surge",
                   "trigger_mode": "random_periodic",
-                  "spawn_budget": 20,
-                  "spawn_composition": [
-                    {"entity": "minecraft:zombie", "weight": 10}
-                  ]
+                  "duration_seconds": 120
                 }
                 """);
 
@@ -30,9 +27,12 @@ class InvasionProfileDefinitionCodecTest {
 
         InvasionProfileDefinition profile = result.result().orElseThrow();
         assertEquals("testpack:night_surge", profile.id().toString());
-        assertEquals(1, profile.waveCount());
-        assertEquals(20, profile.spawnBudget());
-        assertEquals(1, profile.spawnComposition().size());
+        assertEquals("Night Surge", profile.displayName().getAsString());
+        assertEquals(120, profile.durationSeconds());
+        assertEquals(1, profile.minPlayers());
+        assertEquals(1.0D, profile.pressureModifier());
+        assertTrue(profile.cooldownSeconds().isEmpty());
+        assertTrue(profile.warningSeconds().isEmpty());
     }
 }
 

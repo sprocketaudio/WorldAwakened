@@ -66,6 +66,7 @@ import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficul
 import net.sprocketgames.worldawakened.debug.WorldAwakenedComponentDebugFormatter;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedGlowStyleState;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
@@ -99,6 +100,7 @@ public final class WorldAwakenedCommands {
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedMutatorService mutatorService,
             WorldAwakenedLootService lootService,
+            WorldAwakenedInvasionService invasionService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
         WorldAwakenedDebugCommandService debugCommandService = new WorldAwakenedDebugCommandService(stageService, ascensionService);
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("wa")
@@ -113,6 +115,7 @@ public final class WorldAwakenedCommands {
                         .requires(source -> source.hasPermission(2))
                         .then(Commands.literal("list")
                                 .executes(context -> runCompatList(context.getSource()))))
+                .then(buildInvasionTree(datapackService, invasionService))
                 .then(buildLootTree(datapackService, lootService))
                 .then(buildAscensionTree(datapackService, ascensionService))
                 .then(buildDifficultyTree(difficultyScalarService))
@@ -125,6 +128,7 @@ public final class WorldAwakenedCommands {
                     ascensionService,
                     mutatorService,
                     lootService,
+                    invasionService,
                     difficultyScalarService,
                     debugCommandService));
         }
@@ -859,6 +863,37 @@ public final class WorldAwakenedCommands {
                                 .executes(context -> runDifficultyVote(context.getSource(), difficultyScalarService, false))));
     }
 
+    private static LiteralArgumentBuilder<CommandSourceStack> buildInvasionTree(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedInvasionService invasionService) {
+        return Commands.literal("invasion")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("start")
+                        .then(Commands.argument("profile_id", ResourceLocationArgument.id())
+                                .suggests(suggestEnabledInvasionProfileIds(invasionService))
+                                .executes(context -> runInvasionStart(
+                                        context.getSource(),
+                                        invasionService,
+                                        ResourceLocationArgument.getId(context, "profile_id")))))
+                .then(Commands.literal("stop")
+                        .executes(context -> runInvasionStop(
+                                context.getSource(),
+                                invasionService)))
+                .then(Commands.literal("inspect")
+                        .then(Commands.literal("active")
+                                .executes(context -> runInvasionInspectActive(
+                                        context.getSource(),
+                                        invasionService)))
+                        .then(Commands.literal("profile")
+                                .then(Commands.argument("profile_id", ResourceLocationArgument.id())
+                                        .suggests(suggestInvasionProfileIds(datapackService))
+                                        .executes(context -> runInvasionInspectProfile(
+                                                context.getSource(),
+                                                datapackService,
+                                                invasionService,
+                                                ResourceLocationArgument.getId(context, "profile_id"))))));
+    }
+
     private static LiteralArgumentBuilder<CommandSourceStack> buildLootTree(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedLootService lootService) {
@@ -959,6 +994,7 @@ public final class WorldAwakenedCommands {
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedMutatorService mutatorService,
             WorldAwakenedLootService lootService,
+            WorldAwakenedInvasionService invasionService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
             WorldAwakenedDebugCommandService debugCommandService) {
         LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug")
@@ -1036,6 +1072,7 @@ public final class WorldAwakenedCommands {
         debug.then(buildDebugMutatorsTree(datapackService, mutatorService));
         debug.then(buildDebugSpawnTree(mutatorService));
         debug.then(buildDebugLootTree(datapackService, lootService));
+        debug.then(buildDebugInvasionTree(invasionService));
         debug.then(buildDebugDifficultyTree(difficultyScalarService));
         debug.then(buildDebugPressureTree(mutatorService, difficultyScalarService));
         return debug;
@@ -1385,6 +1422,53 @@ public final class WorldAwakenedCommands {
                                                                 ResourceLocationArgument.getId(context, "target_id"),
                                                                 EntityArgument.getPlayer(context, "player"),
                                                                 DimensionArgument.getDimension(context, "dimension"))))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugInvasionTree(
+            WorldAwakenedInvasionService invasionService) {
+        return Commands.literal("invasion")
+                .then(Commands.literal("evaluate")
+                        .then(Commands.argument("profile_id", ResourceLocationArgument.id())
+                                .suggests(suggestEnabledInvasionProfileIds(invasionService))
+                                .executes(context -> runDebugInvasionEvaluate(
+                                        context.getSource(),
+                                        invasionService,
+                                        ResourceLocationArgument.getId(context, "profile_id"),
+                                        null,
+                                        null,
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugInvasionEvaluate(
+                                                context.getSource(),
+                                                invasionService,
+                                                ResourceLocationArgument.getId(context, "profile_id"),
+                                                DimensionArgument.getDimension(context, "dimension"),
+                                                null,
+                                                null,
+                                                null))
+                                        .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                        .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                                .executes(context -> runDebugInvasionEvaluate(
+                                                                        context.getSource(),
+                                                                        invasionService,
+                                                                        ResourceLocationArgument.getId(context, "profile_id"),
+                                                                        DimensionArgument.getDimension(context, "dimension"),
+                                                                        DoubleArgumentType.getDouble(context, "x"),
+                                                                        DoubleArgumentType.getDouble(context, "y"),
+                                                                        DoubleArgumentType.getDouble(context, "z")))))))
+                                .then(Commands.argument("x", DoubleArgumentType.doubleArg())
+                                        .then(Commands.argument("y", DoubleArgumentType.doubleArg())
+                                                .then(Commands.argument("z", DoubleArgumentType.doubleArg())
+                                                        .executes(context -> runDebugInvasionEvaluate(
+                                                                context.getSource(),
+                                                                invasionService,
+                                                                ResourceLocationArgument.getId(context, "profile_id"),
+                                                                null,
+                                                                DoubleArgumentType.getDouble(context, "x"),
+                                                                DoubleArgumentType.getDouble(context, "y"),
+                                                                DoubleArgumentType.getDouble(context, "z"))))))));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildDebugDifficultyTree(
@@ -1793,6 +1877,266 @@ public final class WorldAwakenedCommands {
                 target.get().position());
         emitMutatorRunResult(source, result, "live_test", false);
         return result.spawnAdded() ? 1 : 0;
+    }
+
+    private static int runInvasionStart(
+            CommandSourceStack source,
+            WorldAwakenedInvasionService invasionService,
+            ResourceLocation profileId) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened invasion start requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionStartResult result =
+                invasionService.startInvasionFromCommand(level, profileId);
+        if (!result.success()) {
+            String code = result.code().isBlank()
+                    ? WorldAwakenedDiagnosticCodes.DEBUG_INVASION_STATE_INVALID
+                    : result.code();
+            sendOperatorFailure(source, Component.literal("Could not start invasion: "
+                    + describeInvasionRejection(code, result.detail()))
+                    .append(debugCodeSuffix(code)));
+            sendOperatorDetail(source, "trace_id="
+                    + result.traceId()
+                    + " code="
+                    + code
+                    + " detail="
+                    + result.detail());
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionContextSnapshot context = result.context()
+                .orElseGet(() -> invasionService.contextSnapshot(level));
+        sendOperatorSummary(source, Component.literal("Invasion started: profile="
+                + context.profileId().map(ResourceLocation::toString).orElse(profileId.toString())
+                + " instance="
+                + context.instanceId()
+                + " warning_active="
+                + context.warningActive()
+                + " remaining_seconds="
+                + context.remainingDurationSeconds()
+                + " pressure_modifier="
+                + formatNumber(context.pressureModifier())
+                + " ")
+                .append(copyButton("Copy Trace", result.traceId(), "Copy invasion trace ID")), true);
+        sendOperatorDetail(source, "display_name="
+                + (context.displayName().isBlank() ? "<none>" : context.displayName())
+                + " reward_profile="
+                + context.rewardProfile().map(ResourceLocation::toString).orElse("<none>")
+                + " tags="
+                + formatStringSet(context.tags()));
+        sendOperatorDetail(source, "trace_id=" + result.traceId());
+        return 1;
+    }
+
+    private static int runInvasionStop(
+            CommandSourceStack source,
+            WorldAwakenedInvasionService invasionService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened invasion stop requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionStopResult result =
+                invasionService.stopActiveInvasionFromCommand(level);
+        if (!result.success()) {
+            String code = result.code().isBlank()
+                    ? WorldAwakenedDiagnosticCodes.DEBUG_INVASION_STATE_INVALID
+                    : result.code();
+            sendOperatorFailure(source, Component.literal("Could not stop invasion: "
+                    + describeInvasionRejection(code, result.detail()))
+                    .append(debugCodeSuffix(code)));
+            sendOperatorDetail(source, "trace_id="
+                    + result.traceId()
+                    + " code="
+                    + code
+                    + " detail="
+                    + result.detail());
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionContextSnapshot stopped = result.stoppedContext()
+                .orElseGet(() -> invasionService.contextSnapshot(level));
+        sendOperatorSummary(source, Component.literal("Invasion stopped: profile="
+                + stopped.profileId().map(ResourceLocation::toString).orElse("<unknown>")
+                + " instance="
+                + stopped.instanceId()
+                + " ")
+                .append(copyButton("Copy Trace", result.traceId(), "Copy invasion trace ID")), true);
+        sendOperatorDetail(source, "stopped_display_name="
+                + (stopped.displayName().isBlank() ? "<none>" : stopped.displayName())
+                + " stopped_tags="
+                + formatStringSet(stopped.tags()));
+        sendOperatorDetail(source, "trace_id=" + result.traceId());
+        return 1;
+    }
+
+    private static int runInvasionInspectActive(
+            CommandSourceStack source,
+            WorldAwakenedInvasionService invasionService) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened invasion inspect requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionContextSnapshot context = invasionService.contextSnapshot(level);
+        if (!context.invasionActive()) {
+            sendOperatorSummary(source, "No active invasion. global_cooldown_remaining_ms="
+                    + context.globalCooldownRemainingMillis()
+                    + " loaded_profiles="
+                    + invasionService.loadedProfileIds().size(), false);
+            return 0;
+        }
+
+        sendOperatorSummary(source, "Invasion active: profile="
+                + context.profileId().map(ResourceLocation::toString).orElse("<unknown>")
+                + " display_name="
+                + (context.displayName().isBlank() ? "<none>" : context.displayName())
+                + " instance="
+                + context.instanceId()
+                + " warning_active="
+                + context.warningActive()
+                + " remaining_seconds="
+                + context.remainingDurationSeconds()
+                + " pressure_modifier="
+                + formatNumber(context.pressureModifier()), false);
+        sendInspectLine(source, " - reward_profile=" + context.rewardProfile().map(ResourceLocation::toString).orElse("<none>"));
+        sendInspectLine(source, " - tags=" + formatStringSet(context.tags()));
+        sendInspectLine(source, " - started_at_millis=" + context.startedAtMillis());
+        sendInspectLine(source, " - profile_cooldown_remaining_ms=" + context.profileCooldownRemainingMillis());
+        sendInspectLine(source, " - global_cooldown_remaining_ms=" + context.globalCooldownRemainingMillis());
+        return 1;
+    }
+
+    private static int runInvasionInspectProfile(
+            CommandSourceStack source,
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedInvasionService invasionService,
+            ResourceLocation profileId) {
+        ServerLevel level = requireCommandLevel(source, "World Awakened invasion inspect requires a server level context.");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        var profile = snapshot.data().invasionProfiles().get(profileId);
+        if (profile == null) {
+            sendOperatorFailure(source, Component.literal("That invasion profile is not loaded: " + profileId)
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_INVASION_PROFILE_NOT_FOUND)));
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionContextSnapshot active = invasionService.contextSnapshot(level);
+        boolean activeProfile = active.invasionActive()
+                && active.profileId().map(profileId::equals).orElse(false);
+
+        sendOperatorSummary(source, "Invasion profile: id="
+                + profile.id()
+                + " enabled="
+                + profile.enabled()
+                + " trigger_mode="
+                + profile.triggerMode().name().toLowerCase(Locale.ROOT)
+                + " active="
+                + activeProfile, false);
+        sendInspectLine(source, " - min_players="
+                + profile.minPlayers()
+                + " duration_seconds="
+                + profile.durationSeconds()
+                + " warning_seconds="
+                + profile.warningSeconds().map(String::valueOf).orElse("<config>")
+                + " cooldown_seconds="
+                + profile.cooldownSeconds().map(String::valueOf).orElse("<none>"));
+        sendInspectLine(source, " - pressure_modifier="
+                + formatNumber(profile.pressureModifier())
+                + " reward_profile="
+                + profile.rewardProfile().map(ResourceLocation::toString).orElse("<none>"));
+        sendInspectLine(source, " - dimensions=" + formatResourceLocations(profile.dimensions()));
+        sendInspectLine(source, " - biome_filters=" + formatResourceLocations(profile.biomeFilters()));
+        sendInspectLine(source, " - tags=" + formatStringList(profile.tags()));
+        sendInspectLine(source, " - conditions=" + profile.conditions().size());
+        sendInspectLine(source, " - stage_filters=" + profile.stageFilters().map(JsonElement::toString).orElse("<none>"));
+        if (activeProfile) {
+            sendInspectLine(source, " - active_remaining_seconds="
+                    + active.remainingDurationSeconds()
+                    + " warning_active="
+                    + active.warningActive()
+                    + " live_pressure_modifier="
+                    + formatNumber(active.pressureModifier()));
+        }
+        return 1;
+    }
+
+    private static int runDebugInvasionEvaluate(
+            CommandSourceStack source,
+            WorldAwakenedInvasionService invasionService,
+            ResourceLocation profileId,
+            ServerLevel explicitLevel,
+            Double x,
+            Double y,
+            Double z) {
+        Optional<SpawnCommandTarget> target = resolveSpawnCommandTarget(
+                source,
+                explicitLevel,
+                x,
+                y,
+                z,
+                "/wa debug invasion evaluate");
+        if (target.isEmpty()) {
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.InvasionEvaluateResult result = invasionService.debugEvaluateProfile(
+                target.get().level(),
+                profileId,
+                target.get().level().dimension().location(),
+                target.get().position());
+        sendDebugHeader(source, Component.literal("Invasion debug evaluate: trace_id="
+                + result.traceId())
+                .append(Component.literal(" "))
+                .append(copyButton("Copy Trace", result.traceId(), "Copy invasion trace ID")));
+        sendDebugSection(source, "target",
+                "profile="
+                        + result.profileId()
+                        + " dimension="
+                        + target.get().level().dimension().location()
+                        + " pos="
+                        + formatBlockPos(target.get().position()));
+        sendDebugSection(source, "active_context",
+                formatInvasionContextSummary(result.activeContext()));
+
+        if (!result.profileFound()) {
+            String code = result.code().isBlank()
+                    ? WorldAwakenedDiagnosticCodes.DEBUG_INVASION_PROFILE_NOT_FOUND
+                    : result.code();
+            sendOperatorFailure(source, Component.literal("Invasion evaluate failed: "
+                    + describeInvasionRejection(code, result.detail()))
+                    .append(debugCodeSuffix(code)));
+            sendDebugSection(source, "error", "code=" + code + " detail=" + result.detail());
+            return 0;
+        }
+
+        WorldAwakenedInvasionService.ProfileEligibility eligibility = result.eligibility().orElseThrow();
+        sendDebugSection(source, "eligibility",
+                "eligible="
+                        + eligibility.eligible()
+                        + " trigger_mode="
+                        + eligibility.triggerMode().name().toLowerCase(Locale.ROOT)
+                        + " players="
+                        + eligibility.onlinePlayers()
+                        + "/"
+                        + eligibility.minPlayers()
+                        + " global_cooldown_remaining_ms="
+                        + eligibility.globalCooldownRemainingMillis()
+                        + " profile_cooldown_remaining_ms="
+                        + eligibility.profileCooldownRemainingMillis());
+        sendDebugSection(source, "eligibility_rejections", formatStringList(eligibility.rejectionReasons()));
+
+        WorldAwakenedInvasionService.InvasionPoolSummary poolSummary = result.poolSummary().orElseThrow();
+        sendDebugSection(source, "pool_newly_eligible", formatResourceLocations(poolSummary.newlyEligiblePools()));
+        sendDebugSection(source, "pool_already_eligible", formatResourceLocations(poolSummary.alreadyEligiblePools()));
+        sendDebugSection(source, "pool_rejected", formatInvasionRejectedPools(poolSummary.rejectedPools()));
+        return 1;
     }
 
     private static int runLootEvaluate(
@@ -2683,6 +3027,58 @@ public final class WorldAwakenedCommands {
                 .collect(Collectors.joining(", "));
     }
 
+    private static String formatStringSet(Set<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "<none>";
+        }
+        return values.stream()
+                .sorted()
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String formatStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "<none>";
+        }
+        return values.stream()
+                .map(value -> value == null || value.isBlank() ? "<blank>" : value)
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String formatInvasionContextSummary(WorldAwakenedInvasionService.InvasionContextSnapshot context) {
+        return "active="
+                + context.invasionActive()
+                + " profile="
+                + context.profileId().map(ResourceLocation::toString).orElse("<none>")
+                + " display_name="
+                + (context.displayName().isBlank() ? "<none>" : context.displayName())
+                + " instance="
+                + context.instanceId()
+                + " warning_active="
+                + context.warningActive()
+                + " remaining_seconds="
+                + context.remainingDurationSeconds()
+                + " pressure_modifier="
+                + formatNumber(context.pressureModifier())
+                + " reward_profile="
+                + context.rewardProfile().map(ResourceLocation::toString).orElse("<none>")
+                + " tags="
+                + formatStringSet(context.tags())
+                + " global_cooldown_remaining_ms="
+                + context.globalCooldownRemainingMillis()
+                + " profile_cooldown_remaining_ms="
+                + context.profileCooldownRemainingMillis();
+    }
+
+    private static String formatInvasionRejectedPools(List<WorldAwakenedInvasionService.PoolDecision> decisions) {
+        if (decisions == null || decisions.isEmpty()) {
+            return "<none>";
+        }
+        return decisions.stream()
+                .map(decision -> decision.poolId() + " detail=" + decision.detail())
+                .collect(Collectors.joining(" | "));
+    }
+
     private static String formatLootMatched(List<WorldAwakenedLootService.ProfileDecision> decisions) {
         List<WorldAwakenedLootService.ProfileDecision> matched = decisions.stream()
                 .filter(WorldAwakenedLootService.ProfileDecision::matched)
@@ -2767,6 +3163,73 @@ public final class WorldAwakenedCommands {
             return "request was skipped";
         }
         return detail.replace('_', ' ');
+    }
+
+    private static String describeInvasionRejection(String code, String detail) {
+        if (WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE.equals(code)) {
+            return "the invasion system is disabled by configuration";
+        }
+        if (WorldAwakenedDiagnosticCodes.DEBUG_INVASION_PROFILE_NOT_FOUND.equals(code)) {
+            return "that invasion profile is not loaded or is disabled";
+        }
+        if (!WorldAwakenedDiagnosticCodes.DEBUG_INVASION_STATE_INVALID.equals(code)) {
+            return detail == null || detail.isBlank() ? "request was rejected" : detail.replace('_', ' ');
+        }
+        if (detail == null || detail.isBlank()) {
+            return "request was rejected by invasion state validation";
+        }
+        if (detail.startsWith("already_active:")) {
+            return "an invasion is already active";
+        }
+        if (detail.equals("no_active_invasion")) {
+            return "there is no active invasion";
+        }
+        if (detail.equals("max_concurrent_invasions=0")) {
+            return "the configured max concurrent invasions is 0";
+        }
+        if (detail.startsWith("ineligible:")) {
+            return describeInvasionEligibilityReasons(detail.substring("ineligible:".length()));
+        }
+        return detail.replace('_', ' ');
+    }
+
+    private static String describeInvasionEligibilityReasons(String rawReasons) {
+        if (rawReasons == null || rawReasons.isBlank()) {
+            return "the selected profile is not eligible at this time";
+        }
+        String[] reasons = rawReasons.split("\\|");
+        if (reasons.length == 0) {
+            return "the selected profile is not eligible at this time";
+        }
+        String first = reasons[0];
+        if (first.startsWith("global_cooldown_active_millis:")) {
+            return "global invasion cooldown is still active";
+        }
+        if (first.startsWith("profile_cooldown_active_millis:")) {
+            return "that invasion profile is still on cooldown";
+        }
+        if (first.startsWith("player_count_below_min:")) {
+            return "online player count is below the profile minimum";
+        }
+        if (first.startsWith("dimension_not_allowed:")) {
+            return "this dimension is not allowed by the profile";
+        }
+        if (first.startsWith("biome_not_allowed:")) {
+            return "this biome is not allowed by the profile";
+        }
+        if (first.equals("biome_unavailable")) {
+            return "biome context is unavailable for this request";
+        }
+        if (first.equals("stage_filters_rejected")) {
+            return "stage filters do not match current progression state";
+        }
+        if (first.startsWith("trigger_mode_not_random_periodic:")) {
+            return "the profile trigger mode is not eligible for scheduler evaluation";
+        }
+        if (first.startsWith("profile_condition")) {
+            return "one or more profile conditions did not match";
+        }
+        return first.replace('_', ' ');
     }
 
     private static String formatNumber(double value) {
@@ -2930,6 +3393,18 @@ public final class WorldAwakenedCommands {
     private static SuggestionProvider<CommandSourceStack> suggestMutatorIds(WorldAwakenedDatapackService datapackService) {
         return (context, builder) -> SharedSuggestionProvider.suggestResource(
                 datapackService.currentSnapshot().data().mobMutators().keySet(),
+                builder);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestInvasionProfileIds(WorldAwakenedDatapackService datapackService) {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                datapackService.currentSnapshot().data().invasionProfiles().keySet(),
+                builder);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestEnabledInvasionProfileIds(WorldAwakenedInvasionService invasionService) {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                invasionService.loadedProfileIds(),
                 builder);
     }
 

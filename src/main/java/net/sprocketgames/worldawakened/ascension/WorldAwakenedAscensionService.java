@@ -1156,6 +1156,8 @@ public final class WorldAwakenedAscensionService {
                 Set.copyOf(loadedMods),
                 Map.copyOf(toggles),
                 false,
+                Optional.empty(),
+                Set.of(),
                 Optional.empty());
     }
 

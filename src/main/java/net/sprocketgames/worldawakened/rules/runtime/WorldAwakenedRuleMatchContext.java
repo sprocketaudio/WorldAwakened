@@ -36,5 +36,7 @@ public record WorldAwakenedRuleMatchContext(
         Set<String> loadedMods,
         Map<String, Boolean> configToggles,
         boolean invasionActive,
+        Optional<ResourceLocation> invasionProfileId,
+        Set<String> invasionTags,
         Optional<String> structureContext) {
 }

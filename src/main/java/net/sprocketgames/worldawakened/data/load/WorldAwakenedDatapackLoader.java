@@ -423,39 +423,69 @@ public final class WorldAwakenedDatapackLoader {
             "invasion_profiles",
             InvasionProfileDefinition.CODEC,
             (sourcePath, definition, collector) -> {
-                if (definition.spawnComposition().isEmpty()) {
-                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                            WorldAwakenedDiagnosticSeverity.ERROR,
-                            WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
-                            "invasion_profiles",
-                            definition.id(),
-                            sourcePath,
-                            "Invasion profile must include spawn_composition entries",
-                            "disabled_object"));
-                }
-                if (definition.waveCount() < 1) {
+                if (definition.minPlayers() < 1) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
                             "invasion_profiles",
                             definition.id(),
                             sourcePath,
-                            "wave_count must be >= 1",
+                            "min_players must be >= 1",
                             "disabled_object"));
                 }
-                if (definition.spawnBudget() < 1) {
+                if (definition.durationSeconds() < 1) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
                             "invasion_profiles",
                             definition.id(),
                             sourcePath,
-                            "spawn_budget must be >= 1",
+                            "duration_seconds must be >= 1",
                             "disabled_object"));
                 }
-                validateInvasionCompositionEntries(definition, sourcePath, collector);
+                if (!Double.isFinite(definition.pressureModifier()) || definition.pressureModifier() <= 0.0D) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
+                            "invasion_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "pressure_modifier must be finite and > 0",
+                            "disabled_object"));
+                }
+                if (definition.cooldownSeconds().isPresent() && definition.cooldownSeconds().get() < 0) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
+                            "invasion_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "cooldown_seconds must be >= 0 when present",
+                            "disabled_object"));
+                }
+                if (definition.warningSeconds().isPresent() && definition.warningSeconds().get() < 0) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
+                            "invasion_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "warning_seconds must be >= 0 when present",
+                            "disabled_object"));
+                }
+                for (int i = 0; i < definition.tags().size(); i++) {
+                    if (definition.tags().get(i).isBlank()) {
+                        collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                                WorldAwakenedDiagnosticSeverity.ERROR,
+                                WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
+                                "invasion_profiles",
+                                definition.id(),
+                                sourcePath,
+                                "tags[" + i + "] must not be blank",
+                                "disabled_object"));
+                    }
+                }
                 validateTypedNodes("invasion_profiles", definition.id(), sourcePath, "conditions", definition.conditions(), true, collector);
-                validateOptionalApotheosisFilter("invasion_profiles", definition.id(), sourcePath, definition.apotheosisTierFilters(), collector);
             });
 
     private static final WorldAwakenedObjectType<IntegrationProfileDefinition> INTEGRATION_PROFILES = new WorldAwakenedObjectType<>(
@@ -521,7 +551,7 @@ public final class WorldAwakenedDatapackLoader {
 
         mutationPools = dropInvalidMutationPools(mutationPools, mobMutators, collector);
         ascensionOffers = dropInvalidAscensionOffers(ascensionOffers, ascensionRewards, collector);
-        invasionProfiles = dropInvalidInvasionProfiles(invasionProfiles, lootProfiles, mutationPools, collector);
+        invasionProfiles = dropInvalidInvasionProfiles(invasionProfiles, lootProfiles, collector);
 
         WorldAwakenedValidationSummary summary = collector.build();
         if (WorldAwakenedFeatureGates.validationLoggingEnabled()) {
@@ -1035,51 +1065,6 @@ public final class WorldAwakenedDatapackLoader {
         }
     }
 
-    private static void validateInvasionCompositionEntries(
-            InvasionProfileDefinition definition,
-            String sourcePath,
-            WorldAwakenedValidationSummary.Builder collector) {
-        int valid = 0;
-        for (int i = 0; i < definition.spawnComposition().size(); i++) {
-            JsonElement entry = definition.spawnComposition().get(i);
-            if (!entry.isJsonObject()) {
-                collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                        WorldAwakenedDiagnosticSeverity.ERROR,
-                        WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
-                        "invasion_profiles",
-                        definition.id(),
-                        sourcePath,
-                        "spawn_composition[" + i + "] must be an object",
-                        "disabled_object"));
-                continue;
-            }
-            JsonObject object = entry.getAsJsonObject();
-            boolean hasSelector = object.has("entity") || object.has("entity_tag") || object.has("entities") || object.has("selector");
-            if (!hasSelector) {
-                collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                        WorldAwakenedDiagnosticSeverity.ERROR,
-                        WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
-                        "invasion_profiles",
-                        definition.id(),
-                        sourcePath,
-                        "spawn_composition[" + i + "] requires entity/entity_tag/entities/selector",
-                        "disabled_object"));
-                continue;
-            }
-            valid++;
-        }
-        if (valid == 0) {
-            collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                    WorldAwakenedDiagnosticSeverity.ERROR,
-                    WorldAwakenedDiagnosticCodes.INVASION_COMPOSITION_INVALID,
-                    "invasion_profiles",
-                    definition.id(),
-                    sourcePath,
-                    "Invasion profile has zero valid spawn_composition entries",
-                    "disabled_object"));
-        }
-    }
-
     private static void validateEntityTagSelectors(
             String objectType,
             ResourceLocation objectId,
@@ -1326,7 +1311,6 @@ public final class WorldAwakenedDatapackLoader {
     private static Map<ResourceLocation, InvasionProfileDefinition> dropInvalidInvasionProfiles(
             Map<ResourceLocation, InvasionProfileDefinition> invasionProfiles,
             Map<ResourceLocation, LootProfileDefinition> lootProfiles,
-            Map<ResourceLocation, MutationPoolDefinition> mutationPools,
             WorldAwakenedValidationSummary.Builder collector) {
         Map<ResourceLocation, InvasionProfileDefinition> filtered = new LinkedHashMap<>();
         for (InvasionProfileDefinition profile : invasionProfiles.values()) {
@@ -1341,19 +1325,6 @@ public final class WorldAwakenedDatapackLoader {
                         "Missing reward_profile reference: " + profile.rewardProfile().get(),
                         "profile_disabled"));
                 invalid = true;
-            }
-            for (ResourceLocation poolId : profile.mutatorPoolRefs()) {
-                if (!mutationPools.containsKey(poolId)) {
-                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                            WorldAwakenedDiagnosticSeverity.ERROR,
-                            WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
-                            "invasion_profiles",
-                            profile.id(),
-                            null,
-                            "Missing mutator_pool_refs reference: " + poolId,
-                            "profile_disabled"));
-                    invalid = true;
-                }
             }
             if (invalid) {
                 collector.incrementDisabled("invasion_profiles");
@@ -1445,6 +1416,7 @@ public final class WorldAwakenedDatapackLoader {
                     "apotheosis_world_tier_compare",
                     "random_chance",
                     "invasion_active" -> isOneOf(scope, "world", "player", "entity", "spawn_event");
+            case "invasion_tag" -> "spawn_event".equals(scope);
             case "current_biome" -> isOneOf(scope, "player", "entity", "spawn_event");
             case "player_distance_from_spawn" -> isOneOf(scope, "player", "entity", "spawn_event");
             case "player_count_online" -> "world".equals(scope);

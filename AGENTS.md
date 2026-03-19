@@ -208,5 +208,6 @@ Phase 4 is complete (ascension runtime offers + queue semantics + minimal GUI/ne
 Phase 5 is complete (mutators + mutation pools + spawn-time application + inspect/debug surfaces + spawn-time guardrails).  
 Phase 6 is complete (spawn pressure controls + rule-event guardrails + shared effective-scalar provider).  
 Phase 7 is complete (loot evolution integration + Apotheosis-sensitive loot safety behavior + loot debug evaluate/force surfaces).  
-Current active target is Phase 8 unless the user redirects scope.
+Phase 8 is complete (invasion pressure-event scheduler + active-state + warning/duration/cooldown + temporary pressure modifier + invasion command/debug surfaces).  
+Current active target is Phase 9 unless the user redirects scope.
 

@@ -23,6 +23,8 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionEventHandlers;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootEventHandlers;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorEventHandlers;
@@ -38,15 +40,17 @@ public final class WorldAwakenedMod {
     public static final Logger LOGGER = LogUtils.getLogger();
     public static final WorldAwakenedDatapackService DATAPACK_SERVICE = new WorldAwakenedDatapackService();
     public static final WorldAwakenedStageService STAGE_SERVICE = new WorldAwakenedStageService(DATAPACK_SERVICE);
+    public static final WorldAwakenedInvasionService INVASION_SERVICE = new WorldAwakenedInvasionService(DATAPACK_SERVICE, STAGE_SERVICE);
     public static final WorldAwakenedAscensionService ASCENSION_SERVICE = new WorldAwakenedAscensionService(DATAPACK_SERVICE, STAGE_SERVICE);
-    public static final WorldAwakenedRuleService RULE_SERVICE = new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE);
+    public static final WorldAwakenedRuleService RULE_SERVICE =
+            new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE, INVASION_SERVICE);
     public static final WorldAwakenedTriggerService TRIGGER_SERVICE = new WorldAwakenedTriggerService(DATAPACK_SERVICE, STAGE_SERVICE, RULE_SERVICE, ASCENSION_SERVICE);
     public static final WorldAwakenedEffectiveDifficultyScalarService EFFECTIVE_DIFFICULTY_SCALAR_SERVICE =
             new WorldAwakenedEffectiveDifficultyScalarService();
     public static final WorldAwakenedMutatorService MUTATOR_SERVICE =
-            new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE, EFFECTIVE_DIFFICULTY_SCALAR_SERVICE);
+            new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE, EFFECTIVE_DIFFICULTY_SCALAR_SERVICE, INVASION_SERVICE);
     public static final WorldAwakenedLootService LOOT_SERVICE =
-            new WorldAwakenedLootService(DATAPACK_SERVICE, STAGE_SERVICE);
+            new WorldAwakenedLootService(DATAPACK_SERVICE, STAGE_SERVICE, INVASION_SERVICE);
 
     public WorldAwakenedMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
@@ -58,6 +62,7 @@ public final class WorldAwakenedMod {
         WorldAwakenedOwnedCarrierEventHandlers carrierHandlers = new WorldAwakenedOwnedCarrierEventHandlers();
         WorldAwakenedMutatorEventHandlers mutatorHandlers = new WorldAwakenedMutatorEventHandlers(MUTATOR_SERVICE);
         WorldAwakenedLootEventHandlers lootHandlers = new WorldAwakenedLootEventHandlers(LOOT_SERVICE);
+        WorldAwakenedInvasionEventHandlers invasionHandlers = new WorldAwakenedInvasionEventHandlers(INVASION_SERVICE);
         modEventBus.addListener(WorldAwakenedNetwork::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListener);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
@@ -76,6 +81,7 @@ public final class WorldAwakenedMod {
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityJoinLevel);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityTickPost);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onPlayerStartTracking);
+        NeoForge.EVENT_BUS.addListener(invasionHandlers::onLevelTickPost);
 
         WorldAwakenedLog.info(LOGGER, WorldAwakenedLogCategory.CORE, "Initialized {}", WorldAwakenedConstants.MOD_NAME);
     }
@@ -94,6 +100,7 @@ public final class WorldAwakenedMod {
                 ASCENSION_SERVICE,
                 MUTATOR_SERVICE,
                 LOOT_SERVICE,
+                INVASION_SERVICE,
                 EFFECTIVE_DIFFICULTY_SCALAR_SERVICE);
     }
 }

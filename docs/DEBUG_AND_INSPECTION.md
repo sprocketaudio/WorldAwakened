@@ -57,7 +57,7 @@ Hard rule:
 | Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
 | Loot profiles | `/wa loot evaluate`, `/wa loot force_profile`, `/wa debug loot evaluate`, `/wa debug loot force_profile` | profile ID, loot target, trace ID | matched/rejected, compat safety outcome, applied operations, final outcome | `implemented` |
-| Invasions | invasion inspect output | profile ID, invasion instance ID | scheduler state, active-event state, pressure modifier, duration/cooldown outcomes | `planned` |
+| Invasions | `/wa invasion inspect`, `/wa debug invasion evaluate` | profile ID, invasion instance ID | scheduler state, active-event state, pressure modifier, duration/cooldown outcomes | `implemented` |
 | Compat/integrations | `/wa compat list`, integration inspect | integration ID/mod ID | active/inactive reason, gate path, fallback path | `implemented`/`planned` |
 | Web linked sessions | `/wa web edit`, `/wa web session status` | session ID, runtime version, schema version, revision | linked/stale/revoked state, apply outcome, mismatch diagnostics | `planned` |
 
@@ -116,6 +116,11 @@ Current baseline command surface:
 - `/wa loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
 - `/wa debug loot evaluate <target_type> <target_id> [player] [dimension]`
 - `/wa debug loot force_profile <profile_id> <target_type> <target_id> [player] [dimension]`
+- `/wa invasion start <profile_id>`
+- `/wa invasion stop`
+- `/wa invasion inspect active`
+- `/wa invasion inspect profile <profile_id>`
+- `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
 - `/wa debug pressure last`
 - `/wa debug pressure replay <id>`
 - `/wa debug pressure evaluate [dimension] [x] [y] [z] [player]`
@@ -157,13 +162,11 @@ Notes:
 Planned minimum additions as systems complete:
 - `/wa debug perf`
 - `/wa debug rules`
-- `/wa invasion inspect <profile|active>`
 - `/wa loot inspect <target>`
 - `/wa web edit`
 - `/wa web session status`
 - `/wa web session revoke`
 - `/wa debug trace <trace_id>`
-- `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
 - `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
 - `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
 
@@ -174,7 +177,7 @@ Performance-debug payload minimums:
 - rule timing summaries
 
 Operator/debug split:
-- operator-level commands are gameplay-facing control and recovery paths (`stage unlock|lock`, `trigger fire`, `ascension grant_offer|choose|revoke|reopen|clear`)
+- operator-level commands are gameplay-facing control and recovery paths (`stage unlock|lock`, `trigger fire`, `ascension grant_offer|choose|revoke|reopen|clear`, `invasion start|stop|inspect`)
 - debug-level commands are explicit persistence-bucket tools and must not imply hidden rollback of unrelated state
 - debug reset/clear commands must report exactly what bucket or identity was removed
 - operator inspection/mutation commands must allow explicit `player` and `global` targeting rather than relying on ambiguous fallback

@@ -183,7 +183,7 @@ If one of these fields is missing, treat that as an observability gap and invest
 
 Preflight check before using mutator debug commands:
 - run `/wa debug`
-- confirm `mutators`, `loot`, and `spawn` appear as child literals
+- confirm `mutators`, `loot`, `invasion`, and `spawn` appear as child literals
 - if `/wa debug` only shows `clear` and `reset`, restart on a current mod version; datapack reload does not refresh command registration
 
 Use these mutator debug surfaces when a spawn path is unclear:
@@ -213,6 +213,24 @@ Use these loot debug surfaces when reward profile behavior is unclear:
 `/wa debug loot ...` always returns the dense inspect payload.
 `evaluate` runs normal candidate resolution for the target context.
 `force_profile` isolates one profile against the same canonical context shape for rejection-path debugging.
+
+Use these invasion operator surfaces for live pressure-event control:
+
+```text
+/wa invasion start <profile_id>
+/wa invasion stop
+/wa invasion inspect active
+/wa invasion inspect profile <profile_id>
+```
+
+Use this invasion debug surface for scheduler/profile eligibility checks:
+
+```text
+/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]
+```
+
+`/wa invasion ...` provides concise operator summaries and state snapshots.
+`/wa debug invasion evaluate ...` provides the dense inspect payload including cooldown gates and invasion-gated pool eligibility.
 
 ## 3B. Mutator Cap Resolution
 

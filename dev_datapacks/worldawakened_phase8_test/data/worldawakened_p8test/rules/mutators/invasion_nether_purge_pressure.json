@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:mutators/invasion_nether_purge_pressure",
+  "enabled": true,
+  "priority": 79,
+  "execution_scope": "spawn_event",
+  "conditions": [
+    {
+      "type": "worldawakened:invasion_active",
+      "parameters": {
+        "profile_id": "worldawakened_p8test:nether_purge"
+      }
+    },
+    {
+      "type": "worldawakened:invasion_tag",
+      "parameters": {
+        "tag": "nether"
+      }
+    },
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:the_nether"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "type": "worldawakened:apply_mutator_pool",
+      "parameters": {
+        "pool": "worldawakened_p8test:invasion_nether_purge_pool"
+      }
+    }
+  ],
+  "weight": 1,
+  "chance": 1,
+  "cooldown": {
+    "seconds": 10
+  },
+  "tags": [
+    "example",
+    "mutations",
+    "invasion",
+    "phase8"
+  ]
+}

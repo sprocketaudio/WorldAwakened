@@ -45,6 +45,7 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutationProvenance;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
@@ -63,6 +64,7 @@ public final class WorldAwakenedLootService {
 
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
+    private final WorldAwakenedInvasionService invasionService;
     private final AtomicReference<CachedCompiledLoot> cache =
             new AtomicReference<>(new CachedCompiledLoot(0L, CompiledLootGraph.empty()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
@@ -70,8 +72,16 @@ public final class WorldAwakenedLootService {
     public WorldAwakenedLootService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService) {
+        this(datapackService, stageService, new WorldAwakenedInvasionService(datapackService, stageService));
+    }
+
+    public WorldAwakenedLootService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedInvasionService invasionService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
+        this.invasionService = invasionService;
     }
 
     public List<ResourceLocation> loadedLootProfileIds() {
@@ -663,6 +673,7 @@ public final class WorldAwakenedLootService {
         Set<ResourceLocation> playerStages = killer == null ? Set.of() : stageService.getUnlockedStages(level, killer);
         ResourceLocation lootTableId = target.getLootTable().location();
         Map<String, Boolean> toggles = configToggles();
+        WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(level);
 
         return new LootContextSnapshot(
                 debug ? EVENT_DEBUG_EVALUATE : EVENT_ENTITY_KILLED,
@@ -683,9 +694,9 @@ public final class WorldAwakenedLootService {
                 Set.copyOf(worldStages),
                 Set.copyOf(playerStages),
                 stageService.stageRegistry(),
-                false,
-                Optional.empty(),
-                Set.of(),
+                invasionContext.invasionActive(),
+                invasionContext.profileId(),
+                invasionContext.tags(),
                 apotheosisCompatActive(),
                 loadedMods(),
                 toggles,
@@ -800,7 +811,12 @@ public final class WorldAwakenedLootService {
                     stageService.stageRegistry(),
                     true,
                     Optional.of(targetId),
-                    Set.of(),
+                    datapackService.currentSnapshot().data().invasionProfiles().get(targetId) == null
+                            ? Set.of()
+                            : datapackService.currentSnapshot().data().invasionProfiles().get(targetId).tags().stream()
+                                    .map(tag -> tag == null ? "" : tag.trim().toLowerCase(Locale.ROOT))
+                                    .filter(tag -> !tag.isBlank())
+                                    .collect(java.util.stream.Collectors.toUnmodifiableSet()),
                     apotheosisCompatActive(),
                     loadedMods(),
                     toggles,

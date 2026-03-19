@@ -59,6 +59,7 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentRegistry;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentType;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
@@ -85,6 +86,7 @@ public final class WorldAwakenedMutatorService {
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService;
+    private final WorldAwakenedInvasionService invasionService;
     private final AtomicReference<CachedCompiledGraph> cache = new AtomicReference<>(new CachedCompiledGraph(0L, CompiledGraph.empty()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
     private final AtomicLong pressureSnapshotCounter = new AtomicLong(0L);
@@ -93,16 +95,33 @@ public final class WorldAwakenedMutatorService {
     public WorldAwakenedMutatorService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService) {
-        this(datapackService, stageService, new WorldAwakenedEffectiveDifficultyScalarService());
+        this(
+                datapackService,
+                stageService,
+                new WorldAwakenedEffectiveDifficultyScalarService(),
+                new WorldAwakenedInvasionService(datapackService, stageService));
     }
 
     public WorldAwakenedMutatorService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+        this(
+                datapackService,
+                stageService,
+                difficultyScalarService,
+                new WorldAwakenedInvasionService(datapackService, stageService));
+    }
+
+    public WorldAwakenedMutatorService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedInvasionService invasionService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.difficultyScalarService = difficultyScalarService;
+        this.invasionService = invasionService;
     }
 
     public MutatorRunResult onMobSpawn(ServerLevel level, Mob mob, WorldAwakenedMobSpawnOrigin spawnOrigin) {
@@ -451,6 +470,8 @@ public final class WorldAwakenedMutatorService {
             }
         }
 
+        WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(request.level());
+
         EvaluationContext context = new EvaluationContext(
                 request.level(),
                 request.pos(),
@@ -468,6 +489,10 @@ public final class WorldAwakenedMutatorService {
                 request.level().getGameTime(),
                 loadedMods(),
                 configToggles(),
+                invasionContext.invasionActive(),
+                invasionContext.profileId(),
+                invasionContext.tags(),
+                invasionContext.pressureModifier(),
                 stageResolution.attributedPlayer(),
                 request.liveEntity(),
                 previewMob,
@@ -895,13 +920,17 @@ public final class WorldAwakenedMutatorService {
         double baseChance = Math.min(1.0D, Math.max(0.0D, selectedPool.mutationChance()));
         boolean categoryAllowed = "monster".equals(context.mobCategory());
         boolean peacefulBlocked = categoryAllowed && context.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL;
+        Map<String, Double> integrationScalars = new LinkedHashMap<>();
+        if (context.invasionActive() && context.invasionPressureModifier() > 0.0D) {
+            integrationScalars.put("invasion_pressure", context.invasionPressureModifier());
+        }
         WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown scalarBreakdown =
                 difficultyScalarService.resolveSpawnPressureScalar(
                         context.level(),
                         context.attributedPlayer().orElse(null),
                         context.dimensionId(),
                         baseChance,
-                        Map.of(),
+                        Map.copyOf(integrationScalars),
                         0.0D,
                         1.0D,
                         new WorldAwakenedEffectiveDifficultyScalarService.SpawnPressureContext(
@@ -1817,6 +1846,7 @@ public final class WorldAwakenedMutatorService {
         toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
         toggles.put("mutators.enable_mutators", WorldAwakenedCommonConfig.ENABLE_MUTATORS.get());
         toggles.put("mutators.respect_boss_blacklist", WorldAwakenedCommonConfig.RESPECT_BOSS_BLACKLIST.get());
+        toggles.put("invasions.enable_invasions", WorldAwakenedCommonConfig.ENABLE_INVASIONS.get());
         return Map.copyOf(toggles);
     }
 
@@ -1862,6 +1892,20 @@ public final class WorldAwakenedMutatorService {
             }
             case MOON_PHASE -> context.worldDay().isPresent()
                     && condition.intValues().contains((int) Math.floorMod(context.worldDay().getAsLong(), 8L));
+            case INVASION_ACTIVE -> {
+                if (!context.invasionActive()) {
+                    yield false;
+                }
+                if (condition.resourceRef().isPresent()) {
+                    yield context.invasionProfileId()
+                            .map(condition.resourceRef().get()::equals)
+                            .orElse(false);
+                }
+                yield true;
+            }
+            case INVASION_TAG -> condition.text()
+                    .map(tag -> context.invasionActive() && context.invasionTags().contains(tag))
+                    .orElse(false);
             case UNSUPPORTED -> false;
         };
     }
@@ -1986,6 +2030,10 @@ public final class WorldAwakenedMutatorService {
             long gameTick,
             Set<String> loadedMods,
             Map<String, Boolean> configToggles,
+            boolean invasionActive,
+            Optional<ResourceLocation> invasionProfileId,
+            Set<String> invasionTags,
+            double invasionPressureModifier,
             Optional<ServerPlayer> attributedPlayer,
             Mob liveMob,
             Mob previewMob,
@@ -2196,6 +2244,8 @@ public final class WorldAwakenedMutatorService {
             case "config_toggle_enabled" -> ConditionKind.CONFIG_TOGGLE_ENABLED;
             case "random_chance" -> ConditionKind.RANDOM_CHANCE;
             case "moon_phase" -> ConditionKind.MOON_PHASE;
+            case "invasion_active" -> ConditionKind.INVASION_ACTIVE;
+            case "invasion_tag" -> ConditionKind.INVASION_TAG;
             default -> ConditionKind.UNSUPPORTED;
         };
         Optional<ResourceLocation> resourceRef = switch (kind) {
@@ -2203,6 +2253,7 @@ public final class WorldAwakenedMutatorService {
             case CURRENT_DIMENSION -> readResourceLocation(parameters, "dimension");
             case CURRENT_BIOME -> readResourceLocation(parameters, "biome");
             case ENTITY_TYPE -> readResourceLocation(parameters, "entity");
+            case INVASION_ACTIVE -> readResourceLocation(parameters, "profile_id", "profile");
             default -> Optional.empty();
         };
         Optional<TagMatcher> tagMatcher = kind == ConditionKind.ENTITY_TAG
@@ -2211,6 +2262,7 @@ public final class WorldAwakenedMutatorService {
         Optional<String> text = switch (kind) {
             case LOADED_MOD -> readString(parameters, "mod").map(value -> value.toLowerCase(Locale.ROOT));
             case CONFIG_TOGGLE_ENABLED -> readString(parameters, "config_gate").map(value -> value.toLowerCase(Locale.ROOT));
+            case INVASION_TAG -> readString(parameters, "tag").map(value -> value.toLowerCase(Locale.ROOT));
             default -> Optional.empty();
         };
         OptionalDouble value = switch (kind) {
@@ -2298,6 +2350,8 @@ public final class WorldAwakenedMutatorService {
         CONFIG_TOGGLE_ENABLED,
         RANDOM_CHANCE,
         MOON_PHASE,
+        INVASION_ACTIVE,
+        INVASION_TAG,
         UNSUPPORTED
     }
 

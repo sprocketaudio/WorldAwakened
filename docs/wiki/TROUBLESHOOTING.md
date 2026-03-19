@@ -59,7 +59,9 @@ Loot checks:
 
 Invasion checks:
 - use `/wa debug invasion evaluate ...` for scheduler/profile debugging
-- use `/wa invasion start <profile>` and `/wa invasion stop` for live end-to-end verification
+- use `/wa invasion start <profile_id>` and `/wa invasion stop` for live end-to-end verification
+- use `/wa invasion inspect active` for warning/remaining-duration/pressure/cooldown visibility
+- use `/wa invasion inspect profile <profile_id>` to verify authored profile fields and active-match state
 
 Compat and integration checks:
 - use `/wa debug compat evaluate ...` for integration-gate debugging

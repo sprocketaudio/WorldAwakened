@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:nether_purge",
+  "display_name": "Nether Purge",
+  "enabled": true,
+  "trigger_mode": "command_forced",
+  "conditions": [
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:the_nether"
+      }
+    },
+    {
+      "type": "worldawakened:player_count_online",
+      "parameters": {
+        "min": 1
+      }
+    }
+  ],
+  "dimensions": [
+    "minecraft:the_nether"
+  ],
+  "biome_filters": [],
+  "min_players": 1,
+  "cooldown_seconds": 900,
+  "warning_seconds": 20,
+  "duration_seconds": 360,
+  "pressure_modifier": 1.6,
+  "reward_profile": "worldawakened_p8test:invasion_nether_purge_rewards",
+  "tags": [
+    "invasion",
+    "nether",
+    "fire"
+  ]
+}

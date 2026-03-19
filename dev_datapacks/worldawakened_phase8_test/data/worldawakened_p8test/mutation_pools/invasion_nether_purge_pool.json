@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:invasion_nether_purge_pool",
+  "enabled": true,
+  "weight": 8,
+  "mutation_chance": 0.95,
+  "conditions": [
+    {
+      "type": "worldawakened:invasion_active",
+      "parameters": {
+        "profile_id": "worldawakened_p8test:nether_purge"
+      }
+    },
+    {
+      "type": "worldawakened:invasion_tag",
+      "parameters": {
+        "tag": "nether"
+      }
+    },
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:the_nether"
+      }
+    }
+  ],
+  "eligible_dimensions": [
+    "minecraft:the_nether"
+  ],
+  "mutators": [
+    {
+      "id": "worldawakened_p8test:lightning_berserker",
+      "weight": 5
+    },
+    {
+      "id": "worldawakened_p8test:summoner_juggernaut",
+      "weight": 4
+    },
+    {
+      "id": "worldawakened_p8test:unyielding_guard",
+      "weight": 6
+    }
+  ],
+  "max_mutators_per_entity": 2
+}

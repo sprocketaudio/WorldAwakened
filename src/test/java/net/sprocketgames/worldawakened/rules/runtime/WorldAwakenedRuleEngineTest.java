@@ -290,6 +290,8 @@ class WorldAwakenedRuleEngineTest {
                     Set.of("neoforge"),
                     Map.of("general.enable_mod", true, "compat.apotheosis.enabled", true),
                     false,
+                    Optional.empty(),
+                    Set.of(),
                     Optional.empty());
         }
     }

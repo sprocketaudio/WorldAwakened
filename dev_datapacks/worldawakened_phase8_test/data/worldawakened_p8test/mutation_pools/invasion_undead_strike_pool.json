@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:invasion_undead_strike_pool",
+  "enabled": true,
+  "weight": 10,
+  "mutation_chance": 0.9,
+  "conditions": [
+    {
+      "type": "worldawakened:invasion_active",
+      "parameters": {
+        "profile_id": "worldawakened_p8test:night_undead_assault"
+      }
+    },
+    {
+      "type": "worldawakened:invasion_tag",
+      "parameters": {
+        "tag": "undead"
+      }
+    },
+    {
+      "type": "worldawakened:current_dimension",
+      "parameters": {
+        "dimension": "minecraft:overworld"
+      }
+    }
+  ],
+  "eligible_dimensions": [
+    "minecraft:overworld"
+  ],
+  "mutators": [
+    {
+      "id": "worldawakened_p8test:summoner_preset",
+      "weight": 5
+    },
+    {
+      "id": "worldawakened_p8test:hunter_preset",
+      "weight": 7
+    },
+    {
+      "id": "worldawakened_p8test:plague_walker",
+      "weight": 4
+    }
+  ],
+  "max_mutators_per_entity": 2
+}

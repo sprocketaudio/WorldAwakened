@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:night_undead_assault",
+  "display_name": "Night Undead Assault",
+  "enabled": true,
+  "trigger_mode": "random_periodic",
+  "conditions": [
+    {
+      "type": "worldawakened:player_count_online",
+      "parameters": {
+        "min": 1
+      }
+    },
+    {
+      "type": "worldawakened:random_chance",
+      "parameters": {
+        "chance": 1.0
+      }
+    }
+  ],
+  "dimensions": [
+    "minecraft:overworld"
+  ],
+  "biome_filters": [],
+  "min_players": 1,
+  "cooldown_seconds": 1800,
+  "warning_seconds": 30,
+  "duration_seconds": 480,
+  "pressure_modifier": 1.45,
+  "reward_profile": "worldawakened_p8test:invasion_undead_assault_rewards",
+  "tags": [
+    "invasion",
+    "undead",
+    "night"
+  ]
+}

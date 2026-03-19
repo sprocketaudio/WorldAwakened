@@ -34,6 +34,7 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedMutableRuleState;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationResult;
@@ -55,16 +56,19 @@ public final class WorldAwakenedRuleService {
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedAscensionService ascensionService;
+    private final WorldAwakenedInvasionService invasionService;
     private final AtomicReference<CachedCompiledRules> cache = new AtomicReference<>(new CachedCompiledRules(0L, List.of()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
 
     public WorldAwakenedRuleService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
-            WorldAwakenedAscensionService ascensionService) {
+            WorldAwakenedAscensionService ascensionService,
+            WorldAwakenedInvasionService invasionService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.ascensionService = ascensionService;
+        this.invasionService = invasionService;
     }
 
     public WorldAwakenedRuleRunResult evaluate(RuleEventContext context) {
@@ -341,6 +345,7 @@ public final class WorldAwakenedRuleService {
             ownedRewards = Set.copyOf(state.chosenAscensionRewards());
             pendingOffers = Set.copyOf(state.pendingAscensionOffers());
         }
+        WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(context.level());
 
         return new WorldAwakenedRuleMatchContext(
                 context.eventType(),
@@ -369,7 +374,9 @@ public final class WorldAwakenedRuleService {
                 pendingOffers,
                 loadedMods(),
                 configToggles(),
-                false,
+                invasionContext.invasionActive(),
+                invasionContext.profileId(),
+                invasionContext.tags(),
                 Optional.empty());
     }
 

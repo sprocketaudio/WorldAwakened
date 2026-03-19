@@ -45,7 +45,8 @@ public final class WorldAwakenedRuleEngine {
             "random_chance",
             "moon_phase",
             "structure_context",
-            "invasion_active");
+            "invasion_active",
+            "invasion_tag");
     private static final Set<String> SUPPORTED_ACTION_PATHS = Set.of(
             "unlock_stage",
             "lock_stage",
@@ -214,6 +215,7 @@ public final class WorldAwakenedRuleEngine {
             case "moon_phase" -> ConditionKind.MOON_PHASE;
             case "structure_context" -> ConditionKind.STRUCTURE_CONTEXT;
             case "invasion_active" -> ConditionKind.INVASION_ACTIVE;
+            case "invasion_tag" -> ConditionKind.INVASION_TAG;
             default -> ConditionKind.UNSUPPORTED;
         };
         Optional<ResourceLocation> resourceRef = switch (kind) {
@@ -224,6 +226,7 @@ public final class WorldAwakenedRuleEngine {
             case ENTITY_TAG -> readTag(parameters, "tag");
             case ASCENSION_REWARD_OWNED -> readResourceLocation(parameters, "reward");
             case ASCENSION_OFFER_PENDING -> readResourceLocation(parameters, "offer");
+            case INVASION_ACTIVE -> readResourceLocation(parameters, "profile_id", "profile");
             default -> Optional.empty();
         };
         Optional<String> text = switch (kind) {
@@ -231,6 +234,7 @@ public final class WorldAwakenedRuleEngine {
             case CONFIG_TOGGLE_ENABLED -> readString(parameters, "config_gate");
             case STRUCTURE_CONTEXT -> readString(parameters, "structure");
             case APOTHEOSIS_WORLD_TIER_COMPARE -> readString(parameters, "op");
+            case INVASION_TAG -> readString(parameters, "tag").map(value -> value.toLowerCase(Locale.ROOT));
             default -> Optional.empty();
         };
         OptionalDouble value = switch (kind) {
@@ -594,10 +598,37 @@ public final class WorldAwakenedRuleEngine {
                                 "structure_context_mismatch"));
             }
             case INVASION_ACTIVE -> context.invasionActive()
-                    ? Optional.empty()
+                    ? condition.resourceRef()
+                            .map(profileId -> context.invasionProfileId()
+                                    .map(active -> active.equals(profileId)
+                                            ? Optional.<ConditionFailure>empty()
+                                            : Optional.of(new ConditionFailure(
+                                                    WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
+                                                    "invasion_profile_mismatch")))
+                                    .orElse(Optional.of(new ConditionFailure(
+                                            WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
+                                            "invasion_profile_unavailable"))))
+                            .orElse(Optional.empty())
                     : Optional.of(new ConditionFailure(
                             WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
                             "invasion_not_active"));
+            case INVASION_TAG -> {
+                if (!context.invasionActive()) {
+                    yield Optional.of(new ConditionFailure(
+                            WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
+                            "invasion_not_active"));
+                }
+                if (condition.text().isEmpty()) {
+                    yield Optional.of(new ConditionFailure(
+                            WorldAwakenedRejectionReason.INVALID_REFERENCED_OBJECT,
+                            "invasion_tag_missing_tag"));
+                }
+                yield context.invasionTags().contains(condition.text().get())
+                        ? Optional.empty()
+                        : Optional.of(new ConditionFailure(
+                                WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
+                                "invasion_tag_mismatch"));
+            }
             case UNSUPPORTED -> Optional.of(new ConditionFailure(
                     WorldAwakenedRejectionReason.INVALID_REFERENCED_OBJECT,
                     "unsupported_condition_type:" + condition.typeId()));
@@ -849,6 +880,7 @@ public final class WorldAwakenedRuleEngine {
         MOON_PHASE,
         STRUCTURE_CONTEXT,
         INVASION_ACTIVE,
+        INVASION_TAG,
         UNSUPPORTED
     }
     public record CompiledRule(

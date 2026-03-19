@@ -2,7 +2,7 @@
 
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
-- Document status: Active implementation spec (Phase 7 complete, Phase 8 active)
+- Document status: Active implementation spec (Phase 8 complete, Phase 9 active)
 - Last updated: 2026-03-18
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
@@ -3572,7 +3572,7 @@ Required commands (v1):
 - `/wa trigger fire <id>`
 - `/wa trigger fire <id> player <player> [dimension <dimension_id>]`
 - `/wa trigger fire <id> global [dimension <dimension_id>]`
-- `/wa invasion start <profile>`
+- `/wa invasion start <profile_id>`
 - `/wa invasion stop`
 - `/wa mob inspect`
 - `/wa mob inspect <entity>`
@@ -3817,8 +3817,10 @@ Required behavior:
 
 Required commands:
 - `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
-- `/wa invasion start <profile>`
+- `/wa invasion start <profile_id>`
 - `/wa invasion stop`
+- `/wa invasion inspect active`
+- `/wa invasion inspect profile <profile_id>`
 
 Required behavior:
 - `invasion evaluate` dry-runs scheduler/profile eligibility and reports why the invasion would or would not activate
@@ -4463,10 +4465,10 @@ Exit criteria:
 - implement command-driven verification surfaces for invasions:
   - inspect: invasion inspect output
   - evaluate: `/wa debug invasion evaluate <profile_id> [dimension] [x] [y] [z]`
-  - controlled live test: `/wa invasion start <profile>` and `/wa invasion stop`
+  - controlled live test: `/wa invasion start <profile_id>` and `/wa invasion stop`
 
 Exit criteria:
-- `/wa invasion start <profile>` and `/wa invasion stop` operate reliably
+- `/wa invasion start <profile_id>` and `/wa invasion stop` operate reliably
 - warning windows work when configured
 - pressure modifier applies and removes cleanly
 - invasion-gated mutation pools activate only during invasion context

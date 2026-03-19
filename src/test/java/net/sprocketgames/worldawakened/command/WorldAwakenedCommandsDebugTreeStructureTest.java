@@ -21,6 +21,7 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDebugCommandService;
+import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
@@ -52,7 +53,29 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
     }
 
     @Test
-    void buildDebugTreeIncludesMutatorAndSpawnTopLevelBranches() {
+    void buildInvasionTreeIncludesStartStopInspectBranches() {
+        WorldAwakenedDatapackService datapackService = mock(WorldAwakenedDatapackService.class);
+        when(datapackService.currentSnapshot()).thenReturn(WorldAwakenedDatapackSnapshot.empty());
+        WorldAwakenedInvasionService invasionService = mock(WorldAwakenedInvasionService.class);
+        when(invasionService.loadedProfileIds()).thenReturn(List.of());
+
+        LiteralArgumentBuilder<CommandSourceStack> invasionTree = invokeBuildInvasionTree(datapackService, invasionService);
+        Set<String> topLevelChildren = invasionTree.build().getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(topLevelChildren.contains("start"), "Expected /wa invasion start");
+        assertTrue(topLevelChildren.contains("stop"), "Expected /wa invasion stop");
+        assertTrue(topLevelChildren.contains("inspect"), "Expected /wa invasion inspect");
+
+        CommandNode<CommandSourceStack> startNode = invasionTree.build().getChild("start");
+        @SuppressWarnings("unchecked")
+        ArgumentCommandNode<CommandSourceStack, ?> profileIdNode =
+                (ArgumentCommandNode<CommandSourceStack, ?>) startNode.getChild("profile_id");
+        assertTrue(profileIdNode.getCustomSuggestions() != null, "Expected /wa invasion start <profile_id> suggestions");
+    }
+
+    @Test
+    void buildDebugTreeIncludesMutatorSpawnAndInvasionTopLevelBranches() {
         WorldAwakenedDatapackService datapackService = mock(WorldAwakenedDatapackService.class);
         when(datapackService.currentSnapshot()).thenReturn(WorldAwakenedDatapackSnapshot.empty());
 
@@ -61,6 +84,8 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         WorldAwakenedMutatorService mutatorService = mock(WorldAwakenedMutatorService.class);
         when(mutatorService.pressureSnapshotIds()).thenReturn(List.of(7L, 8L));
         WorldAwakenedLootService lootService = mock(WorldAwakenedLootService.class);
+        WorldAwakenedInvasionService invasionService = mock(WorldAwakenedInvasionService.class);
+        when(invasionService.loadedProfileIds()).thenReturn(List.of());
         WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService = new WorldAwakenedEffectiveDifficultyScalarService();
         WorldAwakenedDebugCommandService debugCommandService =
                 new WorldAwakenedDebugCommandService(stageService, ascensionService);
@@ -71,6 +96,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                 ascensionService,
                 mutatorService,
                 lootService,
+                invasionService,
                 difficultyScalarService,
                 debugCommandService);
 
@@ -83,6 +109,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         assertTrue(topLevelChildren.contains("mutators"), "Expected /wa debug mutators");
         assertTrue(topLevelChildren.contains("spawn"), "Expected /wa debug spawn");
         assertTrue(topLevelChildren.contains("loot"), "Expected /wa debug loot");
+        assertTrue(topLevelChildren.contains("invasion"), "Expected /wa debug invasion");
         assertTrue(topLevelChildren.contains("difficulty"), "Expected /wa debug difficulty");
         assertTrue(topLevelChildren.contains("pressure"), "Expected /wa debug pressure");
 
@@ -106,6 +133,36 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         ArgumentCommandNode<CommandSourceStack, Long> idNode =
                 (ArgumentCommandNode<CommandSourceStack, Long>) replayNode.getChild("id");
         assertTrue(idNode.getCustomSuggestions() != null, "Expected /wa debug pressure replay <id> to provide suggestions");
+
+        CommandNode<CommandSourceStack> invasionNode = debugTree.build().getChild("invasion");
+        Set<String> invasionChildren = invasionNode.getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(invasionChildren.contains("evaluate"), "Expected /wa debug invasion evaluate");
+        CommandNode<CommandSourceStack> invasionEvaluateNode = invasionNode.getChild("evaluate");
+        @SuppressWarnings("unchecked")
+        ArgumentCommandNode<CommandSourceStack, ?> invasionProfileNode =
+                (ArgumentCommandNode<CommandSourceStack, ?>) invasionEvaluateNode.getChild("profile_id");
+        assertTrue(invasionProfileNode.getCustomSuggestions() != null, "Expected /wa debug invasion evaluate <profile_id> suggestions");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static LiteralArgumentBuilder<CommandSourceStack> invokeBuildInvasionTree(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedInvasionService invasionService) {
+        try {
+            Method method = WorldAwakenedCommands.class.getDeclaredMethod(
+                    "buildInvasionTree",
+                    WorldAwakenedDatapackService.class,
+                    WorldAwakenedInvasionService.class);
+            method.setAccessible(true);
+            return (LiteralArgumentBuilder<CommandSourceStack>) method.invoke(
+                    null,
+                    datapackService,
+                    invasionService);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Failed to invoke buildInvasionTree", exception);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -134,6 +191,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedMutatorService mutatorService,
             WorldAwakenedLootService lootService,
+            WorldAwakenedInvasionService invasionService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
             WorldAwakenedDebugCommandService debugCommandService) {
         try {
@@ -144,6 +202,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     WorldAwakenedAscensionService.class,
                     WorldAwakenedMutatorService.class,
                     WorldAwakenedLootService.class,
+                    WorldAwakenedInvasionService.class,
                     WorldAwakenedEffectiveDifficultyScalarService.class,
                     WorldAwakenedDebugCommandService.class);
             method.setAccessible(true);
@@ -154,6 +213,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     ascensionService,
                     mutatorService,
                     lootService,
+                    invasionService,
                     difficultyScalarService,
                     debugCommandService);
         } catch (ReflectiveOperationException exception) {

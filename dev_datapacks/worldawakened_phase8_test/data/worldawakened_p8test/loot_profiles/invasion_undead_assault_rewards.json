@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p8test:invasion_undead_assault_rewards",
+  "enabled": true,
+  "target_loot_tables": [
+    "worldawakened_p8test:night_undead_assault"
+  ],
+  "conditions": [
+    {
+      "type": "worldawakened:event_type",
+      "parameters": {
+        "event": "worldawakened:invasion_completed"
+      }
+    },
+    {
+      "type": "worldawakened:invasion_tag",
+      "parameters": {
+        "tag": "undead"
+      }
+    }
+  ],
+  "replace_mode": "add_bonus_pool",
+  "entries": [
+    {
+      "type": "item",
+      "item": "minecraft:emerald",
+      "weight": 10,
+      "min": 2,
+      "max": 5
+    },
+    {
+      "type": "item",
+      "item": "minecraft:bone_block",
+      "weight": 6,
+      "min": 1,
+      "max": 3
+    }
+  ],
+  "weight_multiplier": 1.0,
+  "quality_scalar": 1.0
+}
