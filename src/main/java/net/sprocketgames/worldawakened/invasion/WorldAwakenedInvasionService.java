@@ -24,6 +24,8 @@ import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -31,6 +33,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.InvasionProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.InvasionTriggerMode;
@@ -73,7 +76,7 @@ public final class WorldAwakenedInvasionService {
         expireActiveInvasionIfNeeded(level, nowMillis);
 
         if (!WorldAwakenedFeatureGates.modEnabled()
-                || !WorldAwakenedCommonConfig.ENABLE_INVASIONS.get()
+                || !WorldAwakenedFeatureGates.pressureEventsEnabled()
                 || WorldAwakenedCommonConfig.MAX_CONCURRENT_INVASIONS.get() < 1) {
             return;
         }
@@ -95,14 +98,19 @@ public final class WorldAwakenedInvasionService {
         }
 
         InvasionContextSnapshot activeContext = contextSnapshot(level, nowMillis, false);
-        InvasionMatchContext matchContext = buildMatchContext(
-                level,
-                level.dimension().location(),
-                level.getSharedSpawnPos(),
-                activeContext,
-                nowMillis);
         List<CompiledProfile> eligible = new ArrayList<>();
         for (CompiledProfile profile : compiled.randomPeriodicProfiles()) {
+            Optional<ServerLevel> contextLevel = schedulerContextLevel(level, profile);
+            if (contextLevel.isEmpty()) {
+                continue;
+            }
+            ServerLevel candidateLevel = contextLevel.get();
+            InvasionMatchContext matchContext = buildMatchContext(
+                    candidateLevel,
+                    candidateLevel.dimension().location(),
+                    candidateLevel.getSharedSpawnPos(),
+                    activeContext,
+                    nowMillis);
             ProfileEligibility eligibility = evaluateProfileEligibility(
                     profile,
                     matchContext,
@@ -117,6 +125,12 @@ public final class WorldAwakenedInvasionService {
             return;
         }
 
+        InvasionMatchContext matchContext = buildMatchContext(
+                level,
+                level.dimension().location(),
+                level.getSharedSpawnPos(),
+                activeContext,
+                nowMillis);
         long seed = deterministicSeed(matchContext, "scheduler_select", -1, null);
         int selectedIndex = Math.floorMod((int) new SplittableRandom(seed).nextLong(), eligible.size());
         activateProfile(level, eligible.get(selectedIndex), nowMillis, "scheduler_random_periodic");
@@ -129,7 +143,7 @@ public final class WorldAwakenedInvasionService {
     public InvasionStartResult startInvasionFromCommand(ServerLevel level, ResourceLocation profileId) {
         long nowMillis = System.currentTimeMillis();
         String traceId = nextTraceId();
-        if (!WorldAwakenedFeatureGates.modEnabled() || !WorldAwakenedCommonConfig.ENABLE_INVASIONS.get()) {
+        if (!WorldAwakenedFeatureGates.modEnabled() || !WorldAwakenedFeatureGates.pressureEventsEnabled()) {
             return InvasionStartResult.rejected(
                     traceId,
                     WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE,
@@ -259,6 +273,20 @@ public final class WorldAwakenedInvasionService {
         data.setActiveInvasionRewardProfileId(profile.rewardProfile().map(ResourceLocation::toString).orElse(""));
         data.markDirty();
 
+        String dimensions = profile.dimensions().isEmpty()
+                ? level.dimension().location().toString()
+                : profile.dimensions().stream()
+                        .map(ResourceLocation::toString)
+                        .sorted()
+                        .collect(java.util.stream.Collectors.joining(", "));
+        level.getServer().getPlayerList().broadcastSystemMessage(
+                Component.translatable(
+                        "message.worldawakened.invasion.warning",
+                        profile.displayNamePlain(),
+                        dimensions,
+                        warningSeconds),
+                false);
+
         WorldAwakenedLog.info(
                 LOGGER,
                 WorldAwakenedLogCategory.PIPELINE,
@@ -299,13 +327,20 @@ public final class WorldAwakenedInvasionService {
         if (activeProfileId != null && profileCooldownSeconds > 0) {
             data.invasionCooldownTrackers().put(
                     activeProfileId.toString(),
-                    nowMillis + (profileCooldownSeconds * 1000L));
+                    nowMillis + scaleCooldownMillis(profileCooldownSeconds * 1000L));
         }
 
-        long globalCooldownMillis = Math.max(0L, WorldAwakenedCommonConfig.GLOBAL_COOLDOWN_MINUTES.get()) * 60_000L;
+        long globalCooldownMillis = scaleCooldownMillis(
+                Math.max(0L, WorldAwakenedCommonConfig.GLOBAL_COOLDOWN_MINUTES.get()) * 60_000L);
+        String endedName = data.activeInvasionDisplayName().isBlank()
+                ? (activeProfileId == null ? "Invasion" : activeProfileId.toString())
+                : data.activeInvasionDisplayName();
         data.setInvasionGlobalCooldownUntilMillis(nowMillis + globalCooldownMillis);
         data.clearActiveInvasionState();
         data.markDirty();
+        level.getServer().getPlayerList().broadcastSystemMessage(
+                Component.translatable("message.worldawakened.invasion.ended", endedName),
+                false);
 
         WorldAwakenedLog.info(
                 LOGGER,
@@ -836,7 +871,7 @@ public final class WorldAwakenedInvasionService {
         toggles.put("general.enable_mod", WorldAwakenedCommonConfig.ENABLE_MOD.get());
         toggles.put("general.debug_logging", WorldAwakenedCommonConfig.DEBUG_LOGGING.get());
         toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
-        toggles.put("invasions.enable_invasions", WorldAwakenedCommonConfig.ENABLE_INVASIONS.get());
+        toggles.put("invasions.enable_invasions", WorldAwakenedFeatureGates.pressureEventsEnabled());
         toggles.put("compat.apotheosis.enabled", WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get());
         return Map.copyOf(toggles);
     }
@@ -845,6 +880,14 @@ public final class WorldAwakenedInvasionService {
         LinkedHashSet<String> mods = new LinkedHashSet<>();
         ModList.get().getMods().forEach(modInfo -> mods.add(modInfo.getModId().toLowerCase(Locale.ROOT)));
         return Set.copyOf(mods);
+    }
+
+    static long scaleCooldownMillis(long baseCooldownMillis) {
+        double frequency = WorldAwakenedConfigService.settings().eventFrequencyMultiplier();
+        if (!Double.isFinite(frequency) || frequency <= 0.0D) {
+            return Math.max(0L, baseCooldownMillis);
+        }
+        return Math.max(0L, Math.round(Math.max(0L, baseCooldownMillis) / frequency));
     }
 
     private static long deterministicSeed(
@@ -1009,6 +1052,23 @@ public final class WorldAwakenedInvasionService {
 
     private static boolean isSchedulerLevel(ServerLevel level) {
         return level.getServer() != null && level.getServer().overworld() == level;
+    }
+
+    private static Optional<ServerLevel> schedulerContextLevel(ServerLevel schedulerLevel, CompiledProfile profile) {
+        if (schedulerLevel.getServer() == null) {
+            return Optional.empty();
+        }
+        if (profile.dimensions().isEmpty()) {
+            return schedulerLevel.players().isEmpty() ? Optional.empty() : Optional.of(schedulerLevel);
+        }
+        for (ResourceLocation dimensionId : profile.dimensions()) {
+            ResourceKey<net.minecraft.world.level.Level> dimensionKey = ResourceKey.create(Registries.DIMENSION, dimensionId);
+            ServerLevel candidate = schedulerLevel.getServer().getLevel(dimensionKey);
+            if (candidate != null && !candidate.players().isEmpty()) {
+                return Optional.of(candidate);
+            }
+        }
+        return Optional.empty();
     }
 
     public record InvasionContextSnapshot(

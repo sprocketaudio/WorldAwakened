@@ -2,24 +2,24 @@
 
 Shortest-path guides for the most common first-time workflows.
 
-- Document status: Active human-friendly quickstart guide
-- Last updated: 2026-03-18
+- Document status: Active friendly quickstart guide
+- Last updated: 2026-10-17
 - Scope: Setup, first datapack, first tests, and first recovery loop
 
 ---
 
-## 1. Start The Framework With No Gameplay Content
+## 1. Start With The Built-In Standard Experience
 
 This is the cleanest first sanity check.
 
 Goal:
 - confirm the mod loads
-- confirm the framework is inert until a datapack is installed
+- confirm the bundled Standard profile validates and affects new natural hostile spawns conservatively
 
 Steps:
 1. Install the mod normally.
 2. Start a new test world.
-3. Do not install any World Awakened datapack yet.
+3. Do not install any custom World Awakened datapack yet.
 4. Run:
 
 ```text
@@ -28,10 +28,16 @@ Steps:
 
 What you should expect:
 - no validation errors
-- no gameplay content loaded from the mod jar
-- the framework should be present, but it should not drive progression by itself
+- bundled `worldawakened:defaults/...` stages, triggers, mutators, pools, Ascension choices, loot profiles, and invasion profiles are loaded
+- after world day 3, eligible natural Overworld hostile spawns have a small mutation chance
+- reaching later milestones raises the final per-spawn rates; S4+ can very rarely choose a curated two-mutator pool
+- Hindering on-hit effects begin at S2, rare Vampiric enemies at S3, Volatile death explosions at S4, and curated ability combinations at S5
+- mutated mobs have visible composed names and existing glow/particle tells; existing custom names are preserved
+- personal Nether, End, and Dragon advancements grant one-of-three Ascension offers
+- mutated kills can add small stage-bounded bonus materials
+- S4+ can schedule infrequent warning-backed pressure events while players are present in the affected dimension
 
-Use this test whenever you want to prove the framework is content-empty by default.
+Spawner and trial-spawner mobs are excluded. Ordinary pools apply one mutator and only explicitly weighted curated pools may apply two.
 
 ## 2. Install The Optional Example Pack
 
@@ -137,6 +143,49 @@ What you should expect:
 - Dev's stage state changes
 - other players would not automatically share the stage unlock
 
+## 5A. First Apotheosis Derived-Stage Test
+
+Use this when:
+- Apotheosis compat is installed and active
+- `compat.apotheosis.mode` is `derived_stage` or `hybrid`
+- your integration profile uses `stage_hooks` with `worldawakened:tier_threshold_unlock`
+
+Goal:
+- prove an external Apotheosis tier threshold can unlock a normal WA stage
+
+Steps:
+1. Verify compat is active:
+
+```text
+/wa compat list
+/wa apotheosis tier inspect Dev
+```
+
+2. Change the Apotheosis tier for your test player by whatever operator method your pack/mod setup exposes.
+3. Inspect the compat state again:
+
+```text
+/wa apotheosis tier inspect Dev
+/wa debug compat evaluate <integration_id> player Dev
+```
+
+4. Recheck the affected WA stage bucket:
+
+```text
+/wa stage list global
+```
+
+or:
+
+```text
+/wa stage list player Dev
+```
+
+What you should expect:
+- the tier inspect output shows the new Apotheosis tier
+- the compat debug output shows the compiled stage-hook threshold mapping
+- the matching WA stage unlocks automatically without needing a separate WA trigger command
+
 ## 6. First Ascension Choice Test
 
 Goal:
@@ -211,44 +260,13 @@ Use this when:
 - you want a broad clean rerun
 - you are in active development, not live operations
 
-## 8. Web Authoring Modes
+## 8. Configuration Editing Status
 
-Use this when the hosted web authoring platform is available in your build/deployment.
+Run `/wa config` as an operator (or as the owner of a singleplayer world). It opens the WorldAwakened profile dashboard. Use Global Settings for intensity and system controls, or Mob Mutations to browse and edit actual loaded mutation pools.
 
-Goal:
-- choose the right editing mode for the job
-- avoid stale-session conflicts during live linked edits
+In Mob Mutations, search or filter the pool list, select a pool, then change its enabled state, initial chance, conditional additional chance, maximum, dimensions, eligible living mobs, or ordinary mutator weights. The wrapped theoretical preview shows mutation-count probabilities before eligibility and compatibility can reduce them. Mob and dimension selectors use searchable two-line rows: the readable name is primary, while the exact registry ID remains visible underneath. Rare Combinations can use Any Compatible selection or curated weighted combinations with narrower mob eligibility; the mode tooltip explains the difference, and the combination editor separates mutation choices from eligible mobs. `*` marks a world override. Apply validates and persists only that pool; Revert restores the currently loaded datapack source. Selector windows and combination editors keep changes in the pool draft until the pool itself is applied.
 
-Offline project mode:
-1. Open the hosted editor normally.
-2. Create or import a datapack project.
-3. Validate and export.
-
-Use offline mode when:
-- you do not need a running game/server
-- you want repeatable file-based import/export iteration
-
-Live linked session mode:
-1. In-game, run:
-
-```text
-/wa web edit
-```
-
-2. Open the returned hosted URL.
-3. Wait for linked session state + runtime registry metadata to load.
-4. Edit and validate in the browser.
-5. Apply changes back to runtime.
-
-Use live linked mode when:
-- you need current runtime-authored data
-- you want runtime/modpack-aware selector options
-- you want apply-time runtime validation feedback immediately
-
-Safety reminders:
-- linked sessions are short-lived
-- stale sessions should fail safely on apply
-- if apply reports revision mismatch, refresh from runtime before retrying
+Global Settings still covers intensity, bundled gameplay, mutation enablement/frequency/caps, pressure events, and Ascension. Standard is the only bundled profile; progression and other dashboard sections remain unavailable. External datapacks keep normal priority semantics, and pool overrides never rewrite their files.
 
 ## 9. Where To Go Next
 

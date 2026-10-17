@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/reach_nether",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:player_enter_dimension",
+  "source_scope": "player",
+  "conditions": [
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:the_nether" } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/nether_reached" } }
+  ],
+  "actions": [
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/dormant" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/stirring" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/unease" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/nether_reached" } }
+  ],
+  "one_shot": true
+}

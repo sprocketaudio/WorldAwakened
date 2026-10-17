@@ -2,8 +2,8 @@
 
 Practical checks for when World Awakened does not behave the way you expected.
 
-- Document status: Active human-friendly troubleshooting guide
-- Last updated: 2026-03-18
+- Document status: Active friendly troubleshooting guide
+- Last updated: 2026-10-17
 - Scope: Validation, command behavior, targeting mistakes, and common runtime surprises
 
 ---
@@ -68,11 +68,13 @@ Compat and integration checks:
 - use `/wa debug scalar provider ...` for external provider/scalar input debugging
 - use `/wa compat list` and `/wa apotheosis tier inspect` for high-level activation confirmation
 
-Web linked-session checks:
-- use `/wa web session status` to confirm whether a linked editor session is active, expired, or stale
-- if apply fails with revision mismatch, refresh editor state from runtime before retrying
-- if a session should no longer be trusted, use `/wa web session revoke` and create a new session
-- live mode selector lists should come from runtime registry metadata; if they look stale, refresh session metadata and confirm runtime connection state
+Configuration editing checks:
+- the hosted web-session workflow is retired
+- `/wa config` requires an in-game operator or the integrated-server owner
+- Apply is server-validated and revision-checked; Cancel and an unapplied Reset do not change the server
+- Mob Mutations edits only an existing source pool; `*` means the selected pool has a world override
+- Revert removes one override and reveals the current bundled/external source without modifying its file
+- use datapacks and `/wa reload validate` for definitions not yet exposed by the editor
 
 ## Problem: `/wa reload validate` Reports Errors
 
@@ -89,53 +91,35 @@ What to do:
 Good habit:
 - always start testing with validation clean
 
-## Problem: Linked Web Apply Fails With Revision Mismatch
+## Problem: `/wa config` Is Unknown
 
-What it means:
-- runtime changed after your browser loaded its session snapshot
-- your browser is trying to apply an older revision
+Restart with a current mod build. Command registration happens during server startup, so `/reload` cannot add a command from newly compiled Java. If the command exists for operators but not for you, verify your dedicated-server operator level; singleplayer world owners are accepted even when cheats are disabled.
 
-What to do:
-1. keep your local edits noted if needed
-2. reload the linked project/session from runtime
-3. re-apply your intended edits on the latest revision
-4. apply again
+## Problem: Apply Says The Revision Is Stale
 
-Important:
-- this is a safety guard, not random failure
-- stale sessions must not overwrite newer runtime state
+Another accepted change occurred after you opened the screen. The server has refreshed your screen with the newest values. Review them and apply your changes again; stale drafts are never merged silently.
 
-## Problem: Linked Web Session Shows Expired Or Stale
+## Problem: A Mutation Pool Override Will Not Apply
 
-What it means:
-- the short-lived session token expired
-- or the runtime/backend link is no longer active
+Read the server's validation message. Common causes are a removed mutator, a modded mob no longer installed, an unavailable dimension, a zero weight, an empty mutator list, a chance outside 0–100%, a combination larger than the pool maximum, a combination mob outside the parent pool, or incompatible mutators. The live profile remains unchanged. If a datapack removed the original pool ID, the saved override becomes inactive rather than creating a hidden new pool. Old pre-unification saved pool shapes are discarded on load with a server warning; the source datapack definition remains active.
 
-What to do:
-1. run `/wa web session status`
-2. if stale/expired, run `/wa web edit` to create a new link
-3. if needed, run `/wa web session revoke` first to invalidate old links
+## Problem: A Setting Did Not Affect Existing State
 
-## Problem: Live Editor Selectors Miss Modded IDs
-
-What it usually means:
-- session registry metadata is stale or incomplete
-- editor fell back to offline metadata
-
-What to do:
-1. confirm linked session is active (`/wa web session status`)
-2. refresh or reopen the linked editor URL
-3. confirm runtime registry metadata sync completed
-4. if still wrong, create a fresh linked session
+- mutation frequency/caps affect future mutation rolls; disabling the mutation system also pauses World Awakened combat/visual handlers while preserving existing persistent mutation state for re-enable
+- event frequency affects cooldowns created after Apply, not a cooldown already counting down
+- disabling pressure events immediately ends an active pressure event
+- disabling Ascension preserves pending/chosen state and reward ownership
+- disabling default gameplay recompiles bundled definitions but does not erase stage history
 
 Common mutator cap pitfall:
-- `mutators.max_mutators_per_mob` is the global default, not a hard per-pool lock
-- selected pools may override with `max_mutators_per_entity`
-- if applied mutator count surprises you, inspect which pool was selected and compare that pool cap against the global TOML default
+- every pool has a required `max_mutators_per_entity`
+- the live global setting and hard runtime budget can only lower that pool maximum
+- if applied mutator count surprises you, inspect the selected pool, global cap, additional chance, eligibility, and compatibility rejections
 
 Common mutation chance pitfall:
 - matching/selecting a pool does not guarantee mutation when that pool sets `mutation_chance < 1.0`
 - if debug output shows `final_outcome=chance_failed`, the pool matched but chance blocked mutation
+- `additional_mutation_chance` is conditional on the first mutation and repeats only until its first failure; it is not another independent initial spawn roll
 
 ## Problem: `Unknown or incomplete command`
 
@@ -213,6 +197,8 @@ Check these in order:
 3. confirm the stage state the offer checks is really unlocked in the correct bucket
 4. confirm you inspected the correct player
 5. confirm the offer instance was not already granted, resolved, or blocked by prior state
+
+For bundled personal milestone offers, log out and back in after confirming the matching vanilla advancement is complete. Login catch-up replays only an unconsumed player-scoped one-shot advancement trigger; it does not grant an offer merely because the shared world stage is already unlocked.
 
 Useful commands:
 
@@ -470,6 +456,8 @@ Important:
 - missing definitions degrade safely and stay inspectable
 
 ## Problem: A Mutator Component Was Skipped Due To Missing Runtime Surface Or Hook
+
+For the core `on_hit_effect`, `life_steal`, and `death_explosion` components, first check parameter validation rather than assuming the combat hook is absent. Effects must be registered, lifesteal must be greater than `0` and at most `1`, and explosion power must be greater than `0` and at most `8`. Lifesteal is based on actual post-mitigation health damage and is capped by the target's pre-hit health, so an overkill hit intentionally does not heal from the excess damage.
 
 What it means:
 - the mutator branch required an entity capability, hook, or runtime surface that is unavailable or incompatible in this modpack

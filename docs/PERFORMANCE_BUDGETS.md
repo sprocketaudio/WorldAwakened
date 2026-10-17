@@ -3,7 +3,7 @@
 Canonical contract for hot-path runtime limits, indexing guarantees, and evaluation guardrails.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Rule engine, spawn-time mutation, and loot/reward evaluation performance contracts
 
 ---
@@ -40,6 +40,14 @@ Update rule:
 - Client visual carrier handlers must stay local-player-only and constant-time per frame; they may read synced WA-owned state and feed the owning client's render/lightmap hooks, but they must not scan world entities or rebuild authored data during render/tick hooks.
 - Tick-driven mutator presentation behavior must run only on entities that already carry WA-owned typed state; `effect_particles` and `ambient_particles` must use per-entity emitter state and must not scan loaded entities globally.
 - `glow_style` client outline rendering must run only for entities with synced WA-owned glow state, use frustum checks before rendering, keep the outline pass bounded, and clamp authored `brightness` to `0.0..1.0`.
+- external-tier derived-stage reconciliation must use reload-compiled hook metadata and bounded cadence; it must not parse raw `integration_profiles.stage_hooks` JSON during live player or tick paths
+- `world_day_milestone` evaluation is limited to the Overworld once per second and uses the compiled trigger-type bucket; authored one-shot state prevents repeated execution after a milestone matches
+
+External-tier derived-stage guardrail:
+- Phase 9 `derived_stage` Apotheosis reconciliation is limited to compiled `tier_threshold_unlock` hooks
+- reconciliation runs on player login/respawn and on a bounded periodic server-level pass (target cadence: once per second per loaded level)
+- the tick pass evaluates only loaded players in that level and only compiled active hooks for the relevant integration
+- repeated evaluations must be idempotent and rely on normal stage-service duplicate handling rather than extra retry loops
 
 ---
 
@@ -135,6 +143,9 @@ Mutator evaluation must remain bounded even in large modpacks.
 Hard requirements:
 - pool selection must occur before mutator evaluation
 - selected-pool `mutation_chance` must be evaluated after pool selection and before mutator evaluation
+- the initial chance is rolled once; conditional additional rolls are bounded by `max_mutators_per_entity`, the global effective cap, and the hard spawn budget
+- curated combinations must be reload-compiled and selected as whole weighted units; spawn evaluation must not parse their JSON or scan unrelated pools
+- an additional-roll failure ends selection immediately; selection must not reroll indefinitely to fill a requested count
 - mutator evaluation must operate only on candidate pools
 - selector indexing must prevent full pool scans per spawn
 - component-count guardrails must prevent unbounded stacking
@@ -196,6 +207,12 @@ Performance/safety goal:
 - preserve compatibility while keeping login/respawn/reconcile cost bounded
 - keep carrier systems cheap by treating them as derived cached state, not a per-tick simulation engine
 
+Personal advancement catch-up guardrail:
+- login reconciliation inspects only enabled, player-scoped, one-shot `advancement_completed` trigger definitions
+- consumed triggers are removed before advancement-state lookup
+- advancement IDs are deduplicated before replay
+- replay uses the normal compiled trigger matcher and does not enumerate or synthesize unrelated advancements
+
 ## Ownership-Safe Mutator Application Guardrail
 
 Spawn-time mutator application must remain bounded, ownership-scoped, and fail-closed on unavailable runtime surfaces.
@@ -206,6 +223,10 @@ Hard requirements:
 - unavailable entity capabilities/hooks/runtime surfaces must fail closed once per relevant branch/event path with bounded diagnostics behavior
 - removed-definition provenance checks must not trigger repeated expensive retries during the same spawn/event path
 - degraded mutator branches must not cause recursive spawn reprocessing or repeated rebuild loops
+- mutation combat events may inspect only the attacking/dying mob's bounded WA-owned compiled state; they must not scan mutation definitions or parse JSON
+- per mob, live `on_hit_effect` state is capped at 8 entries, lifesteal is pre-aggregated to at most `1.0`, and death explosion state stores one strongest power
+- lifesteal overkill accounting may retain only weak, in-flight pre-damage health snapshots; it must not retain entities or create an unbounded combat history
+- death explosions must suppress synchronous WA explosion chains and use no block interaction
 
 Performance/safety goal:
 - keep spawn evaluation deterministic and cheap even in incompatible mixed-mod environments
@@ -234,6 +255,8 @@ Hard requirements:
 Observability requirements:
 - debug/evaluate outputs for loot/reward flows should expose source event, candidate ordering, rejection reasons, and final applied WA-owned reward outcomes
 - performance diagnostics for loot/reward passes should remain trace-correlated with the same root evaluation trace IDs used by other subsystems
+
+Periodic invasion scheduling remains once per second on the canonical Overworld scheduler tick. For each compiled periodic profile it resolves at most one allowed loaded dimension containing players, then evaluates that profile against the dimension snapshot. It must not scan entities, chunks, or unloaded dimensions.
 
 --- 
 
@@ -294,8 +317,10 @@ This contract aligns to future implementation phases as follows:
 - Phase 5: enforce spawn-time mutator/component count guardrails and deterministic overflow behavior
 - Phase 6: enforce per-event rule/action budget guardrails with deterministic truncation boundaries, diagnostics-first policy, and stable ordering guarantees
 - Phase 7: enforce deterministic and bounded loot/reward profile evaluation on explicit reward-capable event paths
-- Phase 10: expose performance-budget warnings in web authoring validation workflows
-- Phase 11: harden performance telemetry and ship `/wa debug perf|rules|mutators` observability surfaces, including regression checks that live-linked apply/reload workflows do not bypass compiled hot-path indexing, budget limits, or deterministic ordering guarantees from Phases 5-9
+- Native editor settings foundation: implemented overrides are constant-time runtime reads; the mutation cap can only tighten the existing hard budget, and bundled-profile changes compile off the hot path before publication
+- Native mutation-pool editing cannot raise the engine hard cap above eight mutators per mob; the existing global and authored caps may tighten it further. Registry enumeration and living-type checks occur only when an authorised operator opens the editor, never in spawn evaluation.
+- Later native editor work: expose richer component-budget warnings in guided mutator-definition workflows
+- Hardening: ship `/wa debug perf|rules|mutators` observability surfaces and verify editor apply/reload workflows cannot bypass compiled hot-path indexing, budget limits, or deterministic ordering guarantees
 
 Roadmap sync rule:
 - if phase scope changes affect hot-path limits or budget policy, update this file and `SPECIFICATION.md` in the same change.

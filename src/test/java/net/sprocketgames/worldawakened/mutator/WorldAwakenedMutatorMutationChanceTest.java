@@ -3,6 +3,7 @@ package net.sprocketgames.worldawakened.mutator;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -46,16 +47,14 @@ import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDriven
 
 class WorldAwakenedMutatorMutationChanceTest {
     @Test
-    void poolCodecDefaultsMutationChanceToOneWhenOmitted() {
-        MutationPoolDefinition pool = parsePool("""
+    void poolCodecRejectsTheObsoletePoolShape() {
+        assertThrows(IllegalStateException.class, () -> parsePool("""
                 {
                   "id": "testpack:default_chance_pool",
                   "eligible_entities": ["minecraft:zombie"],
                   "mutators": ["testpack:chance_mutator"]
                 }
-                """);
-
-        assertEquals(1.0D, pool.mutationChance(), 0.00001D);
+                """));
     }
 
     @Test
@@ -81,6 +80,8 @@ class WorldAwakenedMutatorMutationChanceTest {
                   "id": "testpack:chance_zero_pool",
                   "eligible_entities": ["minecraft:zombie"],
                   "mutation_chance": 0.0,
+                  "additional_mutation_chance": 0.0,
+                  "max_mutators_per_entity": 1,
                   "mutators": [
                     { "id": "testpack:chance_mutator", "weight": 1 }
                   ]

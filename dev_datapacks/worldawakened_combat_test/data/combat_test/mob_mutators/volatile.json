@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "combat_test:volatile",
+  "display_name": { "text": "Volatile" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 1,
+  "stacking_group": "combat_test:death",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:death_explosion", "parameters": { "amount": 3.0 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#ff8c32", "brightness": 0.85, "see_through_walls": false, "pulse": true, "pulse_speed": 1.25, "pulse_strength": 0.35 } },
+    { "type": "worldawakened:ambient_particles", "parameters": { "particle": "minecraft:flame", "count": 3, "offset_x": 0.4, "offset_y": 0.6, "offset_z": 0.4, "speed": 0.015, "interval_ticks": 3 } }
+  ],
+  "eligible_entities": ["minecraft:creeper", "minecraft:skeleton"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "application_contexts": ["on_spawn"]
+}

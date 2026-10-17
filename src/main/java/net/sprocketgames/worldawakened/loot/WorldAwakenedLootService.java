@@ -35,9 +35,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.fml.ModList;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
+import net.sprocketgames.worldawakened.compat.apotheosis.WorldAwakenedApotheosisTierFilter;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
-import net.sprocketgames.worldawakened.data.definition.IntegrationProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.LootProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.LootReplaceMode;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
@@ -65,6 +66,7 @@ public final class WorldAwakenedLootService {
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedInvasionService invasionService;
+    private final WorldAwakenedCompatibilityService compatibilityService;
     private final AtomicReference<CachedCompiledLoot> cache =
             new AtomicReference<>(new CachedCompiledLoot(0L, CompiledLootGraph.empty()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
@@ -72,16 +74,33 @@ public final class WorldAwakenedLootService {
     public WorldAwakenedLootService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService) {
-        this(datapackService, stageService, new WorldAwakenedInvasionService(datapackService, stageService));
+        this(
+                datapackService,
+                stageService,
+                new WorldAwakenedInvasionService(datapackService, stageService),
+                new WorldAwakenedCompatibilityService(datapackService));
     }
 
     public WorldAwakenedLootService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService,
             WorldAwakenedInvasionService invasionService) {
+        this(
+                datapackService,
+                stageService,
+                invasionService,
+                new WorldAwakenedCompatibilityService(datapackService));
+    }
+
+    public WorldAwakenedLootService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedInvasionService invasionService,
+            WorldAwakenedCompatibilityService compatibilityService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.invasionService = invasionService;
+        this.compatibilityService = compatibilityService;
     }
 
     public List<ResourceLocation> loadedLootProfileIds() {
@@ -319,16 +338,29 @@ public final class WorldAwakenedLootService {
                     "stage_filter_rejected"));
         }
 
-        if (profile.hasApotheosisTierFilter()) {
-            return Optional.of(ProfileDecision.rejected(
-                    profile.id(),
-                    "apotheosis_filter_unavailable",
-                    "apotheosis_tier_filters present but no runtime tier provider exists in Phase 7",
-                    WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE,
-                    profile.replaceMode(),
-                    profile.replaceMode(),
-                    sensitiveTarget,
-                    "fail_closed"));
+        if (profile.apotheosisTierFilter().isPresent()) {
+            if (context.apotheosisWorldTier().isEmpty()) {
+                return Optional.of(ProfileDecision.rejected(
+                        profile.id(),
+                        "apotheosis_filter_unavailable",
+                        context.apotheosisTierDetail().orElse("apotheosis_tier_provider_unavailable"),
+                        WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE,
+                        profile.replaceMode(),
+                        profile.replaceMode(),
+                        sensitiveTarget,
+                        "fail_closed"));
+            }
+            if (!profile.apotheosisTierFilter().get().matches(context.apotheosisWorldTier().getAsDouble())) {
+                return Optional.of(ProfileDecision.rejected(
+                        profile.id(),
+                        "apotheosis_filter_failed",
+                        "apotheosis_tier_filters rejected current tier context",
+                        WorldAwakenedDiagnosticCodes.SELECTOR_INVALID,
+                        profile.replaceMode(),
+                        profile.replaceMode(),
+                        sensitiveTarget,
+                        "tier_filter_rejected"));
+            }
         }
 
         for (CompiledCondition condition : profile.conditions()) {
@@ -674,6 +706,11 @@ public final class WorldAwakenedLootService {
         ResourceLocation lootTableId = target.getLootTable().location();
         Map<String, Boolean> toggles = configToggles();
         WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(level);
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        killer,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.LOOT_SCALING);
 
         return new LootContextSnapshot(
                 debug ? EVENT_DEBUG_EVALUATE : EVENT_ENTITY_KILLED,
@@ -697,7 +734,11 @@ public final class WorldAwakenedLootService {
                 invasionContext.invasionActive(),
                 invasionContext.profileId(),
                 invasionContext.tags(),
-                apotheosisCompatActive(),
+                compatibilityService.apotheosisCompatActive(),
+                apotheosisTier.tierValue(),
+                apotheosisTier.available()
+                        ? Optional.empty()
+                        : Optional.of(apotheosisTier.detail()),
                 loadedMods(),
                 toggles,
                 Long.toUnsignedString(level.getGameTime()),
@@ -718,6 +759,11 @@ public final class WorldAwakenedLootService {
         ResourceLocation eventType = targetType == LootTargetType.INVASION_REWARD
                 ? EVENT_INVASION_COMPLETED
                 : EVENT_DEBUG_EVALUATE;
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        player,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.LOOT_SCALING);
 
         return switch (targetType) {
             case ENTITY -> {
@@ -757,7 +803,11 @@ public final class WorldAwakenedLootService {
                         false,
                         Optional.empty(),
                         Set.of(),
-                        apotheosisCompatActive(),
+                        compatibilityService.apotheosisCompatActive(),
+                        apotheosisTier.tierValue(),
+                        apotheosisTier.available()
+                                ? Optional.empty()
+                                : Optional.of(apotheosisTier.detail()),
                         loadedMods(),
                         toggles,
                         "debug:" + level.getGameTime(),
@@ -785,7 +835,11 @@ public final class WorldAwakenedLootService {
                     false,
                     Optional.empty(),
                     Set.of(),
-                    apotheosisCompatActive(),
+                    compatibilityService.apotheosisCompatActive(),
+                    apotheosisTier.tierValue(),
+                    apotheosisTier.available()
+                            ? Optional.empty()
+                            : Optional.of(apotheosisTier.detail()),
                     loadedMods(),
                     toggles,
                     "debug:" + level.getGameTime(),
@@ -817,7 +871,11 @@ public final class WorldAwakenedLootService {
                                     .map(tag -> tag == null ? "" : tag.trim().toLowerCase(Locale.ROOT))
                                     .filter(tag -> !tag.isBlank())
                                     .collect(java.util.stream.Collectors.toUnmodifiableSet()),
-                    apotheosisCompatActive(),
+                    compatibilityService.apotheosisCompatActive(),
+                    apotheosisTier.tierValue(),
+                    apotheosisTier.available()
+                            ? Optional.empty()
+                            : Optional.of(apotheosisTier.detail()),
                     loadedMods(),
                     toggles,
                     "debug:" + level.getGameTime(),
@@ -883,7 +941,7 @@ public final class WorldAwakenedLootService {
             profiles.sort(PROFILE_ORDER);
         }
 
-        Set<ResourceLocation> apotheosisSensitiveTargets = compileApotheosisSensitiveTargets(snapshot.data().integrationProfiles().values());
+        Set<ResourceLocation> apotheosisSensitiveTargets = compatibilityService.apotheosisSensitiveLootTargets();
         return new CompiledLootGraph(
                 Map.copyOf(byId),
                 freezeTargetIndex(byTarget),
@@ -904,6 +962,8 @@ public final class WorldAwakenedLootService {
         List<CompiledCondition> conditions = compileConditions(definition.conditions());
         List<CompiledCondition> modConditions = compileConditions(definition.modConditions());
         StageFilter stageFilter = StageFilter.compile(definition.stageFilters());
+        Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter =
+                WorldAwakenedApotheosisTierFilter.compile(definition.apotheosisTierFilters());
         List<CompiledLootEntry> entries = compileEntries(definition.entries());
         LinkedHashSet<ResourceLocation> targets = new LinkedHashSet<>(definition.targetLootTables());
 
@@ -913,7 +973,7 @@ public final class WorldAwakenedLootService {
                 List.copyOf(conditions),
                 List.copyOf(modConditions),
                 stageFilter,
-                definition.apotheosisTierFilters().isPresent(),
+                apotheosisTierFilter,
                 definition.replaceMode(),
                 entries,
                 definition.configGate().map(value -> value.trim().toLowerCase(Locale.ROOT)).filter(value -> !value.isBlank()));
@@ -1028,18 +1088,6 @@ public final class WorldAwakenedLootService {
                 conditionIndex));
     }
 
-    private static Set<ResourceLocation> compileApotheosisSensitiveTargets(
-            Collection<IntegrationProfileDefinition> integrationProfiles) {
-        LinkedHashSet<ResourceLocation> targets = new LinkedHashSet<>();
-        for (IntegrationProfileDefinition profile : integrationProfiles) {
-            if (!"apotheosis".equals(profile.modId().toLowerCase(Locale.ROOT))) {
-                continue;
-            }
-            targets.addAll(profile.lootTargets());
-        }
-        return Set.copyOf(targets);
-    }
-
     private static Set<ResourceLocation> activeStageSnapshot(LootContextSnapshot context) {
         if (context.playerUuid().isPresent() && !context.playerStageSnapshot().isEmpty()) {
             return context.playerStageSnapshot();
@@ -1069,11 +1117,6 @@ public final class WorldAwakenedLootService {
         LinkedHashSet<String> mods = new LinkedHashSet<>();
         ModList.get().getMods().forEach(modInfo -> mods.add(modInfo.getModId().toLowerCase(Locale.ROOT)));
         return Set.copyOf(mods);
-    }
-
-    private static boolean apotheosisCompatActive() {
-        return ModList.get().isLoaded("apotheosis")
-                && WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get();
     }
 
     private static Map<String, Boolean> configToggles() {
@@ -1390,6 +1433,8 @@ public final class WorldAwakenedLootService {
             Optional<ResourceLocation> invasionProfileId,
             Set<String> invasionTags,
             boolean apotheosisCompatActive,
+            OptionalDouble apotheosisWorldTier,
+            Optional<String> apotheosisTierDetail,
             Set<String> loadedMods,
             Map<String, Boolean> configToggles,
             String traceSeed,
@@ -1418,6 +1463,8 @@ public final class WorldAwakenedLootService {
                     Optional.empty(),
                     Set.of(),
                     false,
+                    OptionalDouble.empty(),
+                    Optional.of("context_empty"),
                     Set.of(),
                     Map.of(),
                     "none",
@@ -1535,7 +1582,7 @@ public final class WorldAwakenedLootService {
             List<CompiledCondition> conditions,
             List<CompiledCondition> modConditions,
             StageFilter stageFilter,
-            boolean hasApotheosisTierFilter,
+            Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter,
             LootReplaceMode replaceMode,
             List<CompiledLootEntry> entries,
             Optional<String> configGate) {

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:apotheosis_sensitive_unsafe_replace",
+  "enabled": true,
+  "target_loot_tables": [
+    "minecraft:chests/simple_dungeon"
+  ],
+  "conditions": [],
+  "stage_filters": {
+    "all_of": [
+      "worldawakened_p9test:phase9_gate"
+    ]
+  },
+  "apotheosis_tier_filters": {
+    "min": 0
+  },
+  "replace_mode": "replace_entries",
+  "entries": [
+    {
+      "type": "item",
+      "item": "minecraft:diamond",
+      "weight": 1,
+      "min": 1,
+      "max": 1
+    }
+  ],
+  "weight_multiplier": 1.0,
+  "quality_scalar": 1.0,
+  "mod_conditions": []
+}

@@ -27,6 +27,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
@@ -57,6 +58,7 @@ public final class WorldAwakenedRuleService {
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedAscensionService ascensionService;
     private final WorldAwakenedInvasionService invasionService;
+    private final WorldAwakenedCompatibilityService compatibilityService;
     private final AtomicReference<CachedCompiledRules> cache = new AtomicReference<>(new CachedCompiledRules(0L, List.of()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
 
@@ -65,10 +67,20 @@ public final class WorldAwakenedRuleService {
             WorldAwakenedStageService stageService,
             WorldAwakenedAscensionService ascensionService,
             WorldAwakenedInvasionService invasionService) {
+        this(datapackService, stageService, ascensionService, invasionService, new WorldAwakenedCompatibilityService(datapackService));
+    }
+
+    public WorldAwakenedRuleService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedAscensionService ascensionService,
+            WorldAwakenedInvasionService invasionService,
+            WorldAwakenedCompatibilityService compatibilityService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.ascensionService = ascensionService;
         this.invasionService = invasionService;
+        this.compatibilityService = compatibilityService;
     }
 
     public WorldAwakenedRuleRunResult evaluate(RuleEventContext context) {
@@ -346,6 +358,11 @@ public final class WorldAwakenedRuleService {
             pendingOffers = Set.copyOf(state.pendingAscensionOffers());
         }
         WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(context.level());
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        context.level(),
+                        context.player(),
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.CONDITIONS);
 
         return new WorldAwakenedRuleMatchContext(
                 context.eventType(),
@@ -377,7 +394,11 @@ public final class WorldAwakenedRuleService {
                 invasionContext.invasionActive(),
                 invasionContext.profileId(),
                 invasionContext.tags(),
-                Optional.empty());
+                Optional.empty(),
+                apotheosisTier.tierValue(),
+                apotheosisTier.available()
+                        ? Optional.empty()
+                        : Optional.of(apotheosisTier.detail()));
     }
 
     private static Optional<ResourceLocation> resolveBiome(ServerLevel level, ServerPlayer player, Entity entity) {
@@ -428,7 +449,7 @@ public final class WorldAwakenedRuleService {
         toggles.put("general.debug_logging", WorldAwakenedCommonConfig.DEBUG_LOGGING.get());
         toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
         toggles.put("general.validation_logging", WorldAwakenedCommonConfig.VALIDATION_LOGGING.get());
-        toggles.put("ascension.enable_ascension", WorldAwakenedCommonConfig.ENABLE_ASCENSION.get());
+        toggles.put("ascension.enable_ascension", WorldAwakenedFeatureGates.ascensionEnabled());
         toggles.put("compat.apotheosis.enabled", WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get());
         toggles.put("compat.apotheosis.allow_world_tier_conditions", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get());
         toggles.put("compat.apotheosis.allow_world_tier_stage_unlocks", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_STAGE_UNLOCKS.get());

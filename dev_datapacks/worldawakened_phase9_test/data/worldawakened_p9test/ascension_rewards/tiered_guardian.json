@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:tiered_guardian",
+  "display_name": "Tiered Guardian",
+  "description": "Defense-focused reward used by Phase 9 tier-filter offer checks.",
+  "icon": {
+    "item": "minecraft:shield"
+  },
+  "enabled": true,
+  "components": [
+    {
+      "type": "worldawakened:max_health_bonus",
+      "parameters": {
+        "amount": 4.0
+      }
+    },
+    {
+      "type": "worldawakened:armor_bonus",
+      "parameters": {
+        "amount": 2.0
+      }
+    }
+  ],
+  "rarity": "rare",
+  "tags": [
+    "worldawakened_p9test:phase9",
+    "worldawakened_p9test:defense"
+  ],
+  "offer_weight": 1.0,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

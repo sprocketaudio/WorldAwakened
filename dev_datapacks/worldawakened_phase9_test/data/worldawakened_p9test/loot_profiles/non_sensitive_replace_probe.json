@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:non_sensitive_replace_probe",
+  "enabled": true,
+  "target_loot_tables": [
+    "minecraft:chests/shipwreck_supply"
+  ],
+  "conditions": [],
+  "stage_filters": {
+    "all_of": [
+      "worldawakened_p9test:phase9_gate"
+    ]
+  },
+  "replace_mode": "replace_entries",
+  "entries": [
+    {
+      "type": "item",
+      "item": "minecraft:paper",
+      "weight": 1,
+      "min": 1,
+      "max": 1
+    }
+  ],
+  "weight_multiplier": 1.0,
+  "quality_scalar": 1.0,
+  "mod_conditions": []
+}

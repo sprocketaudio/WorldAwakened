@@ -140,6 +140,27 @@ class WorldAwakenedStageStateEngineTest {
         assertFalse(state.unlockedStages().contains(stage.id()));
     }
 
+    @Test
+    void unlockDefaultStagesIsIdempotentAndSkipsDisabledDefaults() {
+        StageDefinition dormant = stageWithDefault(
+                "testpack:dormant", 0, true, true);
+        StageDefinition disabled = stageWithDefault(
+                "testpack:disabled", 1, false, true);
+        StageDefinition milestone = stageWithDefault(
+                "testpack:milestone", 2, true, false);
+        WorldAwakenedStageRegistry registry = WorldAwakenedStageRegistry.from(Map.of(
+                dormant.id(), dormant,
+                disabled.id(), disabled,
+                milestone.id(), milestone));
+        InMemoryStageState state = new InMemoryStageState();
+
+        assertEquals(1, WorldAwakenedStageStateEngine.unlockDefaultStages(registry, state, 100L));
+        assertEquals(0, WorldAwakenedStageStateEngine.unlockDefaultStages(registry, state, 200L));
+        assertEquals(Set.of(dormant.id()), state.unlockedStages());
+        assertEquals("default_unlocked", state.unlockSources().get(dormant.id()));
+        assertEquals(100L, state.unlockTimestamps().get(dormant.id()));
+    }
+
     private static StageDefinition stage(
             String id,
             List<String> aliases,
@@ -163,6 +184,29 @@ class WorldAwakenedStageStateEngineTest {
                 group,
                 policy,
                 false);
+    }
+
+    private static StageDefinition stageWithDefault(
+            String id,
+            int sortIndex,
+            boolean enabled,
+            boolean defaultUnlocked) {
+        return new StageDefinition(
+                1,
+                id(id),
+                List.of(),
+                JsonParser.parseString("\"" + id + "\""),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                sortIndex,
+                true,
+                enabled,
+                List.of(),
+                Optional.empty(),
+                Optional.of("main"),
+                StageUnlockPolicy.CUMULATIVE,
+                defaultUnlocked);
     }
 
     private static ResourceLocation id(String id) {

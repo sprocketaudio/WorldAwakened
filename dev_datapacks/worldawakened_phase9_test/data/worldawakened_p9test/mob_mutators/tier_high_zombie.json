@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:tier_high_zombie",
+  "display_name": "P9 High Tier Zombie",
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 10,
+  "stacking_group": "p9_tier_bucket",
+  "max_stack_count": 1,
+  "components": [
+    {
+      "type": "worldawakened:max_health_multiplier",
+      "parameters": {
+        "multiplier": 1.5
+      }
+    },
+    {
+      "type": "worldawakened:armor_bonus",
+      "parameters": {
+        "amount": 3.0
+      }
+    },
+    {
+      "type": "worldawakened:movement_speed_bonus",
+      "parameters": {
+        "amount": 0.08
+      }
+    }
+  ],
+  "eligible_entities": [
+    "minecraft:zombie"
+  ],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": false,
+  "application_contexts": [
+    "on_spawn"
+  ]
+}

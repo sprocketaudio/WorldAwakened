@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/world_awakened",
+  "display_name": { "translate": "stage.worldawakened.defaults.world_awakened" },
+  "description": { "translate": "stage.worldawakened.defaults.world_awakened.description" },
+  "sort_index": 60,
+  "visible_to_players": true,
+  "enabled": true,
+  "progression_group": "worldawakened:default_progression",
+  "unlock_policy": "cumulative",
+  "default_unlocked": false
+}

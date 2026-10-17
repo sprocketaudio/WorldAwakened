@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/sharp_eyed",
+  "display_name": { "translate": "mutator.worldawakened.defaults.sharp_eyed" },
+  "enabled": true,
+  "rarity": "uncommon",
+  "weight": 8,
+  "stacking_group": "worldawakened:default_perception",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:target_range_bonus", "parameters": { "amount": 6.0 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#89b9d9", "brightness": 0.52, "see_through_walls": false, "pulse": false } }
+  ],
+  "eligible_entities": ["minecraft:skeleton", "minecraft:stray", "minecraft:pillager"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

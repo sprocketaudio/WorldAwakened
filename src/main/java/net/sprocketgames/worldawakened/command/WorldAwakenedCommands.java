@@ -41,6 +41,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -50,12 +51,14 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionOfferRuntime;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionRewardEffects;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
 import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierService;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
+import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageDefinition;
@@ -70,6 +73,7 @@ import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedGlowStyleState;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutationCombatState;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutationProvenance;
 import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedEffectiveStageContext;
@@ -101,9 +105,13 @@ public final class WorldAwakenedCommands {
             WorldAwakenedMutatorService mutatorService,
             WorldAwakenedLootService lootService,
             WorldAwakenedInvasionService invasionService,
-            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService) {
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedCompatibilityService compatibilityService) {
         WorldAwakenedDebugCommandService debugCommandService = new WorldAwakenedDebugCommandService(stageService, ascensionService);
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("wa")
+                .then(Commands.literal("config")
+                        .requires(WorldAwakenedCommands::canEditConfig)
+                        .executes(context -> runOpenConfig(context.getSource())))
                 .then(Commands.literal("reload")
                         .then(Commands.literal("validate")
                                 .requires(source -> source.hasPermission(2))
@@ -111,10 +119,8 @@ public final class WorldAwakenedCommands {
                 .then(buildStageTree(stageService))
                 .then(buildTriggerTree(datapackService, triggerService))
                 .then(buildDumpTree(ruleService))
-                .then(Commands.literal("compat")
-                        .requires(source -> source.hasPermission(2))
-                        .then(Commands.literal("list")
-                                .executes(context -> runCompatList(context.getSource()))))
+                .then(buildCompatTree(compatibilityService))
+                .then(buildApotheosisTree(compatibilityService))
                 .then(buildInvasionTree(datapackService, invasionService))
                 .then(buildLootTree(datapackService, lootService))
                 .then(buildAscensionTree(datapackService, ascensionService))
@@ -130,6 +136,7 @@ public final class WorldAwakenedCommands {
                     lootService,
                     invasionService,
                     difficultyScalarService,
+                    compatibilityService,
                     debugCommandService));
         }
 
@@ -594,37 +601,179 @@ public final class WorldAwakenedCommands {
         return (int) activeCount;
     }
 
-    private static int runCompatList(CommandSourceStack source) {
-        boolean autoDetect = WorldAwakenedCommonConfig.AUTO_DETECT.get();
-        boolean defaultEnableDetected = WorldAwakenedCommonConfig.DEFAULT_ENABLE_DETECTED_INTEGRATIONS.get();
-        boolean apotheosisLoaded = ModList.get().isLoaded("apotheosis");
-        boolean apotheosisEnabled = WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get();
-        boolean apotheosisActive = apotheosisLoaded && apotheosisEnabled;
+    private static LiteralArgumentBuilder<CommandSourceStack> buildCompatTree(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("compat")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("list")
+                        .executes(context -> runCompatList(context.getSource(), compatibilityService)));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildApotheosisTree(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("apotheosis")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("tier")
+                        .then(Commands.literal("inspect")
+                                .executes(context -> runApotheosisTierInspect(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        sourcePlayer(context.getSource()),
+                                        null))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(context -> runApotheosisTierInspect(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                EntityArgument.getPlayer(context, "player"),
+                                                null))
+                                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                                .executes(context -> runApotheosisTierInspect(
+                                                        context.getSource(),
+                                                        compatibilityService,
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        DimensionArgument.getDimension(context, "dimension")))))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runApotheosisTierInspect(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                sourcePlayer(context.getSource()),
+                                                DimensionArgument.getDimension(context, "dimension"))))));
+    }
+
+    private static int runCompatList(
+            CommandSourceStack source,
+            WorldAwakenedCompatibilityService compatibilityService) {
+        List<WorldAwakenedCompatibilityService.IntegrationActivation> integrations =
+                compatibilityService.listIntegrations();
+        long activeCount = integrations.stream()
+                .filter(WorldAwakenedCompatibilityService.IntegrationActivation::active)
+                .count();
 
         sendOperatorSummary(source,
-                "World Awakened compatibility: auto_detect=" + autoDetect
-                        + ", enable_detected_integrations=" + defaultEnableDetected,
+                "World Awakened compatibility: active="
+                        + activeCount
+                        + "/"
+                        + integrations.size()
+                        + " auto_detect="
+                        + WorldAwakenedCommonConfig.AUTO_DETECT.get()
+                        + " enable_detected_integrations="
+                        + WorldAwakenedCommonConfig.DEFAULT_ENABLE_DETECTED_INTEGRATIONS.get(),
                 false);
-        sendOperatorSummary(source,
-                "Apotheosis: "
-                        + (apotheosisActive ? "active" : apotheosisLoaded ? "loaded but disabled" : "not loaded")
-                        + ", mode="
-                        + WorldAwakenedCommonConfig.APOTHEOSIS_MODE.get(),
-                false);
-        if (showVerboseOperatorDetails()) {
-            sendOperatorDetail(source, "world_tier_conditions="
-                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get()
-                    + ", stage_unlocks="
-                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_STAGE_UNLOCKS.get()
-                    + ", loot_scaling="
-                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_LOOT_SCALING.get()
-                    + ", invasion_scaling="
-                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_INVASION_SCALING.get()
-                    + ", mutator_scaling="
-                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_MUTATOR_SCALING.get());
+
+        if (integrations.isEmpty()) {
+            sendOperatorSummary(source, "No enabled integration profiles are currently loaded.", false);
+            return 0;
         }
 
-        return apotheosisActive ? 1 : 0;
+        for (WorldAwakenedCompatibilityService.IntegrationActivation integration : integrations) {
+            sendOperatorSummary(source,
+                    integration.displayName()
+                            + " ("
+                            + integration.integrationId()
+                            + "): "
+                            + (integration.active()
+                            ? "active"
+                            : "inactive (" + describeCompatInactiveReason(integration.inactiveReason()) + ")"),
+                    false);
+            if (showVerboseOperatorDetails()) {
+                sendOperatorDetail(source, "mod="
+                        + integration.modId()
+                        + " loaded="
+                        + integration.modLoaded()
+                        + " config_gate="
+                        + integration.configGateKey()
+                        + "="
+                        + integration.configGateEnabled()
+                        + " profile_enabled="
+                        + integration.enabledByProfile()
+                        + " effective_enabled="
+                        + integration.enabledEffective());
+                sendOperatorDetail(source, "hooks: stage="
+                        + integration.stageHookCount()
+                        + " trigger="
+                        + integration.triggerHookCount()
+                        + " conditions="
+                        + integration.specialConditionCount()
+                        + " loot_targets="
+                        + formatResourceLocations(integration.lootTargets()));
+            }
+        }
+        return (int) activeCount;
+    }
+
+    private static int runApotheosisTierInspect(
+            CommandSourceStack source,
+            WorldAwakenedCompatibilityService compatibilityService,
+            ServerPlayer targetPlayer,
+            ServerLevel explicitLevel) {
+        ServerLevel level = resolveCompatCommandLevel(source, targetPlayer, null, explicitLevel, "/wa apotheosis tier inspect");
+        if (level == null) {
+            return 0;
+        }
+
+        Optional<WorldAwakenedCompatibilityService.IntegrationActivation> activation =
+                compatibilityService.integrationActivationByModId("apotheosis");
+        if (activation.isEmpty()) {
+            sendOperatorFailure(source, Component.literal("Apotheosis integration profile is not loaded.")
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_COMPAT_NOT_FOUND)));
+            return 0;
+        }
+
+        WorldAwakenedCompatibilityService.IntegrationActivation integration = activation.get();
+        sendOperatorSummary(source,
+                "Apotheosis integration: "
+                        + (integration.active()
+                        ? "active"
+                        : "inactive (" + describeCompatInactiveReason(integration.inactiveReason()) + ")")
+                        + " mode="
+                        + WorldAwakenedCommonConfig.APOTHEOSIS_MODE.get(),
+                false);
+
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution tier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        targetPlayer,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.SCALAR_PROVIDER);
+        if (!tier.available() || tier.tierValue().isEmpty()) {
+            sendOperatorFailure(source, Component.literal("Apotheosis tier is unavailable: "
+                    + describeCompatInactiveReason(tier.detail()))
+                    .append(debugCodeSuffix(tier.diagnosticCode().isBlank()
+                            ? WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE
+                            : tier.diagnosticCode())));
+            sendOperatorDetail(source, "detail="
+                    + tier.detail()
+                    + " player="
+                    + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                    + " dimension="
+                    + level.dimension().location());
+            return 0;
+        }
+
+        sendOperatorSummary(source, "Apotheosis world tier: "
+                + formatNumber(tier.tierValue().getAsDouble())
+                + " scalar_contribution="
+                + formatNumber(tier.scalarContribution()), false);
+        if (showVerboseOperatorDetails()) {
+            sendOperatorDetail(source, "player="
+                    + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                    + " dimension="
+                    + level.dimension().location()
+                    + " provider="
+                    + tier.providerKey());
+            sendOperatorDetail(source, "gates: conditions="
+                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get()
+                    + " stage_unlocks="
+                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_STAGE_UNLOCKS.get()
+                    + " loot_scaling="
+                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_LOOT_SCALING.get()
+                    + " invasion_scaling="
+                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_INVASION_SCALING.get()
+                    + " mutator_scaling="
+                    + WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_MUTATOR_SCALING.get());
+            sendOperatorDetail(source, "derived_stage_hooks="
+                    + formatDerivedStageHooks(compatibilityService.apotheosisDerivedStageHooks()));
+        }
+        return 1;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> buildAscensionTree(
@@ -996,6 +1145,7 @@ public final class WorldAwakenedCommands {
             WorldAwakenedLootService lootService,
             WorldAwakenedInvasionService invasionService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedCompatibilityService compatibilityService,
             WorldAwakenedDebugCommandService debugCommandService) {
         LiteralArgumentBuilder<CommandSourceStack> debug = Commands.literal("debug")
                 .requires(source -> source.hasPermission(2) && WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
@@ -1075,6 +1225,8 @@ public final class WorldAwakenedCommands {
         debug.then(buildDebugInvasionTree(invasionService));
         debug.then(buildDebugDifficultyTree(difficultyScalarService));
         debug.then(buildDebugPressureTree(mutatorService, difficultyScalarService));
+        debug.then(buildDebugCompatTree(compatibilityService));
+        debug.then(buildDebugScalarTree(compatibilityService));
         return debug;
     }
 
@@ -1543,12 +1695,166 @@ public final class WorldAwakenedCommands {
                                                                         EntityArgument.getPlayer(context, "player")))))))));
     }
 
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugCompatTree(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("compat")
+                .then(buildDebugCompatEvaluateBranch(compatibilityService));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugCompatEvaluateBranch(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("evaluate")
+                .then(Commands.argument("integration_id", ResourceLocationArgument.id())
+                        .suggests(suggestIntegrationIds(compatibilityService))
+                        .executes(context -> runDebugCompatEvaluate(
+                                context.getSource(),
+                                compatibilityService,
+                                ResourceLocationArgument.getId(context, "integration_id"),
+                                sourcePlayer(context.getSource()),
+                                null,
+                                null))
+                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                .executes(context -> runDebugCompatEvaluate(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        ResourceLocationArgument.getId(context, "integration_id"),
+                                        sourcePlayer(context.getSource()),
+                                        null,
+                                        DimensionArgument.getDimension(context, "dimension"))))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> runDebugCompatEvaluate(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        ResourceLocationArgument.getId(context, "integration_id"),
+                                        EntityArgument.getPlayer(context, "player"),
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugCompatEvaluate(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                ResourceLocationArgument.getId(context, "integration_id"),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                null,
+                                                DimensionArgument.getDimension(context, "dimension"))))
+                                .then(Commands.argument("entity", EntityArgument.entity())
+                                        .executes(context -> runDebugCompatEvaluate(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                ResourceLocationArgument.getId(context, "integration_id"),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                EntityArgument.getEntity(context, "entity"),
+                                                null))
+                                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                                .executes(context -> runDebugCompatEvaluate(
+                                                        context.getSource(),
+                                                        compatibilityService,
+                                                        ResourceLocationArgument.getId(context, "integration_id"),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        EntityArgument.getEntity(context, "entity"),
+                                                        DimensionArgument.getDimension(context, "dimension"))))))
+                        .then(Commands.argument("entity", EntityArgument.entity())
+                                .executes(context -> runDebugCompatEvaluate(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        ResourceLocationArgument.getId(context, "integration_id"),
+                                        sourcePlayer(context.getSource()),
+                                        EntityArgument.getEntity(context, "entity"),
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugCompatEvaluate(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                ResourceLocationArgument.getId(context, "integration_id"),
+                                                sourcePlayer(context.getSource()),
+                                                EntityArgument.getEntity(context, "entity"),
+                                                DimensionArgument.getDimension(context, "dimension"))))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugScalarTree(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("scalar")
+                .then(buildDebugScalarProviderBranch(compatibilityService));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> buildDebugScalarProviderBranch(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return Commands.literal("provider")
+                .then(Commands.argument("provider_key", StringArgumentType.word())
+                        .suggests(suggestScalarProviderKeys(compatibilityService))
+                        .executes(context -> runDebugScalarProvider(
+                                context.getSource(),
+                                compatibilityService,
+                                StringArgumentType.getString(context, "provider_key"),
+                                sourcePlayer(context.getSource()),
+                                null,
+                                null))
+                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                .executes(context -> runDebugScalarProvider(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        StringArgumentType.getString(context, "provider_key"),
+                                        sourcePlayer(context.getSource()),
+                                        null,
+                                        DimensionArgument.getDimension(context, "dimension"))))
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(context -> runDebugScalarProvider(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        StringArgumentType.getString(context, "provider_key"),
+                                        EntityArgument.getPlayer(context, "player"),
+                                        null,
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugScalarProvider(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                StringArgumentType.getString(context, "provider_key"),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                null,
+                                                DimensionArgument.getDimension(context, "dimension"))))
+                                .then(Commands.argument("entity", EntityArgument.entity())
+                                        .executes(context -> runDebugScalarProvider(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                StringArgumentType.getString(context, "provider_key"),
+                                                EntityArgument.getPlayer(context, "player"),
+                                                EntityArgument.getEntity(context, "entity"),
+                                                null))
+                                        .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                                .executes(context -> runDebugScalarProvider(
+                                                        context.getSource(),
+                                                        compatibilityService,
+                                                        StringArgumentType.getString(context, "provider_key"),
+                                                        EntityArgument.getPlayer(context, "player"),
+                                                        EntityArgument.getEntity(context, "entity"),
+                                                        DimensionArgument.getDimension(context, "dimension"))))))
+                        .then(Commands.argument("entity", EntityArgument.entity())
+                                .executes(context -> runDebugScalarProvider(
+                                        context.getSource(),
+                                        compatibilityService,
+                                        StringArgumentType.getString(context, "provider_key"),
+                                        sourcePlayer(context.getSource()),
+                                        EntityArgument.getEntity(context, "entity"),
+                                        null))
+                                .then(Commands.argument("dimension", DimensionArgument.dimension())
+                                        .executes(context -> runDebugScalarProvider(
+                                                context.getSource(),
+                                                compatibilityService,
+                                                StringArgumentType.getString(context, "provider_key"),
+                                                sourcePlayer(context.getSource()),
+                                                EntityArgument.getEntity(context, "entity"),
+                                                DimensionArgument.getDimension(context, "dimension"))))));
+    }
+
     private static int runMobInspect(
             CommandSourceStack source,
             WorldAwakenedMutatorService mutatorService,
             Entity target) {
         if (!(target instanceof Mob mob)) {
-            sendOperatorFailure(source, Component.literal("Target must be a mob entity.")
+            sendOperatorFailure(source, Component.literal("Target must be a mob entity; selector resolved "
+                            + BuiltInRegistries.ENTITY_TYPE.getKey(target.getType())
+                            + ".")
                     .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_MUTATOR_TARGET_INVALID)));
             return 0;
         }
@@ -1558,6 +1864,8 @@ public final class WorldAwakenedCommands {
                 + inspect.entityTypeId()
                 + " uuid="
                 + mob.getStringUUID()
+                + " "
+                + formatMobVitals(mob)
                 + " has_provenance="
                 + inspect.hasProvenance());
         sendInspectLine(source, " - mutation_pool=" + inspect.sourcePoolId().map(ResourceLocation::toString).orElse("<none>"));
@@ -1588,6 +1896,44 @@ public final class WorldAwakenedCommands {
                 + WorldAwakenedMutationProvenance.WA_ORIGIN);
         sendInspectLine(source, " - resolvable_mutators=" + formatResourceLocations(inspect.resolvedMutatorIds()));
         sendInspectLine(source, " - missing_mutators=" + formatResourceLocations(inspect.missingMutatorIds()));
+        sendInspectLine(source, " - Core stats");
+        sendInspectReadableField(source, "Health", formatNumber(mob.getHealth())
+                + " / "
+                + formatNumber(mob.getMaxHealth())
+                + (mob.getAbsorptionAmount() > 0.0F
+                        ? " + " + formatNumber(mob.getAbsorptionAmount()) + " absorption"
+                        : ""));
+        sendInspectReadableField(source, "Offense", "attack "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.attack_damage"));
+        sendInspectReadableField(source, "Defense", "armor "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.armor")
+                + " | toughness "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.armor_toughness")
+                + " | knockback resistance "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.knockback_resistance"));
+        sendInspectReadableField(source, "Mobility", "speed "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.movement_speed")
+                + " | follow range "
+                + currentAttributeValue(inspect.attributes(), "minecraft:generic.follow_range"));
+        List<String> equipment = formatMobEquipment(mob);
+        if (!equipment.isEmpty()) {
+            sendInspectLine(source, " - Equipment");
+            equipment.forEach(line -> sendInspectReadableField(source, "Item", line));
+        }
+        List<String> activeEffects = formatMobActiveEffects(mob);
+        if (!activeEffects.isEmpty()) {
+            sendInspectLine(source, " - Active effects");
+            activeEffects.forEach(line -> sendInspectReadableField(source, "Effect", line));
+        }
+        sendInspectLine(source, " - combat_state");
+        List<String> combatState = formatMobCombatState(mob);
+        if (combatState.isEmpty()) {
+            sendInspectLine(source, Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY));
+        } else {
+            combatState.forEach(line -> sendInspectLine(
+                    source,
+                    Component.literal("   " + line).withStyle(ChatFormatting.DARK_GRAY)));
+        }
         sendInspectLine(source, " - glow_style");
         if (inspect.glowStyle().isEmpty()) {
             sendInspectLine(source, Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY));
@@ -1657,7 +2003,7 @@ public final class WorldAwakenedCommands {
                         + failure.detail()).withStyle(ChatFormatting.DARK_GRAY));
             }
         }
-        sendInspectLine(source, " - final_attribute_deltas");
+        sendInspectLine(source, " - Attribute details");
         if (inspect.attributes().isEmpty()) {
             sendInspectLine(source, Component.literal("   <none>").withStyle(ChatFormatting.DARK_GRAY));
         } else {
@@ -1686,6 +2032,85 @@ public final class WorldAwakenedCommands {
         sendInspectLine(source, Component.literal(" - foreign_state_preserved=true (World Awakened preserves non-WA entity state by default)")
                 .withStyle(ChatFormatting.DARK_GRAY));
         return 1;
+    }
+
+    static String formatMobVitals(Mob mob) {
+        return "health="
+                + formatNumber(mob.getHealth())
+                + "/"
+                + formatNumber(mob.getMaxHealth())
+                + " absorption="
+                + formatNumber(mob.getAbsorptionAmount());
+    }
+
+    static List<String> formatMobCombatState(Mob mob) {
+        List<String> lines = new ArrayList<>();
+        for (WorldAwakenedMutationCombatState.OnHitEffect effect
+                : WorldAwakenedMutationCombatState.onHitEffects(mob.getPersistentData())) {
+            lines.add("on_hit_effect="
+                    + effect.effectId()
+                    + " duration_ticks="
+                    + effect.durationTicks()
+                    + " amplifier="
+                    + effect.amplifier()
+                    + " chance="
+                    + formatNumber(effect.chance()));
+        }
+        double lifeStealRatio = WorldAwakenedMutationCombatState.lifeStealRatio(mob.getPersistentData());
+        if (lifeStealRatio > 0.0D) {
+            lines.add("life_steal_ratio=" + formatNumber(lifeStealRatio));
+        }
+        WorldAwakenedMutationCombatState.deathExplosionPower(mob.getPersistentData()).ifPresent(power -> lines.add(
+                "death_explosion_power="
+                        + formatNumber(power)
+                        + " triggered="
+                        + WorldAwakenedMutationCombatState.deathExplosionTriggered(mob.getPersistentData())));
+        return List.copyOf(lines);
+    }
+
+    static List<String> formatMobEquipment(Mob mob) {
+        List<String> equipment = new ArrayList<>();
+        for (EquipmentSlot slot : List.of(
+                EquipmentSlot.MAINHAND,
+                EquipmentSlot.OFFHAND,
+                EquipmentSlot.HEAD,
+                EquipmentSlot.CHEST,
+                EquipmentSlot.LEGS,
+                EquipmentSlot.FEET,
+                EquipmentSlot.BODY)) {
+            var stack = mob.getItemBySlot(slot);
+            if (!stack.isEmpty()) {
+                equipment.add(slot.getName()
+                        + ": "
+                        + stack.getHoverName().getString()
+                        + " ("
+                        + BuiltInRegistries.ITEM.getKey(stack.getItem())
+                        + ") x"
+                        + stack.getCount());
+            }
+        }
+        return List.copyOf(equipment);
+    }
+
+    static List<String> formatMobActiveEffects(Mob mob) {
+        return mob.getActiveEffects().stream()
+                .map(effect -> BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect().value())
+                        + " amplifier="
+                        + effect.getAmplifier()
+                        + " remaining_ticks="
+                        + effect.getDuration())
+                .sorted()
+                .toList();
+    }
+
+    private static String currentAttributeValue(
+            List<WorldAwakenedMutatorService.AttributeInspection> attributes,
+            String attributeId) {
+        return attributes.stream()
+                .filter(attribute -> attribute.attributeId().toString().equals(attributeId))
+                .findFirst()
+                .map(attribute -> formatNumber(attribute.currentValue()))
+                .orElse("n/a");
     }
 
     private static int runMobInspectLookedAt(
@@ -2339,7 +2764,14 @@ public final class WorldAwakenedCommands {
                         + " player="
                         + formatResourceLocations(result.context().playerStageSnapshot()));
         sendDebugSection(source, "compat",
-                "apotheosis_active=" + result.context().apotheosisCompatActive());
+                "apotheosis_active="
+                        + result.context().apotheosisCompatActive()
+                        + " apotheosis_tier="
+                        + (result.context().apotheosisWorldTier().isPresent()
+                        ? formatNumber(result.context().apotheosisWorldTier().getAsDouble())
+                        : "<none>")
+                        + " tier_detail="
+                        + result.context().apotheosisTierDetail().orElse("<none>"));
         sendDebugSection(source, "candidates", formatResourceLocations(result.candidateProfiles()));
         sendDebugSection(source, "matched", formatLootMatched(result.profileDecisions()));
         sendDebugSection(source, "rejected", formatLootRejected(result.profileDecisions()));
@@ -2547,6 +2979,158 @@ public final class WorldAwakenedCommands {
                         + (breakdown.clampReason().isBlank() ? "<none>" : breakdown.clampReason()));
         sendDebugSection(source, "policy_gates",
                 breakdown.policyGatesConsulted().isEmpty() ? "<none>" : String.join(", ", breakdown.policyGatesConsulted()));
+        return 1;
+    }
+
+    private static int runDebugCompatEvaluate(
+            CommandSourceStack source,
+            WorldAwakenedCompatibilityService compatibilityService,
+            ResourceLocation integrationId,
+            ServerPlayer targetPlayer,
+            Entity targetEntity,
+            ServerLevel explicitLevel) {
+        Optional<WorldAwakenedCompatibilityService.IntegrationActivation> activation =
+                compatibilityService.integrationActivation(integrationId);
+        if (activation.isEmpty()) {
+            sendOperatorFailure(source, Component.literal("Unknown integration id: " + integrationId + " ")
+                    .append(suggestCommandButton("List", "/wa compat list", "Show known integrations"))
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_COMPAT_NOT_FOUND)));
+            return 0;
+        }
+
+        ServerLevel level = resolveCompatCommandLevel(source, targetPlayer, targetEntity, explicitLevel, "/wa debug compat evaluate");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedCompatibilityService.IntegrationActivation integration = activation.get();
+        sendDebugHeader(source, Component.literal("Compat debug evaluate: integration=" + integration.integrationId())
+                .append(Component.literal(" "))
+                .append(copyButton("Copy ID", integration.integrationId().toString(), "Copy integration ID")));
+        sendDebugSection(source, "context",
+                "player="
+                        + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                        + " entity="
+                        + (targetEntity == null
+                        ? "<none>"
+                        : BuiltInRegistries.ENTITY_TYPE.getKey(targetEntity.getType()))
+                        + " dimension="
+                        + level.dimension().location());
+        sendDebugSection(source, "activation",
+                "active="
+                        + integration.active()
+                        + " mod="
+                        + integration.modId()
+                        + " loaded="
+                        + integration.modLoaded()
+                        + " auto_detect="
+                        + integration.autoDetectEnabled()
+                        + " profile_enabled="
+                        + integration.enabledByProfile()
+                        + " effective_enabled="
+                        + integration.enabledEffective()
+                        + " config_gate="
+                        + integration.configGateKey()
+                        + "="
+                        + integration.configGateEnabled());
+        sendDebugSection(source, "inactive_reason",
+                integration.inactiveReason().isBlank()
+                        ? "<none>"
+                        : integration.inactiveReason() + " (" + describeCompatInactiveReason(integration.inactiveReason()) + ")");
+        sendDebugSection(source, "profile_meta",
+                "stage_hooks="
+                        + integration.stageHookCount()
+                        + " trigger_hooks="
+                        + integration.triggerHookCount()
+                        + " special_conditions="
+                        + integration.specialConditionCount()
+                        + " loot_targets="
+                        + formatResourceLocations(integration.lootTargets()));
+
+        if ("apotheosis".equals(integration.modId())) {
+            WorldAwakenedCompatibilityService.ApotheosisTierResolution tier =
+                    compatibilityService.resolveApotheosisWorldTier(
+                            level,
+                            targetPlayer,
+                            WorldAwakenedCompatibilityService.ApotheosisTierUseCase.SCALAR_PROVIDER);
+            sendDebugSection(source, "apotheosis_tier",
+                    "available="
+                            + tier.available()
+                            + " value="
+                            + (tier.tierValue().isPresent() ? formatNumber(tier.tierValue().getAsDouble()) : "<none>")
+                            + " scalar_contribution="
+                            + formatNumber(tier.scalarContribution())
+                            + " code="
+                            + (tier.diagnosticCode().isBlank() ? "<none>" : tier.diagnosticCode())
+                            + " detail="
+                            + (tier.detail().isBlank() ? "<none>" : tier.detail()));
+            sendDebugSection(source, "stage_hook_details",
+                    formatDerivedStageHooks(compatibilityService.apotheosisDerivedStageHooks()));
+        }
+        return 1;
+    }
+
+    private static int runDebugScalarProvider(
+            CommandSourceStack source,
+            WorldAwakenedCompatibilityService compatibilityService,
+            String providerKey,
+            ServerPlayer targetPlayer,
+            Entity targetEntity,
+            ServerLevel explicitLevel) {
+        ServerLevel level = resolveCompatCommandLevel(source, targetPlayer, targetEntity, explicitLevel, "/wa debug scalar provider");
+        if (level == null) {
+            return 0;
+        }
+
+        WorldAwakenedCompatibilityService.ScalarProviderEvaluation evaluation =
+                compatibilityService.evaluateScalarProvider(providerKey, level, targetPlayer);
+        if (!evaluation.found()) {
+            sendOperatorFailure(source, Component.literal("Unknown scalar provider: " + providerKey + " ")
+                    .append(suggestCommandButton("Compat List", "/wa compat list", "Inspect integration state"))
+                    .append(debugCodeSuffix(WorldAwakenedDiagnosticCodes.DEBUG_SCALAR_PROVIDER_NOT_FOUND)));
+            return 0;
+        }
+
+        sendDebugHeader(source, Component.literal("Scalar provider debug: provider=" + evaluation.providerKey())
+                .append(Component.literal(" "))
+                .append(copyButton("Copy Key", evaluation.providerKey(), "Copy scalar provider key")));
+        sendDebugSection(source, "context",
+                "player="
+                        + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                        + " entity="
+                        + (targetEntity == null
+                        ? "<none>"
+                        : BuiltInRegistries.ENTITY_TYPE.getKey(targetEntity.getType()))
+                        + " dimension="
+                        + level.dimension().location());
+        sendDebugSection(source, "evaluation",
+                "available="
+                        + evaluation.available()
+                        + " raw_value="
+                        + (evaluation.rawValue().isPresent() ? formatNumber(evaluation.rawValue().getAsDouble()) : "<none>")
+                        + " scalar_contribution="
+                        + formatNumber(evaluation.scalarContribution())
+                        + " code="
+                        + (evaluation.diagnosticCode().isBlank() ? "<none>" : evaluation.diagnosticCode())
+                        + " detail="
+                        + (evaluation.detail().isBlank() ? "<none>" : evaluation.detail()));
+        if (evaluation.integrationActivation().isPresent()) {
+            WorldAwakenedCompatibilityService.IntegrationActivation integration = evaluation.integrationActivation().get();
+            sendDebugSection(source, "integration",
+                    integration.integrationId()
+                            + " active="
+                            + integration.active()
+                            + " inactive_reason="
+                            + (integration.inactiveReason().isBlank() ? "<none>" : integration.inactiveReason()));
+        }
+        if (!evaluation.available()) {
+            sendOperatorFailure(source, Component.literal("Scalar provider is unavailable: "
+                    + describeCompatInactiveReason(evaluation.detail()))
+                    .append(debugCodeSuffix(evaluation.diagnosticCode().isBlank()
+                            ? WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE
+                            : evaluation.diagnosticCode())));
+            return 0;
+        }
         return 1;
     }
 
@@ -2834,7 +3418,7 @@ public final class WorldAwakenedCommands {
                 "mod_enabled="
                         + net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates.modEnabled()
                         + ", mutators_enabled="
-                        + WorldAwakenedCommonConfig.ENABLE_MUTATORS.get()
+                        + WorldAwakenedFeatureGates.mutatorsEnabled()
                         + ", debug_commands_enabled="
                         + WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
         sendDebugSection(source, "selector",
@@ -2918,6 +3502,38 @@ public final class WorldAwakenedCommands {
                 + " attributed_player=" + playerText;
     }
 
+    private static ServerLevel resolveCompatCommandLevel(
+            CommandSourceStack source,
+            ServerPlayer targetPlayer,
+            Entity targetEntity,
+            ServerLevel explicitLevel,
+            String commandPath) {
+        ServerLevel level = explicitLevel;
+        if (level == null && targetPlayer != null) {
+            level = targetPlayer.serverLevel();
+        }
+        if (level == null && targetEntity != null && targetEntity.level() instanceof ServerLevel entityLevel) {
+            level = entityLevel;
+        }
+        if (level == null) {
+            level = requireCommandLevel(source, "This command requires a server level context.");
+        }
+        if (level == null) {
+            return null;
+        }
+        if (showVerboseOperatorDetails()) {
+            sendOperatorDetail(source, Component.literal("context: command="
+                    + commandPath
+                    + " player="
+                    + (targetPlayer == null ? "<none>" : targetPlayer.getGameProfile().getName())
+                    + " entity="
+                    + (targetEntity == null ? "<none>" : targetEntity.getStringUUID())
+                    + " dimension="
+                    + level.dimension().location()).withStyle(ChatFormatting.DARK_GRAY));
+        }
+        return level;
+    }
+
     private static Optional<SpawnCommandTarget> resolveSpawnCommandTarget(
             CommandSourceStack source,
             ServerLevel explicitLevel,
@@ -2990,6 +3606,21 @@ public final class WorldAwakenedCommands {
         }
         return appliedMutations.stream()
                 .map(applied -> applied.mutatorId() + " -> [" + formatResourceLocations(applied.appliedComponentTypes()) + "]")
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String formatDerivedStageHooks(List<WorldAwakenedCompatibilityService.DerivedStageHookView> hooks) {
+        if (hooks == null || hooks.isEmpty()) {
+            return "<none>";
+        }
+        return hooks.stream()
+                .map(hook -> hook.integrationId()
+                        + "#"
+                        + hook.authoredIndex()
+                        + " tier>="
+                        + formatNumber(hook.tierThreshold())
+                        + " unlock_stage="
+                        + hook.unlockStage())
                 .collect(Collectors.joining(" | "));
     }
 
@@ -3161,6 +3792,34 @@ public final class WorldAwakenedCommands {
         }
         if (detail == null || detail.isBlank()) {
             return "request was skipped";
+        }
+        return detail.replace('_', ' ');
+    }
+
+    private static String describeCompatInactiveReason(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "compat branch is inactive";
+        }
+        if ("auto_detect_disabled".equals(detail)) {
+            return "compat auto-detect is disabled";
+        }
+        if ("profile_disabled".equals(detail)) {
+            return "integration profile is disabled by policy";
+        }
+        if ("mod_not_loaded".equals(detail)) {
+            return "required mod is not loaded";
+        }
+        if (detail.startsWith("config_gate_disabled:")) {
+            return "config gate is disabled: " + detail.substring("config_gate_disabled:".length());
+        }
+        if ("player_context_missing".equals(detail)) {
+            return "player context is required for this provider";
+        }
+        if ("provider_binding_failed".equals(detail)) {
+            return "provider API could not be bound for this runtime";
+        }
+        if ("tier_read_failed".equals(detail)) {
+            return "provider was reachable but did not return a numeric tier";
         }
         return detail.replace('_', ' ');
     }
@@ -3418,6 +4077,18 @@ public final class WorldAwakenedCommands {
         return (context, builder) -> suggestStrings(WorldAwakenedLootService.LootTargetType.serializedValues(), builder);
     }
 
+    private static SuggestionProvider<CommandSourceStack> suggestIntegrationIds(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return (context, builder) -> SharedSuggestionProvider.suggestResource(
+                compatibilityService.integrationIds(),
+                builder);
+    }
+
+    private static SuggestionProvider<CommandSourceStack> suggestScalarProviderKeys(
+            WorldAwakenedCompatibilityService compatibilityService) {
+        return (context, builder) -> suggestStrings(compatibilityService.scalarProviderKeys(), builder);
+    }
+
     private static SuggestionProvider<CommandSourceStack> suggestStageIds(WorldAwakenedStageService stageService) {
         return (context, builder) -> {
             List<ResourceLocation> ids = new ArrayList<>(stageService.stageRegistry().canonicalStageIds());
@@ -3561,7 +4232,8 @@ public final class WorldAwakenedCommands {
     }
 
     private static void sendOperatorSummary(CommandSourceStack source, Component message, boolean broadcastToOps) {
-        source.sendSuccess(() -> message, broadcastToOps);
+        Component styled = message.copy().withStyle(ChatFormatting.AQUA);
+        source.sendSuccess(() -> styled, broadcastToOps);
     }
 
     private static void sendOperatorFailure(CommandSourceStack source, String message) {
@@ -3592,7 +4264,8 @@ public final class WorldAwakenedCommands {
     }
 
     private static void sendDebugHeader(CommandSourceStack source, Component message) {
-        source.sendSuccess(() -> message, false);
+        Component styled = message.copy().withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        source.sendSuccess(() -> styled, false);
     }
 
     private static void sendDebugSection(CommandSourceStack source, String section, String message) {
@@ -3600,16 +4273,46 @@ public final class WorldAwakenedCommands {
     }
 
     private static void sendDebugSection(CommandSourceStack source, String section, Component message) {
-        MutableComponent line = Component.literal(" - " + section + ": ").append(message);
+        MutableComponent line = Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY)
+                .append(Component.literal(section + ": ").withStyle(ChatFormatting.AQUA))
+                .append(message.copy().withStyle(ChatFormatting.GRAY));
         source.sendSuccess(() -> line, false);
     }
 
     private static void sendInspectLine(CommandSourceStack source, String message) {
-        sendInspectLine(source, Component.literal(message));
+        if (message.startsWith(" - ")) {
+            String body = message.substring(3);
+            int separator = body.indexOf('=');
+            if (separator > 0) {
+                MutableComponent line = Component.literal(" - ").withStyle(ChatFormatting.DARK_GRAY)
+                        .append(Component.literal(body.substring(0, separator)).withStyle(ChatFormatting.AQUA))
+                        .append(Component.literal("=").withStyle(ChatFormatting.DARK_GRAY))
+                        .append(Component.literal(body.substring(separator + 1)).withStyle(ChatFormatting.GRAY));
+                sendInspectLine(source, line);
+                return;
+            }
+            if (!body.contains("[")) {
+                MutableComponent line = Component.literal(" > ").withStyle(ChatFormatting.DARK_GRAY)
+                        .append(Component.literal(body.replace('_', ' ')).withStyle(ChatFormatting.GOLD));
+                sendInspectLine(source, line);
+                return;
+            }
+        }
+        if (message.startsWith("   ")) {
+            sendInspectLine(source, Component.literal(message).withStyle(ChatFormatting.GRAY));
+            return;
+        }
+        sendInspectLine(source, Component.literal(message).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
     }
 
     private static void sendInspectLine(CommandSourceStack source, Component message) {
         source.sendSuccess(() -> message, false);
+    }
+
+    private static void sendInspectReadableField(CommandSourceStack source, String label, String value) {
+        MutableComponent line = Component.literal("   " + label + ": ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(value).withStyle(ChatFormatting.GRAY));
+        sendInspectLine(source, line);
     }
 
     private static boolean showVerboseOperatorDetails() {
@@ -4929,6 +5632,26 @@ public final class WorldAwakenedCommands {
 
     private static ServerPlayer sourcePlayer(CommandSourceStack source) {
         return source.getEntity() instanceof ServerPlayer player ? player : null;
+    }
+
+    private static boolean canEditConfig(CommandSourceStack source) {
+        ServerPlayer player = sourcePlayer(source);
+        return source.hasPermission(2)
+                || (player != null && source.getServer().isSingleplayerOwner(player.getGameProfile()));
+    }
+
+    private static int runOpenConfig(CommandSourceStack source) {
+        ServerPlayer player = sourcePlayer(source);
+        if (player == null) {
+            source.sendFailure(Component.literal("/wa config must be opened by an in-game player."));
+            return 0;
+        }
+        if (!WorldAwakenedConfigService.isAuthorized(player)) {
+            source.sendFailure(Component.literal("Operator permission is required to edit World Awakened settings."));
+            return 0;
+        }
+        WorldAwakenedNetwork.sendOpenConfig(player);
+        return 1;
     }
 
     private static String actorName(CommandSourceStack source) {

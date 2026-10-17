@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/iron_skin",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.iron_skin" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.iron_skin.desc" },
+  "icon": { "item": "minecraft:iron_chestplate" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:armor_bonus", "parameters": { "amount": 1.0 } }
+  ],
+  "rarity": "rare",
+  "tags": ["worldawakened:defaults", "worldawakened:survival"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

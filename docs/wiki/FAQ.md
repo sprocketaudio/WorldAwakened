@@ -2,8 +2,8 @@
 
 Short answers to the questions people actually ask.
 
-- Document status: Active human-friendly FAQ
-- Last updated: 2026-03-14
+- Document status: Active friendly FAQ
+- Last updated: 2026-10-17
 - Scope: Common operator and author questions
 
 ---
@@ -25,6 +25,33 @@ It controls what kind of event source the trigger expects.
 - `world`: treats the trigger as a world/global trigger context
 
 It also affects where trigger-specific state like one-shots and cooldowns lives.
+
+## Why Is `current_dimension` Not An Extra Condition Option On `player_enter_dimension`?
+
+Because that would be redundant.
+
+In guided flow, the trigger preset field already captures dimension matching directly.
+The additional-conditions list is reserved for extra gates that are not already represented by the preset fields.
+
+## Can I Filter `item_crafted` By Exact Recipe Or `block_placed`/`block_broken` By Exact Block?
+
+Not yet.
+
+Those trigger types are implemented, but exact recipe/item/block condition matching is not currently implemented in trigger-rule runtime matching.
+
+Current practical behavior:
+- `item_crafted` matches crafted-item events
+- `block_placed` matches placed-block events
+- `block_broken` matches broken-block events
+
+Use stage and dimension conditions as extra gating for now.
+
+## Why Keep `boss_killed` If `entity_killed` Exists?
+
+`boss_killed` is the intent-first option.
+
+Use it when you want boss-only progression behavior without manually authoring entity ID/tag lists for every possible boss.
+Use `entity_killed` when you want specific entity targeting.
 
 ## What Is The Difference Between `global` And `player <player>` On Commands?
 
@@ -51,6 +78,35 @@ Because that is the v1 design.
 
 Shared world progression can make a player eligible for an ascension offer, but the offer, choice, and reward remain owned by that player.
 
+## In Guided Builder, How Do I Create Multi-Reward Ascension Offers?
+
+Use ascension `Create new offer` mode and add multiple reward candidates in the step.
+
+Guided mode will create:
+- one reward object per candidate
+- one offer that references all candidate rewards
+- one rule that grants that offer after the stage unlocks
+
+Use the existing-offer path when you want to link a pre-authored offer instead of generating one in the flow.
+
+`Choices shown` controls how many candidate rewards appear each time the offer is presented.
+If `choices shown` is lower than candidate count, candidates are sampled using each reward's `selection weight`.
+
+## Why Do Ascension Reward Conditions Not Show Every Condition Type In Guided Mode?
+
+Guided mode intentionally shows a player/world-focused subset for ascension reward gating.
+
+That avoids misleading options that are entity/spawn-event scoped (for example `Entity Tag`) which usually do not make sense for offer/reward eligibility in guided ascension authoring.
+
+Advanced mode still allows full condition editing when you intentionally need broader condition types.
+
+## Are All Ascension Reward Components Live Runtime Effects?
+
+Not all registered ascension component IDs currently have a live runtime application surface in v1.
+
+Guided mode should focus on live-supported component types for normal authoring.
+If you load older or advanced content with non-live component IDs, keep them in advanced mode and verify runtime behavior via debug/inspection before shipping.
+
 ## Does Suppressing A Reward Let Players Re-Choose Or Undo Ownership?
 
 No.
@@ -60,14 +116,14 @@ Ownership, exclusivity, and forfeiture history stay permanent.
 
 ## How Do Mutator Caps And Overrides Work?
 
-There are two mutator cap layers.
+There are two mutator cap layers, and the lower result wins.
 
-- `mutators.max_mutators_per_mob` in `worldawakened-common.toml` is the global default cap.
-- `mutation_pools[].max_mutators_per_entity` is an optional per-pool override.
+- the live global settings cap is a server safety ceiling
+- every pool must define `max_mutators_per_entity`
 
 Resolution order:
-1. if the selected mutation pool defines `max_mutators_per_entity`, that value is used
-2. otherwise the global TOML default is used
+1. read the required pool maximum
+2. clamp it to the live global cap and hard spawn-time budget
 
 Practical use:
 - keep the global default conservative
@@ -80,11 +136,13 @@ Because pool selection and mutation application are separate steps.
 - pool weight decides which eligible pool wins
 - selected pool `mutation_chance` decides whether mutation proceeds
 
-`mutation_chance` defaults to `1.0` when omitted.
+`mutation_chance` is required in the unified pool schema.
 
 - `1.0`: always mutate after selection
 - `0.0`: never mutate
 - values between `0.0` and `1.0`: deterministic per-evaluation roll
+
+After that first roll succeeds, `additional_mutation_chance` is rolled conditionally for each further slot. A maximum of one disables additional attempts. In curated mode, eligible combinations are chosen as whole units; in any-compatible mode, further distinct compatible mutators use the ordinary weight table.
 
 Use `/wa debug mutators evaluate <entity_id>` and check:
 - `selected_pool`
@@ -200,12 +258,24 @@ Current examples:
 The night-vision path is important: World Awakened does not inject the vanilla `NIGHT_VISION` effect just to get the visuals.
 It keeps the state on a WA-owned carrier and drives the owning client's lightmap and fog visuals directly instead.
 
-## Why Does The Framework Ship Without Built-In Gameplay Content?
+## Does World Awakened Do Anything Without A Custom Datapack?
 
-Because the project is meant to be a modular framework.
+Yes. It ships a conservative Standard profile through the normal datapack engine.
 
-The mod jar should not impose gameplay-active content by default.
-Gameplay comes from installed datapacks.
+- eligible natural Overworld hostiles can receive a mild mutation after day 3 at a 2% chance
+- milestone ranks grow to provisional post-Dragon rates of 13%/16%/18% in the Overworld/Nether/End
+- S4+ adds explicitly weighted rare two-mutator pools; ordinary pools remain single-mutator
+- three personal milestones offer one permanent choice from three conservative Ascension rewards
+- mutated kills can add bounded materials, and later stages enable infrequent pressure events without wave spawning
+- bundled pools exclude bosses and spawner/trial-spawner mobs
+
+Custom datapacks remain supported. Reuse the exact bundled namespace/path to replace an object, or use a different ID to add another object. Be deliberate: additive pools can change which eligible pool is selected.
+
+## Where Is The Configuration Screen?
+
+Run `/wa config` in game as an operator or singleplayer owner. The server-authoritative dashboard exposes Global Settings and a functional Mob Mutations editor. You can search actual pools and server living mobs, edit supported pool fields, validate/apply a world override, or revert one pool to its datapack source.
+
+The screen does not pretend unfinished presets or editors are ready: those tiles are marked unavailable. Standard is the only bundled profile, and full progression, mutator-component, rewards, event, and rule authoring still belongs in datapacks. The former hosted web editor remains retired.
 
 ## Where Should I Look First When Something Feels Wrong?
 
@@ -219,4 +289,4 @@ In this order:
 
 It is supposed to.
 
-The repository governance now requires the human-friendly wiki layer to be updated alongside technical docs when behavior, workflows, testing patterns, or common failure modes change.
+The repository governance now requires the friendly wiki layer to be updated alongside technical docs when behavior, workflows, testing patterns, or common failure modes change.

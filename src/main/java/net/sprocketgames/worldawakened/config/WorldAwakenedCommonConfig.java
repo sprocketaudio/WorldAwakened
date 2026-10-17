@@ -11,6 +11,7 @@ public final class WorldAwakenedCommonConfig {
     public static final ModConfigSpec SPEC;
 
     public static final ModConfigSpec.BooleanValue ENABLE_MOD;
+    public static final ModConfigSpec.BooleanValue ENABLE_BUILT_IN_GAMEPLAY;
     public static final ModConfigSpec.BooleanValue DEBUG_LOGGING;
     public static final ModConfigSpec.BooleanValue ENABLE_DEBUG_COMMANDS;
     public static final ModConfigSpec.BooleanValue VALIDATION_LOGGING;
@@ -86,6 +87,9 @@ public final class WorldAwakenedCommonConfig {
 
         builder.push("general");
         ENABLE_MOD = builder.define("enable_mod", true);
+        ENABLE_BUILT_IN_GAMEPLAY = builder.comment(
+                        "Loads the bundled worldawakened:defaults gameplay profile. Disable this for a fully custom datapack setup.")
+                .define("enable_builtin_gameplay", true);
         DEBUG_LOGGING = builder.define("debug_logging", false);
         ENABLE_DEBUG_COMMANDS = builder.define("enable_debug_commands", true);
         VALIDATION_LOGGING = builder.define("validation_logging", true);

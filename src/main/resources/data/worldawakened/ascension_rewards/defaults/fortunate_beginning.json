@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/fortunate_beginning",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.fortunate_beginning" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.fortunate_beginning.desc" },
+  "icon": { "item": "minecraft:emerald" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:luck_bonus", "parameters": { "amount": 0.5 } }
+  ],
+  "rarity": "uncommon",
+  "tags": ["worldawakened:defaults", "worldawakened:adaptation"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

@@ -3,6 +3,8 @@
   "id": "wa_p5_test:creeper_pool",
   "enabled": true,
   "weight": 24,
+  "mutation_chance": 1.0,
+  "additional_mutation_chance": 0.0,
   "conditions": [
     {
       "type": "worldawakened:current_dimension",

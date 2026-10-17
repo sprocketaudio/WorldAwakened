@@ -3,7 +3,7 @@
 Canonical reference for shared action node IDs, scope legality, execution semantics, and status markers.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Shared action contracts across runtime, validation, and tooling
 
 ---
@@ -20,7 +20,7 @@ Related contracts:
 - [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [docs/README.md](README.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
@@ -53,7 +53,7 @@ Systems that currently produce or consume shared actions:
 - mutation/spawn flow integration points
 - loot/reward flow integration points
 - invasion/event flow integration points
-- future web authoring/validation tooling
+- future native-editor validation
 
 Actions execute under shared execution safety rules (deterministic ordering, bounded processing, scope legality checks, and fail-closed validation behavior).
 
@@ -423,7 +423,7 @@ Current action catalog state:
 - **Parameters:** `offer` (`resource_location`, required), `source_key` (`string`, optional)
 - **Idempotency:** `idempotent`
 - **Persistence:** Mutates persistent player ascension offer state.
-- **Ordering / Execution Notes:** Obeys pending-offer queue semantics and deterministic instance identity.
+- **Ordering / Execution Notes:** Obeys pending-offer queue semantics and deterministic instance identity. A player-scoped one-shot advancement trigger may invoke this action during bounded login catch-up after personal completion is verified.
 - **Defaults / Notes:** Current trigger/rule handlers derive source identity from invoking rule/trigger; authored `source_key` is not consumed yet.
 - **Compatibility Notes:** Implemented in `trigger_rules` (`player` scope) and `rules` (`player` scope).
 - **Status:** `implemented`
@@ -665,7 +665,7 @@ Shared constraints:
 Current implementation constraints:
 - Planned shared IDs currently split into three states: rejected-by-validator, accepted-but-deferred, and fully implemented.
 - Deferred handlers must remain clearly reported in runtime/debug output; they are not successful side-effect execution.
-- Future web authoring validation must consume the same shared action catalog/status metadata used by runtime docs/validators.
+- Future native-editor validation must consume the same shared action catalog/status metadata used by runtime docs/validators.
 
 ## 14. Contributor Update Rules
 

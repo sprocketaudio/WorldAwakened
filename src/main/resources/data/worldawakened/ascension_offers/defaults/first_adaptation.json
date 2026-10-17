@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/first_adaptation",
+  "display_name": { "translate": "ascension_offer.worldawakened.defaults.first_adaptation" },
+  "description": { "translate": "ascension_offer.worldawakened.defaults.first_adaptation.desc" },
+  "enabled": true,
+  "trigger_conditions": [],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened:defaults/vital_spark",
+    "worldawakened:defaults/quick_step",
+    "worldawakened:defaults/fortunate_beginning"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 30,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

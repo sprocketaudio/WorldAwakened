@@ -136,20 +136,28 @@ public final class WorldAwakenedStageService {
 
         if (configuredMode == WorldAwakenedProgressionMode.PER_PLAYER && player != null) {
             WorldAwakenedPlayerProgressionSavedData playerData = WorldAwakenedPlayerProgressionSavedData.get(level);
-            return new SelectedStageState(
+            return withDefaultStages(new SelectedStageState(
                     playerData.getOrCreate(player.getUUID()),
                     configuredMode,
                     WorldAwakenedProgressionMode.PER_PLAYER,
-                    false);
+                    false));
         }
 
         WorldAwakenedWorldProgressionSavedData worldData = WorldAwakenedWorldProgressionSavedData.get(level);
         boolean useFallback = configuredMode != WorldAwakenedProgressionMode.GLOBAL;
-        return new SelectedStageState(
+        return withDefaultStages(new SelectedStageState(
                 worldData,
                 configuredMode,
                 WorldAwakenedProgressionMode.GLOBAL,
-                useFallback);
+                useFallback));
+    }
+
+    private SelectedStageState withDefaultStages(SelectedStageState selectedState) {
+        WorldAwakenedStageStateEngine.unlockDefaultStages(
+                stageRegistry(),
+                selectedState.stageState(),
+                System.currentTimeMillis());
+        return selectedState;
     }
 
     private static void logAliasConflicts(WorldAwakenedStageRegistry registry) {

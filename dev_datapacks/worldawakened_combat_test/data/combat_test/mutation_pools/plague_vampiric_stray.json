@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "combat_test:plague_vampiric_stray",
+  "enabled": true,
+  "weight": 1,
+  "mutation_chance": 1.0,
+  "additional_mutation_chance": 1.0,
+  "combination_mode": "curated",
+  "rare_combinations": [
+    {
+      "id": "combat_test:plague_vampiric_stray_combo",
+      "weight": 1,
+      "mutators": ["combat_test:plague_touch", "combat_test:vampiric"],
+      "eligible_entities": ["minecraft:stray"]
+    }
+  ],
+  "eligible_entities": ["minecraft:stray"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "combat_test:plague_touch", "weight": 1 },
+    { "id": "combat_test:vampiric", "weight": 1 }
+  ],
+  "max_mutators_per_entity": 2
+}

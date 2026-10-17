@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/overworld_intro",
+  "enabled": true,
+  "weight": 10,
+  "mutation_chance": 0.02,
+  "additional_mutation_chance": 0.0,
+  "conditions": [
+    { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/stirring" } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/unease" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:overworld" } }
+  ],
+  "eligible_dimensions": ["minecraft:overworld"],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:spider", "minecraft:cave_spider"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/weathered", "weight": 50 },
+    { "id": "worldawakened:defaults/restless", "weight": 50 }
+  ],
+  "max_mutators_per_entity": 1
+}

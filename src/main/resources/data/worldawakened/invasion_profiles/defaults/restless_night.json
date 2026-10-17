@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/restless_night",
+  "display_name": { "translate": "invasion.worldawakened.defaults.restless_night" },
+  "enabled": true,
+  "trigger_mode": "random_periodic",
+  "conditions": [
+    { "type": "worldawakened:player_count_online", "parameters": { "min": 1 } },
+    { "type": "worldawakened:random_chance", "parameters": { "chance": 0.0001388889 } }
+  ],
+  "stage_filters": { "all_of": ["worldawakened:defaults/gathering_storm"] },
+  "dimensions": ["minecraft:overworld"],
+  "biome_filters": [],
+  "min_players": 1,
+  "cooldown_seconds": 5400,
+  "warning_seconds": 40,
+  "duration_seconds": 240,
+  "pressure_modifier": 1.15,
+  "tags": ["worldawakened:defaults", "undead", "restless_night"]
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/awakened_fortune",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.awakened_fortune" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.awakened_fortune.desc" },
+  "icon": { "item": "minecraft:amethyst_shard" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:luck_bonus", "parameters": { "amount": 1.0 } }
+  ],
+  "rarity": "epic",
+  "tags": ["worldawakened:defaults", "worldawakened:awakened_choice"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

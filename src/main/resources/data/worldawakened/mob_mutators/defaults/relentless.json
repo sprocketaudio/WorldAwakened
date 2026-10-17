@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/relentless",
+  "display_name": { "translate": "mutator.worldawakened.defaults.relentless" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 5,
+  "stacking_group": "worldawakened:default_offensive",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:attack_damage_multiplier", "parameters": { "multiplier": 1.12 } },
+    { "type": "worldawakened:movement_speed_multiplier", "parameters": { "multiplier": 1.05 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#c96f62", "brightness": 0.62, "see_through_walls": false, "pulse": true, "pulse_speed": 0.55, "pulse_strength": 0.08 } }
+  ],
+  "eligible_entities": ["minecraft:vindicator", "minecraft:pillager", "minecraft:wither_skeleton", "minecraft:piglin_brute"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

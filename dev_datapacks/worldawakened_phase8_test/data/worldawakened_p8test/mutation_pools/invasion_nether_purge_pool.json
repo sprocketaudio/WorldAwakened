@@ -4,6 +4,7 @@
   "enabled": true,
   "weight": 8,
   "mutation_chance": 0.95,
+  "additional_mutation_chance": 1.0,
   "conditions": [
     {
       "type": "worldawakened:invasion_active",

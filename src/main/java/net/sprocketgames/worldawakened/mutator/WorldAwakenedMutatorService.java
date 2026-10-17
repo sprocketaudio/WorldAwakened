@@ -23,11 +23,15 @@ import org.slf4j.Logger;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
+import com.mojang.serialization.JsonOps;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -38,10 +42,13 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.item.Equipable;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -49,8 +56,12 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.biome.Biome;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.event.EventHooks;
 import net.sprocketgames.worldawakened.WorldAwakenedConstants;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
+import net.sprocketgames.worldawakened.compat.apotheosis.WorldAwakenedApotheosisTierFilter;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationComponentDefinition;
@@ -87,6 +98,7 @@ public final class WorldAwakenedMutatorService {
     private final WorldAwakenedStageService stageService;
     private final WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService;
     private final WorldAwakenedInvasionService invasionService;
+    private final WorldAwakenedCompatibilityService compatibilityService;
     private final AtomicReference<CachedCompiledGraph> cache = new AtomicReference<>(new CachedCompiledGraph(0L, CompiledGraph.empty()));
     private final AtomicLong traceCounter = new AtomicLong(0L);
     private final AtomicLong pressureSnapshotCounter = new AtomicLong(0L);
@@ -99,7 +111,8 @@ public final class WorldAwakenedMutatorService {
                 datapackService,
                 stageService,
                 new WorldAwakenedEffectiveDifficultyScalarService(),
-                new WorldAwakenedInvasionService(datapackService, stageService));
+                new WorldAwakenedInvasionService(datapackService, stageService),
+                new WorldAwakenedCompatibilityService(datapackService));
     }
 
     public WorldAwakenedMutatorService(
@@ -110,7 +123,8 @@ public final class WorldAwakenedMutatorService {
                 datapackService,
                 stageService,
                 difficultyScalarService,
-                new WorldAwakenedInvasionService(datapackService, stageService));
+                new WorldAwakenedInvasionService(datapackService, stageService),
+                new WorldAwakenedCompatibilityService(datapackService));
     }
 
     public WorldAwakenedMutatorService(
@@ -118,10 +132,25 @@ public final class WorldAwakenedMutatorService {
             WorldAwakenedStageService stageService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
             WorldAwakenedInvasionService invasionService) {
+        this(
+                datapackService,
+                stageService,
+                difficultyScalarService,
+                invasionService,
+                new WorldAwakenedCompatibilityService(datapackService));
+    }
+
+    public WorldAwakenedMutatorService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedInvasionService invasionService,
+            WorldAwakenedCompatibilityService compatibilityService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
         this.difficultyScalarService = difficultyScalarService;
         this.invasionService = invasionService;
+        this.compatibilityService = compatibilityService;
     }
 
     public MutatorRunResult onMobSpawn(ServerLevel level, Mob mob, WorldAwakenedMobSpawnOrigin spawnOrigin) {
@@ -210,6 +239,19 @@ public final class WorldAwakenedMutatorService {
                 pos.getZ() + 0.5D,
                 level.random.nextFloat() * 360.0F,
                 0.0F);
+        finalizeDebugSpawn(level, mob);
+        if (mob.isSpawnCancelled()) {
+            mob.discard();
+            return MutatorRunResult.skipped(
+                    nextTraceId(),
+                    MutationRunMode.LIVE_TEST,
+                    true,
+                    WorldAwakenedDiagnosticCodes.DEBUG_MUTATOR_TARGET_INVALID,
+                    "vanilla command-spawn finalization was cancelled",
+                    BuiltInRegistries.ENTITY_TYPE.getKey(entityType),
+                    level.dimension().location(),
+                    pos);
+        }
         MutatorRunResult result = evaluateInternal(new EvaluationRequest(
                 MutationRunMode.LIVE_TEST,
                 level,
@@ -222,6 +264,15 @@ public final class WorldAwakenedMutatorService {
                 Optional.empty()));
         boolean added = level.addFreshEntity(mob);
         return result.withSpawnOutcome(added, Optional.of(mob.getStringUUID()));
+    }
+
+    static void finalizeDebugSpawn(ServerLevel level, Mob mob) {
+        EventHooks.finalizeMobSpawn(
+                mob,
+                level,
+                level.getCurrentDifficultyAt(mob.blockPosition()),
+                MobSpawnType.COMMAND,
+                null);
     }
 
     public void markMutatorSpawnOrigin(Entity entity, int parentDepth) {
@@ -284,6 +335,77 @@ public final class WorldAwakenedMutatorService {
                     offsets.z(),
                     emitter.speed());
         }
+    }
+
+    public CombatHitResult onMobDamageDealt(Mob attacker, LivingEntity target, float damageDealt) {
+        if (damageDealt <= 0.0F || attacker == target || !attacker.isAlive()) {
+            return CombatHitResult.NONE;
+        }
+        List<ResourceLocation> appliedEffects = new ArrayList<>();
+        for (WorldAwakenedMutationCombatState.OnHitEffect effect
+                : WorldAwakenedMutationCombatState.onHitEffects(attacker.getPersistentData())) {
+            if (effect.chance() < 1.0D && attacker.getRandom().nextDouble() >= effect.chance()) {
+                continue;
+            }
+            MobEffect resolved = BuiltInRegistries.MOB_EFFECT.getOptional(effect.effectId()).orElse(null);
+            if (resolved == null) {
+                continue;
+            }
+            Holder<MobEffect> holder = BuiltInRegistries.MOB_EFFECT.wrapAsHolder(resolved);
+            if (target.addEffect(new MobEffectInstance(
+                    holder,
+                    effect.durationTicks(),
+                    effect.amplifier(),
+                    false,
+                    true,
+                    true), attacker)) {
+                appliedEffects.add(effect.effectId());
+            }
+        }
+
+        double lifeStealRatio = WorldAwakenedMutationCombatState.lifeStealRatio(attacker.getPersistentData());
+        float healed = 0.0F;
+        if (lifeStealRatio > 0.0D && attacker.getHealth() < attacker.getMaxHealth()) {
+            float before = attacker.getHealth();
+            attacker.heal((float) (damageDealt * lifeStealRatio));
+            healed = Math.max(0.0F, attacker.getHealth() - before);
+        }
+        return new CombatHitResult(List.copyOf(appliedEffects), healed);
+    }
+
+    public OptionalDouble consumeDeathExplosionPower(Mob mob) {
+        return WorldAwakenedMutationCombatState.consumeDeathExplosionPower(mob.getPersistentData());
+    }
+
+    public void reconcileMutationName(Mob mob) {
+        if (mob.hasCustomName()) {
+            return;
+        }
+        List<ResourceLocation> mutatorIds = WorldAwakenedMutationProvenance.read(mob.getPersistentData()).mutationIds();
+        if (mutatorIds.isEmpty()) {
+            return;
+        }
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        CompiledGraph graph = compiledGraph(datapackService.pinSnapshot(snapshot, "mutator.reconcile_name"));
+        MutableComponent name = Component.empty();
+        int resolvedNames = 0;
+        for (ResourceLocation mutatorId : mutatorIds) {
+            CompiledMutator mutator = graph.mutatorsById().get(mutatorId);
+            if (mutator == null) {
+                continue;
+            }
+            if (resolvedNames > 0) {
+                name.append(" ");
+            }
+            name.append(mutator.displayName().copy());
+            resolvedNames++;
+        }
+        if (resolvedNames == 0) {
+            return;
+        }
+        name.append(" ").append(mob.getType().getDescription());
+        mob.setCustomName(name);
+        mob.setCustomNameVisible(true);
     }
 
     private static ParticleOffsets resolveEmissionOffsets(
@@ -367,7 +489,7 @@ public final class WorldAwakenedMutatorService {
         ResourceLocation entityTypeId = BuiltInRegistries.ENTITY_TYPE.getKey(request.entityType());
         ResourceLocation dimensionId = request.level().dimension().location();
         String traceId = nextTraceId();
-        if (!WorldAwakenedFeatureGates.modEnabled() || !WorldAwakenedCommonConfig.ENABLE_MUTATORS.get()) {
+        if (!WorldAwakenedFeatureGates.modEnabled() || !WorldAwakenedFeatureGates.mutatorsEnabled()) {
             return MutatorRunResult.skipped(
                     traceId,
                     request.mode(),
@@ -471,6 +593,11 @@ public final class WorldAwakenedMutatorService {
         }
 
         WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(request.level());
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        request.level(),
+                        stageResolution.attributedPlayer().orElse(null),
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.MUTATOR_SCALING);
 
         EvaluationContext context = new EvaluationContext(
                 request.level(),
@@ -489,6 +616,11 @@ public final class WorldAwakenedMutatorService {
                 request.level().getGameTime(),
                 loadedMods(),
                 configToggles(),
+                apotheosisTier.tierValue(),
+                apotheosisTier.scalarContribution(),
+                apotheosisTier.available()
+                        ? Optional.empty()
+                        : Optional.of(apotheosisTier.detail()),
                 invasionContext.invasionActive(),
                 invasionContext.profileId(),
                 invasionContext.tags(),
@@ -619,9 +751,9 @@ public final class WorldAwakenedMutatorService {
                     Optional.empty());
         }
 
-        int configuredDefaultCap = Math.max(0, WorldAwakenedCommonConfig.MAX_MUTATORS_PER_MOB.get());
-        int requestedCap = Math.max(0, selectedPool.maxMutatorsPerEntity().orElse(configuredDefaultCap));
-        int enforcedCap = Math.min(requestedCap, MAX_MUTATORS_PER_SPAWN_BUDGET);
+        int requestedCap = Math.max(0, selectedPool.maxMutatorsPerEntity());
+        int editorCap = WorldAwakenedConfigService.settings().effectiveMutationCap();
+        int enforcedCap = Math.min(Math.min(requestedCap, editorCap), MAX_MUTATORS_PER_SPAWN_BUDGET);
 
         List<EligibleMutatorCandidate> eligibleMutators = new ArrayList<>();
         List<RejectedObject> rejectedMutators = new ArrayList<>();
@@ -655,6 +787,7 @@ public final class WorldAwakenedMutatorService {
 
         List<EligibleMutatorCandidate> selectedMutators = selectMutators(
                 request.forcedMutatorId(),
+                selectedPool,
                 eligibleMutators,
                 rejectedMutators,
                 enforcedCap,
@@ -781,6 +914,20 @@ public final class WorldAwakenedMutatorService {
                     pool.id(),
                     WorldAwakenedDiagnosticCodes.STAGE_REF_MISSING,
                     "stage_filters rejected current stage context"));
+        }
+        if (pool.apotheosisTierFilter().isPresent()) {
+            if (context.apotheosisWorldTier().isEmpty()) {
+                return Optional.of(new RejectedObject(
+                        pool.id(),
+                        WorldAwakenedDiagnosticCodes.INTEGRATION_INACTIVE,
+                        context.apotheosisTierDetail().orElse("apotheosis_tier_provider_unavailable")));
+            }
+            if (!pool.apotheosisTierFilter().get().matches(context.apotheosisWorldTier().getAsDouble())) {
+                return Optional.of(new RejectedObject(
+                        pool.id(),
+                        WorldAwakenedDiagnosticCodes.SELECTOR_INVALID,
+                        "apotheosis_tier_filters rejected current tier context"));
+            }
         }
         for (CompiledCondition condition : pool.conditions()) {
             if (!conditionMatches(condition, context, pool.id(), traceId)) {
@@ -917,19 +1064,25 @@ public final class WorldAwakenedMutatorService {
             MutationRunMode mode,
             EvaluationContext context,
             String traceId) {
-        double baseChance = Math.min(1.0D, Math.max(0.0D, selectedPool.mutationChance()));
+        double authoredChance = Math.min(1.0D, Math.max(0.0D, selectedPool.mutationChance()));
+        double scaledBaseChance = Math.min(
+                1.0D,
+                authoredChance * WorldAwakenedConfigService.settings().mutationFrequencyMultiplier());
         boolean categoryAllowed = "monster".equals(context.mobCategory());
         boolean peacefulBlocked = categoryAllowed && context.level().getDifficulty() == net.minecraft.world.Difficulty.PEACEFUL;
         Map<String, Double> integrationScalars = new LinkedHashMap<>();
         if (context.invasionActive() && context.invasionPressureModifier() > 0.0D) {
             integrationScalars.put("invasion_pressure", context.invasionPressureModifier());
         }
+        if (context.apotheosisScalarContribution() > 0.0D && context.apotheosisScalarContribution() != 1.0D) {
+            integrationScalars.put(WorldAwakenedCompatibilityService.APOTHEOSIS_PROVIDER_KEY, context.apotheosisScalarContribution());
+        }
         WorldAwakenedEffectiveDifficultyScalarService.ScalarBreakdown scalarBreakdown =
                 difficultyScalarService.resolveSpawnPressureScalar(
                         context.level(),
                         context.attributedPlayer().orElse(null),
                         context.dimensionId(),
-                        baseChance,
+                        scaledBaseChance,
                         Map.copyOf(integrationScalars),
                         0.0D,
                         1.0D,
@@ -945,7 +1098,7 @@ public final class WorldAwakenedMutatorService {
                     MutationChanceRollMode.BYPASSED,
                     OptionalDouble.empty(),
                     true,
-                    baseChance,
+                    authoredChance,
                     Optional.of(scalarBreakdown));
         }
         if (chance >= 1.0D) {
@@ -954,7 +1107,7 @@ public final class WorldAwakenedMutatorService {
                     MutationChanceRollMode.SKIPPED,
                     OptionalDouble.empty(),
                     true,
-                    baseChance,
+                    authoredChance,
                     Optional.of(scalarBreakdown));
         }
         if (chance <= 0.0D) {
@@ -963,7 +1116,7 @@ public final class WorldAwakenedMutatorService {
                     MutationChanceRollMode.SKIPPED,
                     OptionalDouble.empty(),
                     false,
-                    baseChance,
+                    authoredChance,
                     Optional.of(scalarBreakdown));
         }
         double roll = deterministicRoll(context, selectedPool.id(), traceId, "pool_mutation_chance", 0);
@@ -972,7 +1125,7 @@ public final class WorldAwakenedMutatorService {
                 MutationChanceRollMode.ROLLED,
                 OptionalDouble.of(roll),
                 roll <= chance,
-                baseChance,
+                authoredChance,
                 Optional.of(scalarBreakdown));
     }
 
@@ -1025,6 +1178,7 @@ public final class WorldAwakenedMutatorService {
 
     private static List<EligibleMutatorCandidate> selectMutators(
             Optional<ResourceLocation> forcedMutatorId,
+            CompiledPool selectedPool,
             List<EligibleMutatorCandidate> eligibleMutators,
             List<RejectedObject> rejectedMutators,
             int enforcedCap,
@@ -1051,6 +1205,20 @@ public final class WorldAwakenedMutatorService {
             return List.of(forced);
         }
 
+        if (selectedPool.combinationMode() == MutationPoolDefinition.CombinationMode.CURATED) {
+            return selectCuratedCombination(selectedPool, byId, rejectedMutators, enforcedCap, context, traceId);
+        }
+        return selectAnyCompatible(selectedPool, eligibleMutators, rejectedMutators, enforcedCap, context, traceId);
+    }
+
+    private static List<EligibleMutatorCandidate> selectAnyCompatible(
+            CompiledPool selectedPool,
+            List<EligibleMutatorCandidate> eligibleMutators,
+            List<RejectedObject> rejectedMutators,
+            int enforcedCap,
+            EvaluationContext context,
+            String traceId) {
+
         List<EligibleMutatorCandidate> remaining = new ArrayList<>(eligibleMutators);
         List<EligibleMutatorCandidate> selected = new ArrayList<>();
         Map<String, Integer> stackingCounts = new HashMap<>();
@@ -1072,6 +1240,9 @@ public final class WorldAwakenedMutatorService {
             }
             remaining = compatible;
             if (remaining.isEmpty()) {
+                break;
+            }
+            if (slot > 0 && !additionalMutationRollPassed(selectedPool, context, traceId, slot - 1)) {
                 break;
             }
             List<WeightedCandidate<ResourceLocation>> weighted = remaining.stream()
@@ -1104,6 +1275,88 @@ public final class WorldAwakenedMutatorService {
             slot++;
         }
         return List.copyOf(selected);
+    }
+
+    private static List<EligibleMutatorCandidate> selectCuratedCombination(
+            CompiledPool selectedPool,
+            Map<ResourceLocation, EligibleMutatorCandidate> eligibleById,
+            List<RejectedObject> rejectedMutators,
+            int enforcedCap,
+            EvaluationContext context,
+            String traceId) {
+        int targetCount = WorldAwakenedMutationProbability.mutationCountAfterInitialSuccess(
+                selectedPool.additionalMutationChance(),
+                enforcedCap,
+                index -> deterministicRoll(context, selectedPool.id(), traceId, "additional_mutation_chance", index));
+        if (targetCount < 2) {
+            return selectAnyCompatible(selectedPool,
+                    new ArrayList<>(eligibleById.values()), rejectedMutators, 1, context, traceId);
+        }
+
+        List<ResolvedCombination> eligibleCombinations = new ArrayList<>();
+        for (CompiledCombination combination : selectedPool.rareCombinations()) {
+            if (combination.mutatorIds().size() > targetCount || combination.mutatorIds().size() > enforcedCap) continue;
+            if (!combination.eligibleEntities().isEmpty()
+                    && !combination.eligibleEntities().contains(context.entityTypeId())) continue;
+            List<EligibleMutatorCandidate> resolved = new ArrayList<>();
+            Map<String, Integer> stackingCounts = new HashMap<>();
+            Map<String, Integer> stackingLimits = new HashMap<>();
+            boolean valid = true;
+            for (ResourceLocation mutatorId : combination.mutatorIds()) {
+                EligibleMutatorCandidate candidate = eligibleById.get(mutatorId);
+                if (candidate == null || compatibilityRejection(candidate, resolved, stackingCounts, stackingLimits).isPresent()) {
+                    valid = false;
+                    break;
+                }
+                resolved.add(candidate);
+                recordStacking(candidate, stackingCounts, stackingLimits);
+            }
+            if (valid) eligibleCombinations.add(new ResolvedCombination(combination, List.copyOf(resolved)));
+            else rejectedMutators.add(new RejectedObject(combination.id(),
+                    WorldAwakenedDiagnosticCodes.COMPONENT_COMPOSITION_INVALID,
+                    "curated combination was unavailable for this entity or failed compatibility"));
+        }
+        int selectedSize = eligibleCombinations.stream()
+                .mapToInt(value -> value.candidates().size())
+                .max().orElse(1);
+        List<ResolvedCombination> sameSize = eligibleCombinations.stream()
+                .filter(value -> value.candidates().size() == selectedSize)
+                .toList();
+        if (sameSize.isEmpty()) {
+            return selectAnyCompatible(selectedPool,
+                    new ArrayList<>(eligibleById.values()), rejectedMutators, 1, context, traceId);
+        }
+        List<WeightedCandidate<ResourceLocation>> weighted = sameSize.stream()
+                .map(value -> new WeightedCandidate<>(value.definition().id(), value.definition().weight()))
+                .toList();
+        Optional<ResourceLocation> selectedId = weightedPick(weighted,
+                deterministicSeed(context, traceId, "curated_combination_selection", selectedSize));
+        if (selectedId.isEmpty()) return List.of();
+        return sameSize.stream()
+                .filter(value -> value.definition().id().equals(selectedId.get()))
+                .findFirst().map(ResolvedCombination::candidates).orElse(List.of());
+    }
+
+    private static boolean additionalMutationRollPassed(
+            CompiledPool pool,
+            EvaluationContext context,
+            String traceId,
+            int additionalIndex) {
+        double chance = pool.additionalMutationChance();
+        if (chance <= 0.0D) return false;
+        if (chance >= 1.0D) return true;
+        return deterministicRoll(context, pool.id(), traceId, "additional_mutation_chance", additionalIndex) < chance;
+    }
+
+    private static void recordStacking(
+            EligibleMutatorCandidate candidate,
+            Map<String, Integer> stackingCounts,
+            Map<String, Integer> stackingLimits) {
+        if (candidate.mutator().stackingGroup().isEmpty()) return;
+        String group = candidate.mutator().stackingGroup().get();
+        int limit = Math.max(1, candidate.mutator().maxStackCount());
+        stackingLimits.merge(group, limit, Math::min);
+        stackingCounts.merge(group, 1, Integer::sum);
     }
 
     private static Optional<String> compatibilityRejection(
@@ -1221,6 +1474,9 @@ public final class WorldAwakenedMutatorService {
                     "target_range_bonus" -> missingAttribute(target, Attributes.FOLLOW_RANGE);
             case "knockback_resistance_bonus" -> missingAttribute(target, Attributes.KNOCKBACK_RESISTANCE);
             case "temporary_shield",
+                    "on_hit_effect",
+                    "life_steal",
+                    "death_explosion",
                     "glow_style",
                     "effect_particles",
                     "ambient_particles" -> Optional.empty();
@@ -1343,6 +1599,12 @@ public final class WorldAwakenedMutatorService {
                     component.definition().parameters(),
                     "amount");
             case "temporary_shield" -> applyTemporaryShield(target, component.definition().parameters());
+            case "on_hit_effect" -> WorldAwakenedMutationCombatState.appendOnHitEffect(
+                    target.getPersistentData(), component.definition().parameters());
+            case "life_steal" -> WorldAwakenedMutationCombatState.appendLifeSteal(
+                    target.getPersistentData(), component.definition().parameters());
+            case "death_explosion" -> WorldAwakenedMutationCombatState.appendDeathExplosion(
+                    target.getPersistentData(), component.definition().parameters());
             case "equip_item" -> applyEquipItem(target, component.definition().parameters());
             case "glow_style" -> applyGlowStyle(target, component.definition().parameters());
             case "effect_particles" -> applyEffectParticles(target, component.definition().parameters());
@@ -1844,9 +2106,12 @@ public final class WorldAwakenedMutatorService {
         toggles.put("general.enable_mod", WorldAwakenedCommonConfig.ENABLE_MOD.get());
         toggles.put("general.debug_logging", WorldAwakenedCommonConfig.DEBUG_LOGGING.get());
         toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
-        toggles.put("mutators.enable_mutators", WorldAwakenedCommonConfig.ENABLE_MUTATORS.get());
+        toggles.put("mutators.enable_mutators", WorldAwakenedFeatureGates.mutatorsEnabled());
         toggles.put("mutators.respect_boss_blacklist", WorldAwakenedCommonConfig.RESPECT_BOSS_BLACKLIST.get());
-        toggles.put("invasions.enable_invasions", WorldAwakenedCommonConfig.ENABLE_INVASIONS.get());
+        toggles.put("invasions.enable_invasions", WorldAwakenedFeatureGates.pressureEventsEnabled());
+        toggles.put("compat.apotheosis.enabled", WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get());
+        toggles.put("compat.apotheosis.allow_world_tier_conditions", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get());
+        toggles.put("compat.apotheosis.allow_world_tier_mutator_scaling", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_MUTATOR_SCALING.get());
         return Map.copyOf(toggles);
     }
 
@@ -1944,7 +2209,7 @@ public final class WorldAwakenedMutatorService {
         return new SplittableRandom(seed).nextDouble();
     }
 
-    private static <T> Optional<T> weightedPick(List<WeightedCandidate<T>> entries, long seed) {
+    static <T> Optional<T> weightedPick(List<WeightedCandidate<T>> entries, long seed) {
         long totalWeight = 0L;
         for (WeightedCandidate<T> entry : entries) {
             if (entry.weight() > 0) {
@@ -2030,6 +2295,9 @@ public final class WorldAwakenedMutatorService {
             long gameTick,
             Set<String> loadedMods,
             Map<String, Boolean> configToggles,
+            OptionalDouble apotheosisWorldTier,
+            double apotheosisScalarContribution,
+            Optional<String> apotheosisTierDetail,
             boolean invasionActive,
             Optional<ResourceLocation> invasionProfileId,
             Set<String> invasionTags,
@@ -2096,6 +2364,9 @@ public final class WorldAwakenedMutatorService {
             ResourceLocation id,
             int weight,
             double mutationChance,
+            double additionalMutationChance,
+            MutationPoolDefinition.CombinationMode combinationMode,
+            List<CompiledCombination> rareCombinations,
             boolean allowFromSpawner,
             boolean allowFromTrialSpawner,
             List<CompiledCondition> conditions,
@@ -2103,18 +2374,31 @@ public final class WorldAwakenedMutatorService {
             Set<ResourceLocation> eligibleDimensions,
             Set<ResourceLocation> eligibleBiomes,
             Set<ResourceLocation> eligibleEntities,
+            Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter,
             List<WeightedMutatorRef> mutators,
-            Optional<Integer> maxMutatorsPerEntity) {
+            int maxMutatorsPerEntity) {
         static CompiledPool compile(
                 MutationPoolDefinition definition,
                 Map<ResourceLocation, CompiledMutator> compiledMutators) {
             List<CompiledCondition> conditions = compileConditions(definition.conditions());
             StageFilter stageFilter = StageFilter.compile(definition.stageFilters());
+            Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter =
+                    WorldAwakenedApotheosisTierFilter.compile(definition.apotheosisTierFilters());
             List<WeightedMutatorRef> mutators = compileMutatorRefs(definition.mutators(), compiledMutators);
+            List<CompiledCombination> combinations = definition.rareCombinations().stream()
+                    .map(value -> new CompiledCombination(
+                            value.id(),
+                            Math.max(1, value.weight()),
+                            List.copyOf(value.mutators()),
+                            Set.copyOf(value.eligibleEntities())))
+                    .toList();
             return new CompiledPool(
                     definition.id(),
                     Math.max(1, definition.weight()),
                     Math.min(1.0D, Math.max(0.0D, definition.mutationChance())),
+                    Math.min(1.0D, Math.max(0.0D, definition.additionalMutationChance())),
+                    definition.combinationMode(),
+                    combinations,
                     definition.allowFromSpawner(),
                     definition.allowFromTrialSpawner(),
                     conditions,
@@ -2122,9 +2406,22 @@ public final class WorldAwakenedMutatorService {
                     Set.copyOf(definition.eligibleDimensions()),
                     Set.copyOf(definition.eligibleBiomes()),
                     Set.copyOf(definition.eligibleEntities()),
+                    apotheosisTierFilter,
                     List.copyOf(mutators),
                     definition.maxMutatorsPerEntity());
         }
+    }
+
+    private record CompiledCombination(
+            ResourceLocation id,
+            int weight,
+            List<ResourceLocation> mutatorIds,
+            Set<ResourceLocation> eligibleEntities) {
+    }
+
+    private record ResolvedCombination(
+            CompiledCombination definition,
+            List<EligibleMutatorCandidate> candidates) {
     }
 
     private record SpawnStageResolution(
@@ -2141,6 +2438,7 @@ public final class WorldAwakenedMutatorService {
 
     private record CompiledMutator(
             ResourceLocation id,
+            Component displayName,
             int weight,
             Set<ResourceLocation> eligibleEntities,
             Set<ResourceLocation> excludedEntities,
@@ -2172,6 +2470,7 @@ public final class WorldAwakenedMutatorService {
             int enabledCount = (int) definition.components().stream().filter(MutationComponentDefinition::enabled).count();
             return new CompiledMutator(
                     definition.id(),
+                    compileMutatorDisplayName(definition),
                     Math.max(1, definition.weight()),
                     Set.copyOf(definition.eligibleEntities()),
                     Set.copyOf(definition.excludedEntities()),
@@ -2186,6 +2485,35 @@ public final class WorldAwakenedMutatorService {
                     Set.copyOf(definition.exclusiveWith()),
                     enabledCount);
         }
+    }
+
+    private static Component compileMutatorDisplayName(MobMutatorDefinition definition) {
+        JsonElement raw = definition.displayName();
+        if (raw != null) {
+            Optional<Component> parsed = ComponentSerialization.CODEC.parse(JsonOps.INSTANCE, raw).result();
+            if (parsed.isPresent()) {
+                return parsed.get();
+            }
+        }
+        return Component.literal(readableMutatorId(definition.id()));
+    }
+
+    private static String readableMutatorId(ResourceLocation id) {
+        String path = id.getPath();
+        int slash = path.lastIndexOf('/');
+        String leaf = slash >= 0 ? path.substring(slash + 1) : path;
+        String[] words = leaf.replace('-', '_').split("_+");
+        StringBuilder readable = new StringBuilder();
+        for (String word : words) {
+            if (word.isBlank()) {
+                continue;
+            }
+            if (!readable.isEmpty()) {
+                readable.append(' ');
+            }
+            readable.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return readable.isEmpty() ? id.toString() : readable.toString();
     }
 
     private static List<CompiledComponent> compileComponents(List<MutationComponentDefinition> components) {
@@ -2512,7 +2840,7 @@ public final class WorldAwakenedMutatorService {
         return List.copyOf(matchers);
     }
 
-    private record WeightedCandidate<T>(
+    record WeightedCandidate<T>(
             T value,
             int weight) {
     }
@@ -2713,6 +3041,12 @@ public final class WorldAwakenedMutatorService {
     public record AttributedPlayerView(
             String name,
             String uuid) {
+    }
+
+    public record CombatHitResult(
+            List<ResourceLocation> appliedEffects,
+            float healedAmount) {
+        public static final CombatHitResult NONE = new CombatHitResult(List.of(), 0.0F);
     }
 
     public record RejectedObject(

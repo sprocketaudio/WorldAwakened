@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/restless",
+  "display_name": { "translate": "mutator.worldawakened.defaults.restless" },
+  "enabled": true,
+  "rarity": "uncommon",
+  "weight": 10,
+  "stacking_group": "worldawakened:default_mobility",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:movement_speed_multiplier", "parameters": { "multiplier": 1.08 } },
+    { "type": "worldawakened:follow_range_bonus", "parameters": { "amount": 4.0 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#d6c978", "brightness": 0.45, "see_through_walls": false, "pulse": false } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:spider", "minecraft:cave_spider", "minecraft:endermite"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

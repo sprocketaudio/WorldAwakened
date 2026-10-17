@@ -241,7 +241,10 @@ class WorldAwakenedMutatorEquipmentComponentTest {
     }
 
     private static MutationPoolDefinition parsePool(String json) {
-        JsonElement element = JsonParser.parseString(json);
+        com.google.gson.JsonObject element = JsonParser.parseString(json).getAsJsonObject();
+        element.addProperty("mutation_chance", 1.0D);
+        element.addProperty("additional_mutation_chance", 0.0D);
+        element.addProperty("max_mutators_per_entity", 1);
         return MutationPoolDefinition.CODEC.parse(JsonOps.INSTANCE, element).getOrThrow();
     }
 

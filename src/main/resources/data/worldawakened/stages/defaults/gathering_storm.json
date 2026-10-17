@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/gathering_storm",
+  "display_name": { "translate": "stage.worldawakened.defaults.gathering_storm" },
+  "description": { "translate": "stage.worldawakened.defaults.gathering_storm.description" },
+  "sort_index": 40,
+  "visible_to_players": true,
+  "enabled": true,
+  "progression_group": "worldawakened:default_progression",
+  "unlock_policy": "cumulative",
+  "default_unlocked": false
+}

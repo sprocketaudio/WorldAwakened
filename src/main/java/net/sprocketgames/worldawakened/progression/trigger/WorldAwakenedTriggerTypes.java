@@ -10,6 +10,7 @@ public final class WorldAwakenedTriggerTypes {
     public static final ResourceLocation ITEM_CRAFTED = id("item_crafted");
     public static final ResourceLocation BLOCK_PLACED = id("block_placed");
     public static final ResourceLocation BLOCK_BROKEN = id("block_broken");
+    public static final ResourceLocation WORLD_DAY_MILESTONE = id("world_day_milestone");
     public static final ResourceLocation MANUAL_DEBUG = id("manual_debug");
 
     private WorldAwakenedTriggerTypes() {

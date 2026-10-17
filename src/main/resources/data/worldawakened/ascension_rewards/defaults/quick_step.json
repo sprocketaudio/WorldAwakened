@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/quick_step",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.quick_step" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.quick_step.desc" },
+  "icon": { "item": "minecraft:rabbit_foot" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:movement_speed_bonus", "parameters": { "amount": 0.01 } }
+  ],
+  "rarity": "uncommon",
+  "tags": ["worldawakened:defaults", "worldawakened:adaptation"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

@@ -175,6 +175,79 @@ class WorldAwakenedRuleEngineTest {
         assertEquals(WorldAwakenedRejectionReason.ONE_SHOT_CONSUMED, consumedEval.decisions().get(0).rejectionReason().orElseThrow());
     }
 
+    @Test
+    void apotheosisWorldTierCompareMatchesWhenTierMeetsThreshold() {
+        RuleDefinition tierRule = rule(
+                "testpack:apotheosis_gate",
+                0,
+                1.0D,
+                List.of(node("{\"type\":\"worldawakened:apotheosis_world_tier_compare\",\"parameters\":{\"op\":\">=\",\"value\":3}}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"tier ok\"}}")),
+                Optional.empty());
+
+        var evaluation = WorldAwakenedRuleEngine.evaluate(
+                WorldAwakenedRuleEngine.compile(List.of(tierRule)),
+                WorldAwakenedStageRegistry.empty(),
+                new ContextBuilder(Set.of(), Set.of(), WorldAwakenedRuleStateSnapshot.empty(), WorldAwakenedRuleStateSnapshot.empty())
+                        .withApotheosisTier(OptionalDouble.of(3.0D), Optional.empty())
+                        .build(),
+                true);
+
+        assertEquals(1, evaluation.matchedCount());
+    }
+
+    @Test
+    void apotheosisWorldTierCompareFailsClosedWhenTierContextIsUnavailable() {
+        RuleDefinition tierRule = rule(
+                "testpack:apotheosis_gate",
+                0,
+                1.0D,
+                List.of(node("{\"type\":\"worldawakened:apotheosis_world_tier_compare\",\"parameters\":{\"op\":\">=\",\"value\":3}}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"tier ok\"}}")),
+                Optional.empty());
+
+        var evaluation = WorldAwakenedRuleEngine.evaluate(
+                WorldAwakenedRuleEngine.compile(List.of(tierRule)),
+                WorldAwakenedStageRegistry.empty(),
+                new ContextBuilder(Set.of(), Set.of(), WorldAwakenedRuleStateSnapshot.empty(), WorldAwakenedRuleStateSnapshot.empty())
+                        .withApotheosisTier(OptionalDouble.empty(), Optional.of("player_context_missing"))
+                        .build(),
+                true);
+
+        assertEquals(0, evaluation.matchedCount());
+        assertEquals(
+                WorldAwakenedRejectionReason.INTEGRATION_INACTIVE,
+                evaluation.decisions().get(0).rejectionReason().orElseThrow());
+    }
+
+    @Test
+    void apotheosisWorldTierCompareRespectsConfigGate() {
+        RuleDefinition tierRule = rule(
+                "testpack:apotheosis_gate",
+                0,
+                1.0D,
+                List.of(node("{\"type\":\"worldawakened:apotheosis_world_tier_compare\",\"parameters\":{\"op\":\">=\",\"value\":3}}")),
+                List.of(node("{\"type\":\"worldawakened:send_warning_message\",\"parameters\":{\"message\":\"tier ok\"}}")),
+                Optional.empty());
+
+        var evaluation = WorldAwakenedRuleEngine.evaluate(
+                WorldAwakenedRuleEngine.compile(List.of(tierRule)),
+                WorldAwakenedStageRegistry.empty(),
+                new ContextBuilder(Set.of(), Set.of(), WorldAwakenedRuleStateSnapshot.empty(), WorldAwakenedRuleStateSnapshot.empty())
+                        .withConfigToggles(Map.of(
+                                "general.enable_mod", true,
+                                "compat.apotheosis.enabled", true,
+                                "compat.apotheosis.allow_world_tier_conditions", false))
+                        .withApotheosisTier(OptionalDouble.of(5.0D), Optional.empty())
+                        .build(),
+                true);
+
+        assertEquals(0, evaluation.matchedCount());
+        assertEquals(
+                WorldAwakenedRejectionReason.CONFIG_GATE_FAILED,
+                evaluation.decisions().get(0).rejectionReason().orElseThrow());
+    }
+
     private static WorldAwakenedRuleMatchContext context(
             Set<ResourceLocation> worldStages,
             Set<ResourceLocation> playerStages,
@@ -239,6 +312,12 @@ class WorldAwakenedRuleEngineTest {
         private final WorldAwakenedRuleStateSnapshot playerRuleState;
         private OptionalDouble playerDistance = OptionalDouble.of(256.0D);
         private long nowMillis = 1_000L;
+        private OptionalDouble apotheosisWorldTier = OptionalDouble.empty();
+        private Optional<String> apotheosisTierDetail = Optional.empty();
+        private Map<String, Boolean> configToggles = Map.of(
+                "general.enable_mod", true,
+                "compat.apotheosis.enabled", true,
+                "compat.apotheosis.allow_world_tier_conditions", true);
 
         private ContextBuilder(
                 Set<ResourceLocation> worldStages,
@@ -258,6 +337,17 @@ class WorldAwakenedRuleEngineTest {
 
         private ContextBuilder withNowMillis(long nowMillis) {
             this.nowMillis = nowMillis;
+            return this;
+        }
+
+        private ContextBuilder withApotheosisTier(OptionalDouble tierValue, Optional<String> tierDetail) {
+            this.apotheosisWorldTier = tierValue;
+            this.apotheosisTierDetail = tierDetail;
+            return this;
+        }
+
+        private ContextBuilder withConfigToggles(Map<String, Boolean> configToggles) {
+            this.configToggles = Map.copyOf(configToggles);
             return this;
         }
 
@@ -288,11 +378,13 @@ class WorldAwakenedRuleEngineTest {
                     Set.of(),
                     Set.of(),
                     Set.of("neoforge"),
-                    Map.of("general.enable_mod", true, "compat.apotheosis.enabled", true),
+                    configToggles,
                     false,
                     Optional.empty(),
                     Set.of(),
-                    Optional.empty());
+                    Optional.empty(),
+                    apotheosisWorldTier,
+                    apotheosisTierDetail);
         }
     }
 }

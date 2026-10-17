@@ -3,11 +3,13 @@ package net.sprocketgames.worldawakened.progression.trigger;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 public final class WorldAwakenedTriggerEventHandlers {
     private final WorldAwakenedTriggerService triggerService;
@@ -29,6 +31,12 @@ public final class WorldAwakenedTriggerEventHandlers {
             return;
         }
         triggerService.onAdvancementCompleted(player, event.getAdvancement().id());
+    }
+
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            triggerService.reconcileCompletedAdvancementTriggers(player);
+        }
     }
 
     public void onLivingDeath(LivingDeathEvent event) {
@@ -59,5 +67,14 @@ public final class WorldAwakenedTriggerEventHandlers {
             return;
         }
         triggerService.onBlockBroken(player);
+    }
+
+    public void onLevelTickPost(LevelTickEvent.Post event) {
+        if (!(event.getLevel() instanceof ServerLevel level)
+                || !Level.OVERWORLD.equals(level.dimension())
+                || level.getGameTime() % 20L != 0L) {
+            return;
+        }
+        triggerService.onWorldDayMilestone(level);
     }
 }

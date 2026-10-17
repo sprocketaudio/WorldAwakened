@@ -16,6 +16,28 @@ public final class WorldAwakenedStageStateEngine {
     private WorldAwakenedStageStateEngine() {
     }
 
+    public static int unlockDefaultStages(
+            WorldAwakenedStageRegistry registry,
+            WorldAwakenedMutableStageState stageState,
+            long unlockTimestampMillis) {
+        int unlocked = 0;
+        for (StageDefinition definition : registry.orderedStages()) {
+            if (!definition.enabled() || !definition.defaultUnlocked()) {
+                continue;
+            }
+            WorldAwakenedStageMutationResult result = unlockStage(
+                    registry,
+                    stageState,
+                    definition.id(),
+                    "default_unlocked",
+                    unlockTimestampMillis);
+            if (result.status() == WorldAwakenedStageMutationStatus.UNLOCKED) {
+                unlocked++;
+            }
+        }
+        return unlocked;
+    }
+
     public static WorldAwakenedStageMutationResult unlockStage(
             WorldAwakenedStageRegistry registry,
             WorldAwakenedMutableStageState stageState,

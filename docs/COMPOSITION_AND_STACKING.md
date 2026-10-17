@@ -3,7 +3,7 @@
 Canonical contract for duplicate handling, conflict resolution, ordering, guardrail rules, and no-op detection in component-based authored definitions.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
+- Last updated: 2026-10-17
 - Scope: Mutation and ascension component composition semantics
 
 ---
@@ -181,6 +181,19 @@ Runtime safety rule:
 
 Guardrail evaluation uses resolved components after duplicates/conflicts are applied.
 
+Live mutation combat merge rules are deterministic across selected mutators:
+- `life_steal` ratios add, then clamp to `1.0`
+- `death_explosion` uses the strongest power and triggers once; powers do not add
+- `on_hit_effect` preserves resolved component order and is limited to eight stored effects per mob
+- component-level conditions are resolved before combat state is written, so inactive branches cannot begin firing later merely because another selected mutator uses the same component type
+
+Unified mutation-pool selection composes with these rules:
+- `any_compatible` applies ordinary weights repeatedly but removes already selected IDs and stops when exclusivity or stacking leaves no valid candidate
+- `curated` validates every authored combination against the same `exclusive_with` and `stacking_group` limits before publication, then resolves the selected combination as one ordered unit
+- curated combination weights choose between eligible combinations; they do not replace or alter the ordinary mutator weights
+- per-combination mob eligibility may only narrow the parent pool, never broaden it
+- no selection path may bypass component-count, mutator-count, boss, spawner, or trial-spawner guardrails
+
 Rules:
 - v1 runtime guardrails are enforced by configured count limits (for example `max_components_per_mutator`)
 - guardrail failures disable only the affected candidate/object branch
@@ -271,7 +284,7 @@ Minimum exposed fields:
 This contract aligns to future implementation phases as follows:
 - Phase 5: mutation composition enforcement (duplicates/conflicts/order/no-op) for spawn-time mutators
 - Phase 6: integration of composition outcomes with bounded rule/action and spawn guardrails
-- Phase 10: web authoring tool composition previews and warnings aligned with this resolver contract
+- Native editor: composition previews and warnings aligned with this resolver contract
 - Phase 11: hardening and validation quality for composition diagnostics and deterministic resolution
 
 Roadmap sync rule:

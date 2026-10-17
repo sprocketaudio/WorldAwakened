@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/path_of_survival",
+  "display_name": { "translate": "ascension_offer.worldawakened.defaults.path_of_survival" },
+  "description": { "translate": "ascension_offer.worldawakened.defaults.path_of_survival.desc" },
+  "enabled": true,
+  "trigger_conditions": [],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened:defaults/iron_skin",
+    "worldawakened:defaults/steady_stance",
+    "worldawakened:defaults/ember_guard"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 20,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

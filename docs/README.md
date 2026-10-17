@@ -3,7 +3,7 @@
 Documentation index, read-order contract, and cross-update policy for all repository markdown docs.
 
 - Document status: Active governance index
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Required documentation intake, cross-references, and currency rules
 
 ---
@@ -36,12 +36,14 @@ Minimum required docs before any code or doc changes:
 11. [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 12. [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
 13. [PRESET_CATALOG.md](PRESET_CATALOG.md)
-14. [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+14. [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
+15. [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md) when built-in gameplay content, balance, rewards, or pressure events are relevant
+16. [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) when historical web-tool context is relevant
 
 Read when relevant to scope changes:
 1. [wiki/README.md](wiki/README.md) when changes affect user-facing workflows, operator flows, testing guidance, troubleshooting, or author mental models
 2. [FUTURE_IDEAS.md](FUTURE_IDEAS.md) for post-v1 backlog promotions/reclassifications
-3. [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) for deferred in-game/admin runtime UI promotions/reclassifications
+3. [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) for the superseded admin-UI proposal
 
 Task execution rule:
 - Each implementation task must explicitly reference the governing docs it used.
@@ -54,7 +56,9 @@ Task execution rule:
 Core contracts:
 - [SPECIFICATION.md](SPECIFICATION.md): Primary design and runtime behavior contract.
 - [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md): Canonical datapack shape and authoring contract.
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md): Hosted web authoring/validation contract (offline projects + live linked runtime sessions).
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md): Active built-in gameplay and native-editor product plan.
+- [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md): Active bundled Standard gameplay content and provisional balance contract.
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md): Retired hosted web-authoring pointer.
 - [README.md](../README.md): Project summary and status.
 - [AGENTS.md](../AGENTS.md): Contributor and coding-agent operating contract.
 
@@ -69,7 +73,7 @@ Shared reference docs:
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md): Stable diagnostics taxonomy.
 - [PRESET_CATALOG.md](PRESET_CATALOG.md): Canonical preset/template catalog and status tags.
 
-Human-friendly companion docs:
+Friendly companion docs:
 - [wiki/README.md](wiki/README.md): Human-readable wiki index and maintenance rules.
 - [wiki/CONCEPTS.md](wiki/CONCEPTS.md): Plain-language mental model for progression, scopes, and ascension.
 - [wiki/QUICKSTARTS.md](wiki/QUICKSTARTS.md): Shortest-path setup and testing flows.
@@ -78,9 +82,9 @@ Human-friendly companion docs:
 - [wiki/TROUBLESHOOTING.md](wiki/TROUBLESHOOTING.md): Problem-first debugging guidance.
 - [wiki/FAQ.md](wiki/FAQ.md): Concise answers to common operator/author questions.
 
-Deferred scope docs:
+Historical and deferred scope docs:
 - [FUTURE_IDEAS.md](FUTURE_IDEAS.md): Non-normative backlog.
-- [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md): Deferred post-v1 in-game/admin runtime UI concept.
+- [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md): Superseded earlier in-game/admin UI proposal.
 
 ---
 
@@ -95,7 +99,7 @@ When updating shared framework contracts (conditions/actions/scopes/status taxon
 - Update [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - Update [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - Update [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- Update [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- Update [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) when built-in gameplay or native-editor direction is affected
 - Update [README.md](../README.md)
 - Update [AGENTS.md](../AGENTS.md)
 
@@ -105,12 +109,13 @@ When updating component IDs/schemas/composition/runtime support:
 - Update [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md)
 - Update [SPECIFICATION.md](SPECIFICATION.md)
 - Update [PRESET_CATALOG.md](PRESET_CATALOG.md) if preset composition guidance changes
-- Update [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) if tooling behavior/labels change
+- Update [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) if native-editor behavior or labels change
 
 When updating presets/templates:
 - Update [PRESET_CATALOG.md](PRESET_CATALOG.md)
 - Update [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md), [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md), and [ACTION_REFERENCE.md](ACTION_REFERENCE.md) if canonical mappings change
 - Update [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md) when examples or object-shape guidance changes
+- Update [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md) when bundled Standard definitions, rates, rewards, or event profiles change
 
 When updating behavior that changes user understanding, testing flows, command usage, or troubleshooting:
 - Update the affected docs under [wiki/README.md](wiki/README.md)
@@ -129,7 +134,7 @@ When updating ownership-safe reconciliation, carrier models, or mixed-mod fail-c
 - Update [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - Update [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
 - Update [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
-- Update [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md), [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md), and [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) when authoring/runtime-surface guidance changes
+- Update [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md), [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md), and [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) when authoring/runtime-surface guidance changes
 - Update affected docs under [wiki/README.md](wiki/README.md), especially [wiki/TROUBLESHOOTING.md](wiki/TROUBLESHOOTING.md), [wiki/FAQ.md](wiki/FAQ.md), and [wiki/CONCEPTS.md](wiki/CONCEPTS.md)
 
 When promoting deferred scope into active scope:

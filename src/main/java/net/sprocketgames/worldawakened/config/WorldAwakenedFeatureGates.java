@@ -21,7 +21,15 @@ public final class WorldAwakenedFeatureGates {
     }
 
     public static boolean ascensionEnabled() {
-        return WorldAwakenedCommonConfig.ENABLE_ASCENSION.get();
+        return WorldAwakenedConfigService.settings().ascensionEnabled();
+    }
+
+    public static boolean mutatorsEnabled() {
+        return WorldAwakenedConfigService.settings().mutationsEnabled();
+    }
+
+    public static boolean pressureEventsEnabled() {
+        return WorldAwakenedConfigService.settings().pressureEventsEnabled();
     }
 }
 

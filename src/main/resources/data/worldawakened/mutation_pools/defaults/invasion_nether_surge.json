@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/invasion_nether_surge",
+  "enabled": true,
+  "weight": 500,
+  "mutation_chance": 0.20,
+  "additional_mutation_chance": 0.0,
+  "conditions": [
+    { "type": "worldawakened:invasion_active", "parameters": { "profile_id": "worldawakened:defaults/nether_surge" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:the_nether" } }
+  ],
+  "eligible_dimensions": ["minecraft:the_nether"],
+  "eligible_entities": ["minecraft:wither_skeleton", "minecraft:piglin_brute", "minecraft:hoglin", "minecraft:blaze", "minecraft:magma_cube"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/hunter", "weight": 3 },
+    { "id": "worldawakened:defaults/relentless", "weight": 3 },
+    { "id": "worldawakened:defaults/nether_hardened", "weight": 4 }
+  ],
+  "max_mutators_per_entity": 1
+}

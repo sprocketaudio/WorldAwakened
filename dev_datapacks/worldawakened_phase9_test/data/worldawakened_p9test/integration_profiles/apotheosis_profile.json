@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:apotheosis_profile",
+  "mod_id": "apotheosis",
+  "display_name": "Phase 9 Apotheosis Compatibility Profile",
+  "enabled_by_default": true,
+  "config_key": "compat.apotheosis.enabled",
+  "stage_hooks": [],
+  "trigger_hooks": [],
+  "entity_tags": [],
+  "boss_tags": [],
+  "loot_targets": [
+    "minecraft:chests/simple_dungeon"
+  ],
+  "special_conditions": [
+    {
+      "type": "worldawakened:apotheosis_world_tier_compare",
+      "parameters": {
+        "op": ">=",
+        "value": 0
+      }
+    }
+  ],
+  "notes": "Marks simple_dungeon as Apotheosis-sensitive and provides explicit compat metadata for Phase 9 command/debug validation."
+}

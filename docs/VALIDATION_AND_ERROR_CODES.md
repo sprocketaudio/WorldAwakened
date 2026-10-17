@@ -3,7 +3,7 @@
 Canonical reference for structured diagnostic code families, severity semantics, and publication rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Validation and diagnostics contracts across runtime, commands, and tooling
 
 ---
@@ -190,6 +190,7 @@ Primary families:
 
 Common cases:
 - Integration inactive while integration-specific data is authored.
+- Invalid or unsupported integration stage-hook payloads.
 - Unsafe Apotheosis-sensitive loot behavior blocked/downgraded.
 
 ### I. Migration / Compatibility / Deprecation
@@ -300,6 +301,10 @@ Publication labels used below:
 | `WA_INVALID_CONDITION_TYPE` | implemented (legacy) | condition | error | validation | yes | Consolidated condition-node failure: shape/type/scope/parameter issues. | Disable owning object. | Resolve message-specific node issue. | Legacy broad code; migrate toward granular `WA_CONDITION_*` codes. |
 | `WA_INVALID_ACTION_TYPE` | implemented (legacy) | action | error | validation | yes | Consolidated action-node failure: shape/type/scope/parameter issues. | Disable owning object. | Resolve message-specific node issue. | Legacy broad code; migrate toward granular `WA_ACTION_*` codes. |
 | `WA_CONFIG_GATE_INVALID` | implemented | config gate | error | validation | yes | Invalid `config_gate` token/shape. | Disable owning object branch. | Use valid gate key format and existing gate. | Emitted by loader gate validation. |
+| `WA_NATIVE_CONFIG_PERMISSION_DENIED` | implemented | native config | error | command/network | request-level | A player without operator or integrated-owner authority attempted to modify settings. | Reject the packet without changing revision or runtime state. | Obtain operator permission and reopen `/wa config`. | Packet handlers repeat the command permission check. |
+| `WA_NATIVE_CONFIG_REVISION_STALE` | implemented | native config | warning | network/apply | request-level | The submitted base revision no longer matches the server revision. | Reject the draft and return the newest snapshot. | Review refreshed values and apply again. | Prevents simultaneous-editor overwrite. |
+| `WA_NATIVE_CONFIG_VALIDATION_FAILED` | implemented | native config | error | validation/apply | request-level | A bounded setting or candidate bundled-profile compile is invalid. | Keep the previous settings and compiled snapshot. | Correct the reported value or datapack conflict. | Client drafts never become authority. |
+| `WA_NATIVE_CONFIG_APPLY_FAILED` | implemented | native config | error | apply | request-level | The server could not safely commit an otherwise valid native-editor draft. | Keep or restore the previous authoritative state. | Review logs and retry after correcting the server-side failure. | Reserved for post-validation commit failures. |
 | `WA_SELECTOR_INVALID` | implemented | selector | error | validation | yes | Invalid selector/tag syntax for hot-path filters. | Disable owning object. | Correct selector syntax and target type. | Emitted during reload precompilation checks. |
 
 ### 7D. Component Composition and Unsupported Authored Cost Fields
@@ -332,7 +337,7 @@ Publication labels used below:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_INVALID_REFERENCE` | implemented | reference resolution | warning or error | cross-object | context-dependent | Missing referenced mutator/reward/profile/stage or ID/path mismatch. | Disable dependent object on hard missing refs; keep warning-only mismatches non-blocking. | Fix target IDs and ensure referenced object exists/enabled. | Current generic reference code in loader. |
 | `WA_POOL_SELECTION_IMPOSSIBLE` | implemented | mutation pool | error | validation/runtime guard | yes | Pool has no selectable/valid entries after filtering. | Disable invalid pool/object branch. | Add valid entries/weights and fix filters. | Emitted in pool validation paths. |
-| `WA_MUTATION_CHANCE_INVALID` | implemented | mutation pool chance | error | validation | yes | `mutation_chance` missing numeric type or outside `[0.0, 1.0]`. | Disable owning pool object. | Author a numeric value in range `0.0..1.0` or omit field for default `1.0`. | Canonical validation code for pool chance field. |
+| `WA_MUTATION_CHANCE_INVALID` | implemented | mutation pool chance | error | validation | yes | Required `mutation_chance` or `additional_mutation_chance` is missing, non-numeric, or outside `[0.0, 1.0]`. | Disable owning pool object. | Author both numeric values in range `0.0..1.0`. | Canonical validation code for unified pool chance fields. |
 | `WA_INVASION_COMPOSITION_INVALID` | implemented (legacy name) | invasion profile | error | validation | yes | Invalid invasion pressure-event profile fields or contradictory active-event configuration. | Disable offending invasion profile. | Provide valid duration/cooldown/warning/pressure/tags/condition configuration. | Legacy code name retained for compatibility; semantics are pressure-event profile validity after Phase 8 rewrite. |
 | `WA_INTEGRATION_INACTIVE` | implemented | integration | error | validation | branch-level | Integration-specific data authored while integration disabled/missing. | Skip/disable integration-specific branch only. | Enable integration or remove integration-specific nodes. | Must not become hard dependency failure. |
 | `WA_APOTHEOSIS_LOOT_OVERRIDE_BLOCKED` | published | Apotheosis compat | warning or error | validation/runtime guard | branch-level | Unsafe destructive operation (`replace_entries`, `remove_entries`) blocked on sensitive target. | Block operation branch; preserve Apotheosis behavior. | Use additive/safe mode or retarget profile. | Required canonical Apotheosis safety code. |
@@ -390,6 +395,7 @@ Publication labels used below:
 | `WA_MIGRATION_REWARD_MISSING` | canonical-target | migration/ascension | warning | migration/runtime | branch-level | Saved chosen ascension reward definition removed. | Keep saved ID, stop applying missing effect, no auto-substitution. | Restore reward definition or accept inert historical record. | Mirrors ascension reconciliation rules in spec/docs. |
 
 Policy guidance:
+- live mutation combat parameter failures use `WA_MUTATION_COMPONENT_PARAM_INVALID`: `on_hit_effect` requires a registered effect and bounded duration/amplifier/chance, `life_steal.amount` must be in `(0,1]`, and `death_explosion.amount` must be in `(0,8]`; invalid authored values are rejected rather than silently clamped
 - ownership violations are high-severity implementation bugs
 - missing optional runtime surfaces or carrier classes should disable only the affected branch/component and emit structured diagnostics
 - optional runtime-surface absence is not a framework-integrity failure by itself

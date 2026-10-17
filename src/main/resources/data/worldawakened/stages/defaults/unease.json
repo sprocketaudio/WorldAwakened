@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/unease",
+  "display_name": { "translate": "stage.worldawakened.defaults.unease" },
+  "description": { "translate": "stage.worldawakened.defaults.unease.description" },
+  "sort_index": 20,
+  "visible_to_players": true,
+  "enabled": true,
+  "progression_group": "worldawakened:default_progression",
+  "unlock_policy": "cumulative",
+  "default_unlocked": false
+}

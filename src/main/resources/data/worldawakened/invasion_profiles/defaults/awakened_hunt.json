@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/awakened_hunt",
+  "display_name": { "translate": "invasion.worldawakened.defaults.awakened_hunt" },
+  "enabled": true,
+  "trigger_mode": "random_periodic",
+  "conditions": [
+    { "type": "worldawakened:player_count_online", "parameters": { "min": 1 } },
+    { "type": "worldawakened:random_chance", "parameters": { "chance": 0.0000925926 } }
+  ],
+  "stage_filters": { "all_of": ["worldawakened:defaults/world_awakened"] },
+  "dimensions": ["minecraft:overworld"],
+  "biome_filters": [],
+  "min_players": 1,
+  "cooldown_seconds": 7200,
+  "warning_seconds": 60,
+  "duration_seconds": 300,
+  "pressure_modifier": 1.25,
+  "tags": ["worldawakened:defaults", "elite", "awakened_hunt"]
+}

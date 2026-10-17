@@ -2,8 +2,8 @@
 
 Copyable authoring patterns with plain-language explanation.
 
-- Document status: Active human-friendly authoring cookbook
-- Last updated: 2026-03-14
+- Document status: Active friendly authoring cookbook
+- Last updated: 2026-10-17
 - Scope: Common trigger, rule, mutator, and ascension patterns
 
 ---
@@ -379,3 +379,20 @@ Notes:
 - use `effect_particles` for vanilla potion-style visuals
 - use `ambient_particles` for direct simple particle emission
 - use `/wa mob inspect` to confirm active `glow_style` and particle visual state on the mutated mob
+
+## Recipe: Add A Live Combat Ability To A Mutator
+
+Use `on_hit_effect` for a bounded debuff after a successful hit:
+
+```json
+{ "type": "worldawakened:on_hit_effect", "parameters": { "effect": "minecraft:poison", "duration_ticks": 80, "amplifier": 0, "chance": 0.35 } }
+```
+
+Use `life_steal` as a fraction of damage actually dealt (`0.10` heals 10%). Use `death_explosion` for an entity-damaging, block-safe death burst:
+
+```json
+{ "type": "worldawakened:life_steal", "parameters": { "amount": 0.10 } }
+{ "type": "worldawakened:death_explosion", "parameters": { "amount": 3.0 } }
+```
+
+Test these with force/spawn-test commands and `/wa mob inspect` before placing them in broad pools. Death explosions do not break blocks or chain through other explosive mutators.

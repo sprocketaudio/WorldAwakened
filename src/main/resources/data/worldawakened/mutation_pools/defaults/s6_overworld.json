@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/s6_overworld",
+  "enabled": true,
+  "weight": 100,
+  "mutation_chance": 0.13,
+  "additional_mutation_chance": 0.09,
+  "combination_mode": "curated",
+  "rare_combinations": [
+    {
+      "id": "worldawakened:defaults/s6_overworld_hindering_vampiric",
+      "weight": 1,
+      "mutators": ["worldawakened:defaults/hindering", "worldawakened:defaults/vampiric"],
+      "eligible_entities": ["minecraft:zombie"]
+    }
+  ],
+  "conditions": [
+    { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/world_awakened" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:overworld" } }
+  ],
+  "eligible_dimensions": ["minecraft:overworld"],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:skeleton", "minecraft:stray", "minecraft:spider", "minecraft:cave_spider", "minecraft:pillager", "minecraft:vindicator"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/weathered", "weight": 14 },
+    { "id": "worldawakened:defaults/restless", "weight": 14 },
+    { "id": "worldawakened:defaults/sharp_eyed", "weight": 17 },
+    { "id": "worldawakened:defaults/bulwark", "weight": 17 },
+    { "id": "worldawakened:defaults/hunter", "weight": 10 },
+    { "id": "worldawakened:defaults/relentless", "weight": 8 },
+    { "id": "worldawakened:defaults/hindering", "weight": 8 },
+    { "id": "worldawakened:defaults/vampiric", "weight": 7 },
+    { "id": "worldawakened:defaults/volatile", "weight": 5 }
+  ],
+  "max_mutators_per_entity": 2
+}

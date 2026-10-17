@@ -21,6 +21,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
@@ -88,15 +89,15 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
                             + "]");
         }
 
-        WorldAwakenedWorldProgressionSavedData worldData = WorldAwakenedWorldProgressionSavedData.get(level);
         double previous = sanitizeGlobalValue(level, policy);
         if (previous == requestedValue) {
             return MutationResult.committed(previous, previous, Optional.empty());
         }
-        worldData.setGlobalDifficultyModifier(requestedValue);
-        worldData.setGlobalDifficultyUpdatedAtMillis(System.currentTimeMillis());
-        worldData.setGlobalDifficultyUpdatedBy(actor);
-        worldData.markDirty();
+        WorldAwakenedConfigService.ApplyResult applyResult =
+                WorldAwakenedConfigService.updateDifficulty(level, requestedValue, actor);
+        if (!applyResult.accepted()) {
+            return MutationResult.rejected("config_apply_failed", applyResult.message());
+        }
         return MutationResult.committed(previous, requestedValue, Optional.empty());
     }
 
@@ -108,12 +109,12 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
                     policy.globalDiagnosticDetail().isBlank() ? "global_modifier_disabled_or_invalid" : policy.globalDiagnosticDetail());
         }
         double resetValue = clamp(policy.globalDefaultValue(), policy.globalMinValue(), policy.globalMaxValue());
-        WorldAwakenedWorldProgressionSavedData worldData = WorldAwakenedWorldProgressionSavedData.get(level);
         double previous = sanitizeGlobalValue(level, policy);
-        worldData.setGlobalDifficultyModifier(resetValue);
-        worldData.setGlobalDifficultyUpdatedAtMillis(System.currentTimeMillis());
-        worldData.setGlobalDifficultyUpdatedBy(actor);
-        worldData.markDirty();
+        WorldAwakenedConfigService.ApplyResult applyResult =
+                WorldAwakenedConfigService.updateDifficulty(level, resetValue, actor);
+        if (!applyResult.accepted()) {
+            return MutationResult.rejected("config_apply_failed", applyResult.message());
+        }
         return MutationResult.committed(previous, resetValue, Optional.empty());
     }
 
@@ -739,8 +740,7 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
     private double sanitizeGlobalValue(
             ServerLevel level,
             PolicySnapshot policy) {
-        WorldAwakenedWorldProgressionSavedData worldData = WorldAwakenedWorldProgressionSavedData.get(level);
-        double raw = worldData.globalDifficultyModifier();
+        double raw = WorldAwakenedConfigService.settings().difficultyIntensity();
         double clamped = sanitizeValue(raw, policy.globalMinValue(), policy.globalMaxValue(), policy.globalDefaultValue());
         if (clamped != raw) {
             WorldAwakenedLog.warn(
@@ -750,8 +750,7 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
                     WorldAwakenedDiagnosticCodes.DIFFICULTY_GLOBAL_INVALID,
                     raw,
                     clamped);
-            worldData.setGlobalDifficultyModifier(clamped);
-            worldData.markDirty();
+            WorldAwakenedConfigService.updateDifficulty(level, clamped, "runtime_sanitize");
         }
         return clamped;
     }

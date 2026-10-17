@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/hindering",
+  "display_name": { "translate": "mutator.worldawakened.defaults.hindering" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 5,
+  "stacking_group": "worldawakened:default_control",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:on_hit_effect", "parameters": { "effect": "minecraft:slowness", "duration_ticks": 60, "amplifier": 0, "chance": 0.35 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#6f9fbd", "brightness": 0.62, "see_through_walls": false, "pulse": false } },
+    { "type": "worldawakened:effect_particles", "parameters": { "effect_type": "minecraft:slowness", "color": "#6f9fbd", "count": 2, "interval_ticks": 12 } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:skeleton", "minecraft:stray", "minecraft:pillager", "minecraft:cave_spider", "minecraft:wither_skeleton", "minecraft:endermite", "minecraft:shulker"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

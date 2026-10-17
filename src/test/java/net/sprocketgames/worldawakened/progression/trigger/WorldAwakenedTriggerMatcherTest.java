@@ -22,6 +22,40 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 
 class WorldAwakenedTriggerMatcherTest {
     @Test
+    void findsUnconsumedPersonalOneShotAdvancementsForLoginReconciliation() {
+        TriggerRuleDefinition eligible = triggerRule(
+                "testpack:personal_offer",
+                10,
+                WorldAwakenedTriggerTypes.ADVANCEMENT_COMPLETED,
+                SourceScope.PLAYER,
+                List.of(node("{\"type\":\"worldawakened:advancement_completed\",\"parameters\":{\"advancement\":\"minecraft:story/enter_the_nether\"}}")),
+                Optional.empty(),
+                true);
+        TriggerRuleDefinition consumed = triggerRule(
+                "testpack:consumed_offer",
+                10,
+                WorldAwakenedTriggerTypes.ADVANCEMENT_COMPLETED,
+                SourceScope.PLAYER,
+                List.of(node("{\"type\":\"worldawakened:advancement_completed\",\"parameters\":{\"advancement\":\"minecraft:end/root\"}}")),
+                Optional.empty(),
+                true);
+        TriggerRuleDefinition repeatable = triggerRule(
+                "testpack:repeatable",
+                10,
+                WorldAwakenedTriggerTypes.ADVANCEMENT_COMPLETED,
+                SourceScope.PLAYER,
+                List.of(node("{\"type\":\"worldawakened:advancement_completed\",\"parameters\":{\"advancement\":\"minecraft:story/mine_diamond\"}}")),
+                Optional.empty(),
+                false);
+
+        assertEquals(
+                Set.of(id("minecraft:story/enter_the_nether")),
+                WorldAwakenedTriggerService.completedAdvancementTriggerIds(
+                        List.of(eligible, consumed, repeatable),
+                        Set.of("testpack:consumed_offer")));
+    }
+
+    @Test
     void ordersMatchesByPriorityAfterEligibilityChecks() {
         TriggerRuleDefinition lowPriority = triggerRule(
                 "testpack:low_priority",
@@ -183,6 +217,45 @@ class WorldAwakenedTriggerMatcherTest {
         assertTrue(result.matchedRules().stream().allMatch(match -> match.rule().id().equals(second.id())));
     }
 
+    @Test
+    void worldDayMilestoneMatchesOnlyAfterThreshold() {
+        TriggerRuleDefinition rule = triggerRule(
+                "testpack:day_three",
+                0,
+                WorldAwakenedTriggerTypes.WORLD_DAY_MILESTONE,
+                SourceScope.WORLD,
+                List.of(node("{\"type\":\"worldawakened:world_day_gte\",\"parameters\":{\"value\":3}}")),
+                Optional.empty(),
+                true);
+
+        WorldAwakenedTriggerMatchContext dayTwo = contextWithWorldDay(rule.triggerType(), 2L);
+        WorldAwakenedTriggerMatchContext dayThree = contextWithWorldDay(rule.triggerType(), 3L);
+
+        assertEquals(0, WorldAwakenedTriggerMatcher.match(
+                List.of(rule), WorldAwakenedStageRegistry.empty(), dayTwo).matchedCount());
+        assertEquals(1, WorldAwakenedTriggerMatcher.match(
+                List.of(rule), WorldAwakenedStageRegistry.empty(), dayThree).matchedCount());
+    }
+
+    private static WorldAwakenedTriggerMatchContext contextWithWorldDay(ResourceLocation triggerType, long worldDay) {
+        return new WorldAwakenedTriggerMatchContext(
+                triggerType,
+                Optional.empty(),
+                false,
+                id("minecraft:overworld"),
+                Optional.empty(),
+                Optional.empty(),
+                Set.of(),
+                false,
+                Optional.empty(),
+                1000L,
+                Set.of(),
+                Set.of(),
+                WorldAwakenedTriggerStateSnapshot.empty(),
+                WorldAwakenedTriggerStateSnapshot.empty(),
+                worldDay);
+    }
+
     private static WorldAwakenedTriggerMatchContext context(
             ResourceLocation triggerType,
             Optional<ResourceLocation> targetRuleId,
@@ -212,7 +285,8 @@ class WorldAwakenedTriggerMatcherTest {
                 worldStages,
                 playerStages,
                 worldTriggerState,
-                playerTriggerState);
+                playerTriggerState,
+                0L);
     }
 
     private static TriggerRuleDefinition triggerRule(

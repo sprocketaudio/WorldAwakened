@@ -13,7 +13,12 @@ public final class WorldAwakenedDiagnosticCodes {
     public static final String INVALID_CONDITION_TYPE = "WA_INVALID_CONDITION_TYPE";
     public static final String INVALID_ACTION_TYPE = "WA_INVALID_ACTION_TYPE";
     public static final String CONFIG_GATE_INVALID = "WA_CONFIG_GATE_INVALID";
+    public static final String NATIVE_CONFIG_PERMISSION_DENIED = "WA_NATIVE_CONFIG_PERMISSION_DENIED";
+    public static final String NATIVE_CONFIG_REVISION_STALE = "WA_NATIVE_CONFIG_REVISION_STALE";
+    public static final String NATIVE_CONFIG_VALIDATION_FAILED = "WA_NATIVE_CONFIG_VALIDATION_FAILED";
+    public static final String NATIVE_CONFIG_APPLY_FAILED = "WA_NATIVE_CONFIG_APPLY_FAILED";
     public static final String INTEGRATION_INACTIVE = "WA_INTEGRATION_INACTIVE";
+    public static final String INTEGRATION_STAGE_HOOK_INVALID = "WA_INTEGRATION_STAGE_HOOK_INVALID";
     public static final String SELECTOR_INVALID = "WA_SELECTOR_INVALID";
     public static final String POOL_SELECTION_IMPOSSIBLE = "WA_POOL_SELECTION_IMPOSSIBLE";
     public static final String MUTATION_CHANCE_INVALID = "WA_MUTATION_CHANCE_INVALID";
@@ -85,6 +90,8 @@ public final class WorldAwakenedDiagnosticCodes {
     public static final String REWARD_DETERMINISM_VIOLATION = "WA_REWARD_DETERMINISM_VIOLATION";
     public static final String DEBUG_LOOT_TARGET_INVALID = "WA_DEBUG_LOOT_TARGET_INVALID";
     public static final String DEBUG_LOOT_PROFILE_NOT_FOUND = "WA_DEBUG_LOOT_PROFILE_NOT_FOUND";
+    public static final String DEBUG_COMPAT_NOT_FOUND = "WA_DEBUG_COMPAT_NOT_FOUND";
+    public static final String DEBUG_SCALAR_PROVIDER_NOT_FOUND = "WA_DEBUG_SCALAR_PROVIDER_NOT_FOUND";
 
     private WorldAwakenedDiagnosticCodes() {
     }

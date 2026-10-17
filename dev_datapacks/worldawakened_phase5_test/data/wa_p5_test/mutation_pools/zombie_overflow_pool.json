@@ -3,6 +3,8 @@
   "id": "wa_p5_test:zombie_overflow_pool",
   "enabled": true,
   "weight": 12,
+  "mutation_chance": 1.0,
+  "additional_mutation_chance": 1.0,
   "conditions": [
     {
       "type": "worldawakened:current_dimension",

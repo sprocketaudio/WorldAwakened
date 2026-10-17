@@ -100,8 +100,8 @@ class WorldAwakenedMutatorServiceSelectorIndexTest {
                 1,
                 ResourceLocation.parse(id),
                 true,
-                1,
-                1.0D,
+                new MutationPoolDefinition.MutationSelection(1, 1.0D, 1.0D, 2,
+                        MutationPoolDefinition.CombinationMode.ANY_COMPATIBLE, List.of()),
                 false,
                 false,
                 List.of(),
@@ -110,8 +110,7 @@ class WorldAwakenedMutatorServiceSelectorIndexTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                mutatorIds.stream().map(idValue -> (JsonElement) new JsonPrimitive(idValue)).toList(),
-                Optional.of(2));
+                mutatorIds.stream().map(idValue -> (JsonElement) new JsonPrimitive(idValue)).toList());
     }
 
     private static List<ResourceLocation> resourceIds(List<String> raw) {

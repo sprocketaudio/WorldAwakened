@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/invasion_awakened_hunt",
+  "enabled": true,
+  "weight": 1000,
+  "mutation_chance": 0.22,
+  "additional_mutation_chance": 1.0,
+  "conditions": [
+    { "type": "worldawakened:invasion_active", "parameters": { "profile_id": "worldawakened:defaults/awakened_hunt" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:overworld" } }
+  ],
+  "eligible_dimensions": ["minecraft:overworld"],
+  "eligible_entities": ["minecraft:zombie"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/hunter", "weight": 1 },
+    { "id": "worldawakened:defaults/bulwark", "weight": 1 }
+  ],
+  "max_mutators_per_entity": 2
+}

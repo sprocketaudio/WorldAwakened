@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/world_day_three",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:world_day_milestone",
+  "source_scope": "world",
+  "conditions": [
+    { "type": "worldawakened:world_day_gte", "parameters": { "value": 3 } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/stirring" } }
+  ],
+  "actions": [
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/dormant" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/stirring" } }
+  ],
+  "one_shot": true
+}

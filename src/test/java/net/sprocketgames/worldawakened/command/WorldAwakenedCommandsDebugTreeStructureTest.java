@@ -17,6 +17,7 @@ import com.mojang.brigadier.tree.CommandNode;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
@@ -86,6 +87,9 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         WorldAwakenedLootService lootService = mock(WorldAwakenedLootService.class);
         WorldAwakenedInvasionService invasionService = mock(WorldAwakenedInvasionService.class);
         when(invasionService.loadedProfileIds()).thenReturn(List.of());
+        WorldAwakenedCompatibilityService compatibilityService = mock(WorldAwakenedCompatibilityService.class);
+        when(compatibilityService.integrationIds()).thenReturn(List.of());
+        when(compatibilityService.scalarProviderKeys()).thenReturn(List.of("apotheosis_world_tier"));
         WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService = new WorldAwakenedEffectiveDifficultyScalarService();
         WorldAwakenedDebugCommandService debugCommandService =
                 new WorldAwakenedDebugCommandService(stageService, ascensionService);
@@ -98,6 +102,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                 lootService,
                 invasionService,
                 difficultyScalarService,
+                compatibilityService,
                 debugCommandService);
 
         Set<String> topLevelChildren = debugTree.build().getChildren().stream()
@@ -112,6 +117,8 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         assertTrue(topLevelChildren.contains("invasion"), "Expected /wa debug invasion");
         assertTrue(topLevelChildren.contains("difficulty"), "Expected /wa debug difficulty");
         assertTrue(topLevelChildren.contains("pressure"), "Expected /wa debug pressure");
+        assertTrue(topLevelChildren.contains("compat"), "Expected /wa debug compat");
+        assertTrue(topLevelChildren.contains("scalar"), "Expected /wa debug scalar");
 
         CommandNode<CommandSourceStack> lootNode = debugTree.build().getChild("loot");
         Set<String> lootChildren = lootNode.getChildren().stream()
@@ -144,6 +151,18 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
         ArgumentCommandNode<CommandSourceStack, ?> invasionProfileNode =
                 (ArgumentCommandNode<CommandSourceStack, ?>) invasionEvaluateNode.getChild("profile_id");
         assertTrue(invasionProfileNode.getCustomSuggestions() != null, "Expected /wa debug invasion evaluate <profile_id> suggestions");
+
+        CommandNode<CommandSourceStack> compatNode = debugTree.build().getChild("compat");
+        Set<String> compatChildren = compatNode.getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(compatChildren.contains("evaluate"), "Expected /wa debug compat evaluate");
+
+        CommandNode<CommandSourceStack> scalarNode = debugTree.build().getChild("scalar");
+        Set<String> scalarChildren = scalarNode.getChildren().stream()
+                .map(CommandNode::getName)
+                .collect(Collectors.toSet());
+        assertTrue(scalarChildren.contains("provider"), "Expected /wa debug scalar provider");
     }
 
     @SuppressWarnings("unchecked")
@@ -193,6 +212,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
             WorldAwakenedLootService lootService,
             WorldAwakenedInvasionService invasionService,
             WorldAwakenedEffectiveDifficultyScalarService difficultyScalarService,
+            WorldAwakenedCompatibilityService compatibilityService,
             WorldAwakenedDebugCommandService debugCommandService) {
         try {
             Method method = WorldAwakenedCommands.class.getDeclaredMethod(
@@ -204,6 +224,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     WorldAwakenedLootService.class,
                     WorldAwakenedInvasionService.class,
                     WorldAwakenedEffectiveDifficultyScalarService.class,
+                    WorldAwakenedCompatibilityService.class,
                     WorldAwakenedDebugCommandService.class);
             method.setAccessible(true);
             return (LiteralArgumentBuilder<CommandSourceStack>) method.invoke(
@@ -215,6 +236,7 @@ class WorldAwakenedCommandsDebugTreeStructureTest {
                     lootService,
                     invasionService,
                     difficultyScalarService,
+                    compatibilityService,
                     debugCommandService);
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to invoke buildDebugTree", exception);

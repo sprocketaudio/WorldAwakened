@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/dragon_fang",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.dragon_fang" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.dragon_fang.desc" },
+  "icon": { "item": "minecraft:iron_sword" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:attack_damage_bonus", "parameters": { "amount": 1.0 } }
+  ],
+  "rarity": "epic",
+  "tags": ["worldawakened:defaults", "worldawakened:awakened_choice"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

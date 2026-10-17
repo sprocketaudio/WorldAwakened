@@ -12,14 +12,20 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.config.WorldAwakenedProfileOverrideService;
 
 public final class WorldAwakenedDatapackService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private final AtomicReference<WorldAwakenedDatapackSnapshot> snapshot = new AtomicReference<>(WorldAwakenedDatapackSnapshot.empty());
+    private final AtomicReference<WorldAwakenedDatapackSnapshot> sourceSnapshot = new AtomicReference<>(WorldAwakenedDatapackSnapshot.empty());
     private final AtomicLong generationCounter = new AtomicLong(0L);
 
     public WorldAwakenedDatapackSnapshot currentSnapshot() {
         return snapshot.get();
+    }
+
+    public WorldAwakenedDatapackSnapshot sourceSnapshot() {
+        return sourceSnapshot.get();
     }
 
     public WorldAwakenedDatapackSnapshot compile(ResourceManager resourceManager) {
@@ -27,6 +33,8 @@ public final class WorldAwakenedDatapackService {
     }
 
     public void publish(WorldAwakenedDatapackSnapshot next, String source) {
+        sourceSnapshot.set(next);
+        next = WorldAwakenedProfileOverrideService.overlay(next);
         WorldAwakenedDatapackSnapshot previous = snapshot.get();
         long generation = generationCounter.incrementAndGet();
         WorldAwakenedDatapackSnapshot published = next.withGeneration(generation);

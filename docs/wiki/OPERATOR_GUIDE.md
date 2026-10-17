@@ -2,8 +2,8 @@
 
 Practical guide to using the `/wa` command tree for inspection, testing, recovery, and administration.
 
-- Document status: Active human-friendly operator handbook
-- Last updated: 2026-03-18
+- Document status: Active friendly operator handbook
+- Last updated: 2026-10-17
 - Scope: Command usage, targeting, recovery, and testing support
 
 ---
@@ -165,12 +165,18 @@ What these tell you:
 
 Treat `/wa mob inspect` as the first mutator diagnosis tool.
 
+Command output is visually layered: gold lines introduce inspect/debug results, aqua text identifies fields and sections, and gray text carries detailed values. This styling changes presentation only; raw IDs remain visible and copyable.
+
 Targeting forms:
 - `/wa mob inspect` uses the mob under your crosshair when you run it as a player
 - `/wa mob inspect <target>` keeps the explicit entity form for console, command blocks, and selectors such as `@e[type=minecraft:zombie,limit=1,sort=nearest]`
 
 Minimum fields you should expect to see:
 - entity type
+- current/maximum health and absorption, so combat abilities can be checked before and after an event
+- readable offense, defense, and mobility summaries, followed by detailed attribute base/current/delta values
+- non-empty equipment slots and currently active effects
+- resolved on-hit effect settings, combined lifesteal ratio, and death-explosion power/triggered state
 - mutation pool
 - applied mutators
 - applied components
@@ -194,6 +200,10 @@ Use these mutator debug surfaces when a spawn path is unclear:
 /wa debug mutators force_mutator <entity_id> <mutator_id>
 /wa debug spawn test <entity_id>
 ```
+
+`evaluate`, `force_pool`, and `force_mutator` report the compiled decision and do not create a live mob. Use `spawn test` when you need an entity for combat. Test-spawned mobs receive their normal vanilla command-spawn setup first, including standard weapons such as skeleton and stray bows; an authored `equip_item` component may then deliberately replace that gear. The isolated `dev_datapacks/worldawakened_combat_test` pack maps zombie, husk, creeper, skeleton, and stray to lifesteal, on-hit, death-explosion, lifesteal/death-explosion, and on-hit/lifesteal cases respectively. Its README contains the required built-in-profile toggle and exact commands.
+
+Generated mutation names are a quick player-facing clue, but `/wa mob inspect` remains authoritative. World Awakened preserves any custom name the mob already had.
 
 Use these operator loot surfaces for concise checks:
 
@@ -232,27 +242,57 @@ Use this invasion debug surface for scheduler/profile eligibility checks:
 `/wa invasion ...` provides concise operator summaries and state snapshots.
 `/wa debug invasion evaluate ...` provides the dense inspect payload including cooldown gates and invasion-gated pool eligibility.
 
+Bundled periodic profiles only schedule when an allowed dimension currently has a player. `Nether Surge` is therefore evaluated with Nether context, not the Overworld scheduler position. The bundled profiles have no timeout-completion reward and do not spawn waves.
+
+Use these compatibility surfaces when an integration or tier provider path looks wrong:
+
+```text
+/wa compat list
+/wa apotheosis tier inspect [player] [dimension]
+/wa debug compat evaluate <integration_id> [player] [entity] [dimension]
+/wa debug scalar provider <provider_key> [player] [entity] [dimension]
+```
+
+`/wa compat list` is the high-level activation check.
+`/wa apotheosis tier inspect` gives a quick operator read of current tier/scalar context and shows compiled `derived_stage` hook mappings when present.
+`/wa debug compat evaluate ...` shows gate-by-gate activation decisions, inactive reasons, and compiled stage-hook details.
+`/wa debug scalar provider ...` shows raw provider value, resolved scalar contribution, and fail-closed details.
+
+Simple Apotheosis derived-stage test loop:
+1. set or change the Apotheosis tier for your test player
+2. run `/wa apotheosis tier inspect Dev`
+3. run `/wa debug compat evaluate <integration_id> player Dev`
+4. run `/wa stage list global` or `/wa stage list player Dev` depending on progression mode
+
+What to expect:
+- in `derived_stage` or `hybrid` mode, authored `stage_hooks` unlock WA stages automatically once the tier threshold is reached
+- login/respawn picks changes up immediately
+- live tier changes are also picked up by a bounded periodic server reconcile pass, so you should not need a separate WA command just to make the stage hook run
+
 ## 3B. Mutator Cap Resolution
 
-Mutator count limits resolve in this order:
-1. `mutation_pools[].max_mutators_per_entity` on the selected pool (if present)
-2. otherwise `mutators.max_mutators_per_mob` from `worldawakened-common.toml`
+Mutator count limits resolve by taking the lowest of:
+1. required `mutation_pools[].max_mutators_per_entity` on the selected pool
+2. the live global maximum from `/wa config`
+3. the hard spawn-time safety budget
 
 Operator workflow when counts look wrong:
 1. run `/wa debug mutators evaluate <entity_id>` to see likely pool selection
 2. run `/wa debug mutators force_pool <entity_id> <pool_id>` to isolate one pool
 3. check the reported `spawn_context` line to confirm the spawn origin and attributed player
-4. compare that pool's `max_mutators_per_entity` against the global TOML default
+4. compare that pool's `max_mutators_per_entity` against the live global cap
 
 ## 3C. Mutation Chance Resolution
 
 Mutation chance resolves on the selected pool, after pool selection and before mutator selection.
 
 Rules:
-1. `mutation_pools[].mutation_chance` defaults to `1.0` when omitted
+1. `mutation_pools[].mutation_chance` is required and rolls once after pool selection
 2. `mutation_chance=1.0` always proceeds (no roll)
 3. `mutation_chance=0.0` always stops with `final_outcome=chance_failed`
 4. `0.0 < mutation_chance < 1.0` performs one deterministic roll per selected-pool evaluation
+5. after success, `additional_mutation_chance` performs a new conditional roll for each further slot until failure or a cap
+6. curated mode selects an eligible combination as a whole; any-compatible mode selects further ordinary weighted mutators
 
 Operator workflow when pools match but mobs still do not mutate:
 1. run `/wa debug mutators evaluate <entity_id>`
@@ -260,27 +300,59 @@ Operator workflow when pools match but mobs still do not mutate:
 3. if `chance_result` shows `passed=false`, you hit chance gating rather than selector/budget rejection
 4. run `/wa debug mutators force_pool <entity_id> <pool_id>` if you need to bypass chance while debugging
 
-## 3D. Web Session Commands
+## 3D. Configuration Editor Status
 
-Use this when the hosted web editor supports live linked runtime sessions.
+The hosted web-session commands are retired. `/wa config` opens the native gameplay-profile dashboard for an authorised operator or the owner of an integrated singleplayer server.
 
-Baseline commands:
+Global Settings workflow:
+1. run `/wa config`
+2. hover a control for its live-application and preservation rules
+3. adjust the local draft
+4. press Apply to send the draft and its base revision to the server
+5. wait for the green success message; a red message means nothing was accepted
 
-```text
-/wa web edit
-/wa web session status
-/wa web session revoke
-```
+Cancel sends no settings. Reset Defaults resets only the local draft until Apply is pressed. If another operator applies first, the server rejects the stale revision and refreshes the screen.
 
-What each command is for:
-- `/wa web edit`: create a short-lived linked editing session and return a hosted editor URL
-- `/wa web session status`: inspect whether the linked session is active, stale, expired, or revision-mismatched
-- `/wa web session revoke`: explicitly invalidate an active session token/link when needed
+The screen intentionally shows Standard rather than offering unfinished presets. Progression information is read-only. Disabling default gameplay recompiles the bundled-definition filter; disabling mutations prevents new mutation application and pauses WA combat/visual handlers while retaining persistent mutation state, and disabling pressure events ends an active event. Existing stage history, mutated-mob provenance, Ascension choices, and external datapacks are preserved.
 
-Operator expectations:
-- browser connects to the hosted editor/backend, not directly to your game server API
-- runtime remains apply authority and validates all inbound changes before commit
-- stale sessions should fail safely and must not silently overwrite newer runtime state
+Mutation-pool workflow:
+
+1. choose Mob Mutations from the dashboard
+2. search or filter by discovered stage, eligible dimension, or enabled state
+3. select a pool and review its source (`Bundled Standard`, `External datapack`, or `World override`)
+4. edit the initial chance, conditional additional chance, maximum, and eligibility; mob choices come from living entity types on the running server and mutator summaries come from loaded definitions
+5. review the theoretical mutation-count preview; eligibility and compatibility may reduce actual multi-mutation outcomes
+6. review the weight-sorted mutator rows and their relative selection shares; use the arrows to swap adjacent weights or `Weight: X` to enter an exact positive integer
+7. choose Any Compatible or Curated; curated combinations select pool mutators, optionally narrower parent-pool mobs, and a positive relative combination weight
+8. press Apply to validate and publish only this pool, or Revert to remove this world's override
+
+An asterisk marks an overridden pool. Apply preserves unsupported fields such as conditions, biome filters, spawner policy, and integration filters. Navigation warns about an unsaved pool draft. Selector Cancel discards only that selector's changes, while pool Apply persists the assembled draft.
+
+Labels that fit remain stationary. Longer button, slider, breadcrumb, summary, provenance, and validation text pauses at the beginning, scrolls smoothly to the end, pauses again, and repeats; hover tooltips still provide the complete context immediately.
+
+The mutation-pool browser uses compact two-line rows showing name, stage/dimension context, probability, enabled state, selection, and unsaved status. Mob and dimension selectors follow the same outlined-row layout, keep fixed checkbox columns, preserve hidden selections while searching, and show readable names above exact registry IDs. The rare-combination editor separates mutators from inherited-or-narrowed mob eligibility; on short screens it switches those sections to simple tabs so the footer stays reachable. Curated combinations show their name separately from relative share, eligible-mob count, and weight. Mutators appear in stable descending-weight order inside outlined rows, with one-decimal relative selection shares; equal weights retain their authored order. Those shares describe the current pool weights, not final spawn probabilities, because runtime eligibility, compatibility, stacking, and multi-selection checks can still change outcomes. Lists calculate their visible rows from the current screen height. Scrollbars appear only on overflow, support wheel and thumb dragging, and preserve their position while selections or weights change. Mutation probability is shown as a percentage; only true runtime scaling controls use `x` multipliers.
+
+### Configuration editor release checklist
+
+The following checks require a running game and are not replaced by unit tests:
+
+1. In singleplayer, open `/wa config` as the world owner, apply one setting, leave and reopen the world, and confirm the value remains.
+2. Change a draft and press Cancel; reopen the screen and confirm the server value did not change.
+3. Press Reset Defaults, verify that only the draft changes, then Apply and confirm the Standard defaults are restored.
+4. On a dedicated server, confirm an operator can open and apply the screen while a non-operator cannot open it or submit a crafted apply packet.
+5. Have two operators open the screen at the same revision. Apply from one, then confirm the other's Apply is rejected as stale and refreshed from the server.
+6. Restart the dedicated server and confirm the applied world settings remain.
+7. With an external datapack loaded, toggle bundled default gameplay and confirm the external definitions remain available and validation errors prevent an unsafe candidate from replacing the live compiled state.
+8. Confirm live behavior for each toggle: mutation spawning/handlers, pressure-event shutdown and future cooldown frequency, and Ascension-offer delivery.
+9. Edit one bundled pool's chance, mob list and mutator weight; confirm unrelated pools are byte-for-byte unchanged in the server snapshot.
+10. Restart and `/reload`, confirming the override appears once, remains marked, and does not duplicate mutators.
+11. Revert the pool and confirm its current datapack source returns, including an external exact-ID replacement when present.
+12. Test mob and dimension search at small and large GUI scales with 1, 10, 50, and a large modded catalogue; verify fixed checkbox alignment, wheel/thumb scrolling, preserved hidden selections, and unclipped footer controls.
+13. Configure an 11% initial chance, 2% additional chance, and maximum two; confirm the preview reads 89.00% none, 10.78% one, and 0.22% two.
+14. Add two curated combinations with different weights, verify incompatible choices are blocked locally/server-side, and confirm save, restart, `/reload`, Revert, and Cancel preserve the expected draft/live boundary.
+15. Spawn eligible and ineligible mobs for a curated combination and confirm ineligible mobs safely fall back to one ordinary mutation rather than receiving the restricted combination.
+16. At a reduced window height, edit a rare combination and verify the Mutators/Eligible Mobs tabs keep every row and Confirm/Cancel reachable; at a larger height verify both outlined sections are visible together.
+17. Raise Maximum Mutations through its supported range and confirm the expected-mutations preview wraps inside General without changing its calculated values.
 
 ## 4. Baseline Mutation Commands
 

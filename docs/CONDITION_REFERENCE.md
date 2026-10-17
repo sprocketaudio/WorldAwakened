@@ -3,7 +3,7 @@
 Canonical reference for shared condition node IDs, parameter schemas, scope legality, and status markers.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Shared condition contracts across runtime, validation, and tooling
 
 ---
@@ -20,7 +20,7 @@ Related contracts:
 - [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [docs/README.md](README.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
@@ -50,7 +50,7 @@ Conditions are shared framework primitives and must not diverge by subsystem. Th
 - `mutation_pools`
 - `loot_profiles`
 - `invasion_profiles`
-- future web authoring/validation workflows
+- future native-editor validation workflows
 
 Conditions are composable and reusable. Missing required context fails closed (`false`) unless a condition explicitly documents an exception.
 
@@ -298,7 +298,7 @@ Wrapper status:
 - **Parameters:** `value` (`integer >= 0`, required)
 - **Defaults / Notes:** Validator enforces non-negative threshold for enforced object types.
 - **Missing-context behavior:** False when world day context is unavailable.
-- **Compatibility Notes:** Use canonical `parameters.value` in authored content.
+- **Compatibility Notes:** Use canonical `parameters.value` in authored content. Trigger rules may evaluate it from the bounded `worldawakened:world_day_milestone` event; the event supplies context but does not hardcode a threshold.
 - **Status:** `implemented`
 - **Example Snippet:**
 ```json
@@ -651,11 +651,11 @@ Wrapper status:
 - **Category:** `External / integration / config`
 - **Purpose:** Compares Apotheosis world tier against an operator/value pair.
 - **Valid scopes:** `world`, `player`, `entity`, `spawn_event`, `loot`, `invasion`, `event_context`
-- **Parameters:** `op` (`comparison operator`, required), `value` (`number`, required)
-- **Defaults / Notes:** Canonical shared condition is defined but provider/runtime integration is not fully active.
+- **Parameters:** `op` (`comparison operator`, optional), `value` (`number`, optional), `tier` (`number`, optional alias), `values|tiers|in|any_of|one_of` (`number[]`, optional set-membership payloads)
+- **Defaults / Notes:** `op` defaults to `in` when an explicit tier set payload is supplied and `op` is omitted.
 - **Missing-context behavior:** False when integration/provider context is unavailable.
 - **Compatibility Notes:** May emit integration-inactive diagnostics when Apotheosis compat is disabled for enforced validation paths.
-- **Status:** `planned`
+- **Status:** `implemented`
 - **Example Snippet:**
 ```json
 { "type": "worldawakened:apotheosis_world_tier_compare", "parameters": { "op": ">=", "value": 3 } }
@@ -918,7 +918,7 @@ Runtime compatibility paths not yet promoted into canonical shared catalog:
 
 | Type ID | Runtime acceptance path | Compatibility note | Runtime status |
 | --- | --- | --- | --- |
-| `advancement_completed` | Trigger matcher (`trigger_rules`) | Trigger-event-specific condition; not promoted in canonical shared catalog tables. | `implemented` (trigger-only) |
+| `advancement_completed` | Trigger matcher (`trigger_rules`) | Trigger-event-specific condition. Enabled player-scoped one-shot triggers using it may be replayed on login only when the authored advancement is already complete and the trigger is unconsumed. | `implemented` (trigger-only) |
 | `manual_trigger` | Trigger matcher (`trigger_rules`) | Manual trigger ID gate used by debug/manual trigger execution flow. | `implemented` (trigger-only) |
 | `boss_killed` | Trigger matcher (`trigger_rules`) | Boss-flag match gate for boss-kill trigger contexts. | `implemented` (trigger-only) |
 
@@ -965,7 +965,7 @@ Authoring recommendation:
 | `entity_passive` | Entity | entity, spawn_event, loot, event_context | planned |
 | `loaded_mod` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
 | `config_toggle_enabled` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
-| `apotheosis_world_tier_compare` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
+| `apotheosis_world_tier_compare` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | implemented |
 | `external_scalar_range` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
 | `integration_active` | External/integration/config | world, player, entity, spawn_event, loot, invasion, event_context | planned |
 | `random_chance` | Random/event context | world, player, entity, spawn_event, loot, invasion, event_context | implemented |

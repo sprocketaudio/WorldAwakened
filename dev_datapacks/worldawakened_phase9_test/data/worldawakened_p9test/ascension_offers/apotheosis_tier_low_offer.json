@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:apotheosis_tier_low_offer",
+  "display_name": "Phase 9 Low Tier Offer",
+  "description": "Auto-grants when Phase 9 gate unlocks and Apotheosis tier is below 2.",
+  "enabled": true,
+  "trigger_conditions": [
+    {
+      "type": "worldawakened:stage_unlocked",
+      "parameters": {
+        "stage": "worldawakened_p9test:phase9_gate"
+      }
+    }
+  ],
+  "stage_filters": {
+    "all_of": [
+      "worldawakened_p9test:phase9_gate"
+    ]
+  },
+  "apotheosis_tier_filters": {
+    "op": "<",
+    "value": 2
+  },
+  "choice_count": 2,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened_p9test:tiered_guardian",
+    "worldawakened_p9test:tiered_raider"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 50,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

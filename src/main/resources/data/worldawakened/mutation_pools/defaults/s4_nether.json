@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/s4_nether",
+  "enabled": true,
+  "weight": 100,
+  "mutation_chance": 0.11,
+  "additional_mutation_chance": 0.02,
+  "combination_mode": "curated",
+  "rare_combinations": [
+    {
+      "id": "worldawakened:defaults/s4_nether_hunter_hardened",
+      "weight": 1,
+      "mutators": ["worldawakened:defaults/hunter", "worldawakened:defaults/nether_hardened"],
+      "eligible_entities": ["minecraft:wither_skeleton", "minecraft:hoglin"]
+    }
+  ],
+  "conditions": [
+    { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/gathering_storm" } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/end_reached" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:the_nether" } }
+  ],
+  "eligible_dimensions": ["minecraft:the_nether"],
+  "eligible_entities": ["minecraft:piglin_brute", "minecraft:hoglin", "minecraft:wither_skeleton", "minecraft:blaze", "minecraft:magma_cube"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/hunter", "weight": 30 },
+    { "id": "worldawakened:defaults/relentless", "weight": 28 },
+    { "id": "worldawakened:defaults/bulwark", "weight": 20 },
+    { "id": "worldawakened:defaults/nether_hardened", "weight": 10 },
+    { "id": "worldawakened:defaults/hindering", "weight": 5 },
+    { "id": "worldawakened:defaults/vampiric", "weight": 5 },
+    { "id": "worldawakened:defaults/volatile", "weight": 2 }
+  ],
+  "max_mutators_per_entity": 2
+}

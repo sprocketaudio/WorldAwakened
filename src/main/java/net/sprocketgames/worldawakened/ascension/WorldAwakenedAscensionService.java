@@ -41,6 +41,8 @@ import net.sprocketgames.worldawakened.WorldAwakenedConstants;
 import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentRegistry;
 import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentType;
 import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierService;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
+import net.sprocketgames.worldawakened.compat.apotheosis.WorldAwakenedApotheosisTierFilter;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
@@ -73,13 +75,22 @@ public final class WorldAwakenedAscensionService {
 
     private final WorldAwakenedDatapackService datapackService;
     private final WorldAwakenedStageService stageService;
+    private final WorldAwakenedCompatibilityService compatibilityService;
     private final WorldAwakenedAscensionRewardEffects rewardEffects;
 
     public WorldAwakenedAscensionService(
             WorldAwakenedDatapackService datapackService,
             WorldAwakenedStageService stageService) {
+        this(datapackService, stageService, new WorldAwakenedCompatibilityService(datapackService));
+    }
+
+    public WorldAwakenedAscensionService(
+            WorldAwakenedDatapackService datapackService,
+            WorldAwakenedStageService stageService,
+            WorldAwakenedCompatibilityService compatibilityService) {
         this.datapackService = datapackService;
         this.stageService = stageService;
+        this.compatibilityService = compatibilityService;
         this.rewardEffects = new WorldAwakenedAscensionRewardEffects();
     }
 
@@ -995,6 +1006,9 @@ public final class WorldAwakenedAscensionService {
                 && !evaluateConditions(level, player, offer.id(), "offer_trigger", offer.triggerConditions(), state, true)) {
             return false;
         }
+        if (!evaluateApotheosisTierFilters(level, player, offer.id(), offer.apotheosisTierFilters())) {
+            return false;
+        }
         return evaluateStageFilters(level, player, offer.stageFilters());
     }
 
@@ -1124,9 +1138,16 @@ public final class WorldAwakenedAscensionService {
         toggles.put("general.enable_debug_commands", WorldAwakenedCommonConfig.ENABLE_DEBUG_COMMANDS.get());
         toggles.put("general.validation_logging", WorldAwakenedCommonConfig.VALIDATION_LOGGING.get());
         toggles.put("compat.apotheosis.enabled", WorldAwakenedCommonConfig.APOTHEOSIS_ENABLED.get());
+        toggles.put("compat.apotheosis.allow_world_tier_conditions", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_CONDITIONS.get());
+        toggles.put("compat.apotheosis.allow_world_tier_stage_unlocks", WorldAwakenedCommonConfig.ALLOW_WORLD_TIER_STAGE_UNLOCKS.get());
 
         Set<ResourceLocation> worldStages = stageService.getUnlockedStages(level);
         Set<ResourceLocation> playerStages = stageService.getUnlockedStages(level, player);
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        player,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.CONDITIONS);
 
         return new WorldAwakenedRuleMatchContext(
                 "ascension",
@@ -1158,7 +1179,38 @@ public final class WorldAwakenedAscensionService {
                 false,
                 Optional.empty(),
                 Set.of(),
-                Optional.empty());
+                Optional.empty(),
+                apotheosisTier.tierValue(),
+                apotheosisTier.available()
+                        ? Optional.empty()
+                        : Optional.of(apotheosisTier.detail()));
+    }
+
+    private boolean evaluateApotheosisTierFilters(
+            ServerLevel level,
+            ServerPlayer player,
+            ResourceLocation offerId,
+            Optional<JsonElement> rawFilter) {
+        Optional<WorldAwakenedApotheosisTierFilter> filter = WorldAwakenedApotheosisTierFilter.compile(rawFilter);
+        if (filter.isEmpty()) {
+            return true;
+        }
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution tier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        player,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.STAGE_UNLOCKS);
+        if (!tier.available() || tier.tierValue().isEmpty()) {
+            WorldAwakenedLog.debug(
+                    LOGGER,
+                    WorldAwakenedLogCategory.COMPAT,
+                    "Ascension offer {} skipped due unavailable Apotheosis tier filter context: code={} detail={}",
+                    offerId,
+                    tier.diagnosticCode(),
+                    tier.detail());
+            return false;
+        }
+        return filter.get().matches(tier.tierValue().getAsDouble());
     }
 
     private boolean evaluateStageFilters(ServerLevel level, ServerPlayer player, Optional<JsonElement> stageFilters) {

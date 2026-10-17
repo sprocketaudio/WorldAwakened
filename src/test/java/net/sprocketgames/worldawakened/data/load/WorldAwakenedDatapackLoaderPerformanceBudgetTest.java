@@ -47,7 +47,7 @@ class WorldAwakenedDatapackLoaderPerformanceBudgetTest {
 
     @Test
     void warnsWhenPoolOverrideExceedsMutatorsPerSpawnLimit() {
-        MutationPoolDefinition definition = mutationPoolDefinition(Optional.of(9));
+        MutationPoolDefinition definition = mutationPoolDefinition(9);
 
         Optional<WorldAwakenedDiagnostic> diagnostic =
                 WorldAwakenedDatapackLoader.evaluatePoolMutatorCountLimit(definition, "test:pool", 8, 2);
@@ -59,20 +59,8 @@ class WorldAwakenedDatapackLoaderPerformanceBudgetTest {
     }
 
     @Test
-    void warnsWhenDefaultMutatorCapExceedsMutatorsPerSpawnLimit() {
-        MutationPoolDefinition definition = mutationPoolDefinition(Optional.empty());
-
-        Optional<WorldAwakenedDiagnostic> diagnostic =
-                WorldAwakenedDatapackLoader.evaluatePoolMutatorCountLimit(definition, "test:pool", 8, 9);
-
-        assertTrue(diagnostic.isPresent());
-        assertEquals(WorldAwakenedDiagnosticCodes.PERF_MUTATOR_COUNT_EXCEEDED, diagnostic.get().code());
-        assertTrue(diagnostic.get().message().contains("default mutators.max_mutators_per_mob"));
-    }
-
-    @Test
     void doesNotWarnWhenRequestedPoolCapIsWithinLimit() {
-        MutationPoolDefinition definition = mutationPoolDefinition(Optional.of(8));
+        MutationPoolDefinition definition = mutationPoolDefinition(8);
 
         Optional<WorldAwakenedDiagnostic> diagnostic =
                 WorldAwakenedDatapackLoader.evaluatePoolMutatorCountLimit(definition, "test:pool", 8, 2);
@@ -157,13 +145,13 @@ class WorldAwakenedDatapackLoaderPerformanceBudgetTest {
                 List.of());
     }
 
-    private static MutationPoolDefinition mutationPoolDefinition(Optional<Integer> maxMutatorsPerEntity) {
+    private static MutationPoolDefinition mutationPoolDefinition(int maxMutatorsPerEntity) {
         return new MutationPoolDefinition(
                 1,
                 ResourceLocation.parse("testpack:limit_test_pool"),
                 true,
-                1,
-                1.0D,
+                new MutationPoolDefinition.MutationSelection(1, 1.0D, 0.0D, maxMutatorsPerEntity,
+                        MutationPoolDefinition.CombinationMode.ANY_COMPATIBLE, List.of()),
                 false,
                 false,
                 List.of(),
@@ -172,7 +160,6 @@ class WorldAwakenedDatapackLoaderPerformanceBudgetTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(new JsonPrimitive("testpack:limit_test_mutator")),
-                maxMutatorsPerEntity);
+                List.of(new JsonPrimitive("testpack:limit_test_mutator")));
     }
 }

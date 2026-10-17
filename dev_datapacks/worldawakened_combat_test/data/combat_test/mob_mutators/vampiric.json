@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "combat_test:vampiric",
+  "display_name": { "text": "Vampiric" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 1,
+  "stacking_group": "combat_test:sustain",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:life_steal", "parameters": { "amount": 0.20 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#b51f35", "brightness": 0.75, "see_through_walls": false, "pulse": true, "pulse_speed": 0.8, "pulse_strength": 0.22 } },
+    { "type": "worldawakened:effect_particles", "parameters": { "effect_type": "minecraft:regeneration", "color": "#b51f35", "count": 2, "interval_ticks": 8 } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:skeleton", "minecraft:stray"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "application_contexts": ["on_spawn"]
+}

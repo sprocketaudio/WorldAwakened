@@ -160,6 +160,9 @@ public final class WorldAwakenedTriggerMatcher {
                 case "current_dimension" -> readResourceLocation(parameters, "dimension")
                         .map(context.dimensionId()::equals)
                         .orElse(false);
+                case "world_day_gte" -> readLong(parameters, "value")
+                        .map(value -> context.worldDay() >= value)
+                        .orElse(false);
                 case "advancement_completed" -> readResourceLocation(parameters, "advancement")
                         .map(id -> context.advancementId().map(id::equals).orElse(false))
                         .orElse(false);

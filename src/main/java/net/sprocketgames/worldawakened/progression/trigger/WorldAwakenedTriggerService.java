@@ -16,6 +16,7 @@ import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -95,6 +96,58 @@ public final class WorldAwakenedTriggerService {
                 Optional.empty()),
                 Optional.empty(),
                 true);
+    }
+
+    public int reconcileCompletedAdvancementTriggers(ServerPlayer player) {
+        if (player == null) {
+            return 0;
+        }
+        WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
+        Set<String> consumed = readTriggerSnapshots(player.serverLevel(), player)
+                .playerSnapshot()
+                .consumedOneShotRules();
+        int replayed = 0;
+        for (ResourceLocation advancementId : completedAdvancementTriggerIds(
+                snapshot.data().triggerRules().values(),
+                consumed)) {
+            AdvancementHolder advancement = player.server.getAdvancements().get(advancementId);
+            if (advancement == null || !player.getAdvancements().getOrStartProgress(advancement).isDone()) {
+                continue;
+            }
+            WorldAwakenedTriggerRunResult result = onAdvancementCompleted(player, advancementId);
+            if (result.executedRules() > 0) {
+                replayed++;
+            }
+        }
+        return replayed;
+    }
+
+    static Set<ResourceLocation> completedAdvancementTriggerIds(
+            Iterable<TriggerRuleDefinition> definitions,
+            Set<String> consumedOneShotTriggers) {
+        LinkedHashSet<ResourceLocation> advancementIds = new LinkedHashSet<>();
+        for (TriggerRuleDefinition definition : definitions) {
+            if (!definition.enabled()
+                    || !definition.oneShot()
+                    || definition.sourceScope() != SourceScope.PLAYER
+                    || !WorldAwakenedTriggerTypes.ADVANCEMENT_COMPLETED.equals(definition.triggerType())
+                    || consumedOneShotTriggers.contains(definition.id().toString())) {
+                continue;
+            }
+            for (JsonElement rawCondition : definition.conditions()) {
+                if (!rawCondition.isJsonObject()) {
+                    continue;
+                }
+                JsonObject condition = rawCondition.getAsJsonObject();
+                Optional<ResourceLocation> type = readResourceLocation(condition, "type");
+                if (type.isEmpty() || !"advancement_completed".equals(type.get().getPath())) {
+                    continue;
+                }
+                readResourceLocation(readParametersObject(condition), "advancement")
+                        .ifPresent(advancementIds::add);
+            }
+        }
+        return Set.copyOf(advancementIds);
     }
 
     public WorldAwakenedTriggerRunResult onEntityKilled(ServerLevel level, ServerPlayer killer, Entity killedEntity) {
@@ -185,6 +238,22 @@ public final class WorldAwakenedTriggerService {
                 true);
     }
 
+    public WorldAwakenedTriggerRunResult onWorldDayMilestone(ServerLevel level) {
+        return evaluateAndApply(new TriggerEventContext(
+                WorldAwakenedTriggerTypes.WORLD_DAY_MILESTONE,
+                level,
+                null,
+                null,
+                level.dimension().location(),
+                Optional.empty(),
+                Optional.empty(),
+                Set.of(),
+                false,
+                Optional.empty()),
+                Optional.empty(),
+                true);
+    }
+
     public WorldAwakenedTriggerRunResult fireManualTrigger(ServerLevel level, ServerPlayer player, ResourceLocation triggerRuleId) {
         return evaluateAndApply(new TriggerEventContext(
                 WorldAwakenedTriggerTypes.MANUAL_DEBUG,
@@ -241,7 +310,8 @@ public final class WorldAwakenedTriggerService {
                                 stageSnapshots.worldStageSnapshot(),
                                 stageSnapshots.playerStageSnapshot(),
                                 triggerSnapshots.worldSnapshot(),
-                                triggerSnapshots.playerSnapshot()));
+                                triggerSnapshots.playerSnapshot(),
+                                Math.max(0L, eventContext.level().getDayTime() / 24_000L)));
 
         int stageUnlocks = 0;
         int stageLocks = 0;

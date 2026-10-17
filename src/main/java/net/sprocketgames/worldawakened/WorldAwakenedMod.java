@@ -5,19 +5,26 @@ import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;
 
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionEventHandlers;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
 import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierAttachments;
 import net.sprocketgames.worldawakened.carrier.WorldAwakenedOwnedCarrierEventHandlers;
 import net.sprocketgames.worldawakened.command.WorldAwakenedCommands;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityEventHandlers;
+import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedClientConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
+import net.sprocketgames.worldawakened.config.WorldAwakenedProfileOverrideService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDataReloadListener;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.difficulty.WorldAwakenedEffectiveDifficultyScalarService;
@@ -41,16 +48,23 @@ public final class WorldAwakenedMod {
     public static final WorldAwakenedDatapackService DATAPACK_SERVICE = new WorldAwakenedDatapackService();
     public static final WorldAwakenedStageService STAGE_SERVICE = new WorldAwakenedStageService(DATAPACK_SERVICE);
     public static final WorldAwakenedInvasionService INVASION_SERVICE = new WorldAwakenedInvasionService(DATAPACK_SERVICE, STAGE_SERVICE);
-    public static final WorldAwakenedAscensionService ASCENSION_SERVICE = new WorldAwakenedAscensionService(DATAPACK_SERVICE, STAGE_SERVICE);
+    public static final WorldAwakenedCompatibilityService COMPAT_SERVICE = new WorldAwakenedCompatibilityService(DATAPACK_SERVICE);
+    public static final WorldAwakenedAscensionService ASCENSION_SERVICE =
+            new WorldAwakenedAscensionService(DATAPACK_SERVICE, STAGE_SERVICE, COMPAT_SERVICE);
     public static final WorldAwakenedRuleService RULE_SERVICE =
-            new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE, INVASION_SERVICE);
+            new WorldAwakenedRuleService(DATAPACK_SERVICE, STAGE_SERVICE, ASCENSION_SERVICE, INVASION_SERVICE, COMPAT_SERVICE);
     public static final WorldAwakenedTriggerService TRIGGER_SERVICE = new WorldAwakenedTriggerService(DATAPACK_SERVICE, STAGE_SERVICE, RULE_SERVICE, ASCENSION_SERVICE);
     public static final WorldAwakenedEffectiveDifficultyScalarService EFFECTIVE_DIFFICULTY_SCALAR_SERVICE =
             new WorldAwakenedEffectiveDifficultyScalarService();
     public static final WorldAwakenedMutatorService MUTATOR_SERVICE =
-            new WorldAwakenedMutatorService(DATAPACK_SERVICE, STAGE_SERVICE, EFFECTIVE_DIFFICULTY_SCALAR_SERVICE, INVASION_SERVICE);
+            new WorldAwakenedMutatorService(
+                    DATAPACK_SERVICE,
+                    STAGE_SERVICE,
+                    EFFECTIVE_DIFFICULTY_SCALAR_SERVICE,
+                    INVASION_SERVICE,
+                    COMPAT_SERVICE);
     public static final WorldAwakenedLootService LOOT_SERVICE =
-            new WorldAwakenedLootService(DATAPACK_SERVICE, STAGE_SERVICE, INVASION_SERVICE);
+            new WorldAwakenedLootService(DATAPACK_SERVICE, STAGE_SERVICE, INVASION_SERVICE, COMPAT_SERVICE);
 
     public WorldAwakenedMod(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
@@ -63,25 +77,37 @@ public final class WorldAwakenedMod {
         WorldAwakenedMutatorEventHandlers mutatorHandlers = new WorldAwakenedMutatorEventHandlers(MUTATOR_SERVICE);
         WorldAwakenedLootEventHandlers lootHandlers = new WorldAwakenedLootEventHandlers(LOOT_SERVICE);
         WorldAwakenedInvasionEventHandlers invasionHandlers = new WorldAwakenedInvasionEventHandlers(INVASION_SERVICE);
+        WorldAwakenedCompatibilityEventHandlers compatibilityHandlers =
+                new WorldAwakenedCompatibilityEventHandlers(COMPAT_SERVICE, STAGE_SERVICE);
         modEventBus.addListener(WorldAwakenedNetwork::registerPayloadHandlers);
         NeoForge.EVENT_BUS.addListener(this::onAddReloadListener);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(this::onServerStarted);
+        NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onPlayerChangedDimension);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onAdvancementCompleted);
+        NeoForge.EVENT_BUS.addListener(triggerHandlers::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onItemCrafted);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onBlockPlaced);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onBlockBroken);
+        NeoForge.EVENT_BUS.addListener(triggerHandlers::onLevelTickPost);
         NeoForge.EVENT_BUS.addListener(lootHandlers::onLivingDrops);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onStageUnlocked);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerRespawn);
+        NeoForge.EVENT_BUS.addListener(compatibilityHandlers::onPlayerLoggedIn);
+        NeoForge.EVENT_BUS.addListener(compatibilityHandlers::onPlayerRespawn);
         NeoForge.EVENT_BUS.addListener(carrierHandlers::onLivingIncomingDamage);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onFinalizeSpawn);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityJoinLevel);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onEntityTickPost);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onLivingDamagePre);
+        NeoForge.EVENT_BUS.addListener(mutatorHandlers::onLivingDamagePost);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, mutatorHandlers::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(mutatorHandlers::onPlayerStartTracking);
         NeoForge.EVENT_BUS.addListener(invasionHandlers::onLevelTickPost);
+        NeoForge.EVENT_BUS.addListener(compatibilityHandlers::onLevelTickPost);
 
         WorldAwakenedLog.info(LOGGER, WorldAwakenedLogCategory.CORE, "Initialized {}", WorldAwakenedConstants.MOD_NAME);
     }
@@ -101,7 +127,21 @@ public final class WorldAwakenedMod {
                 MUTATOR_SERVICE,
                 LOOT_SERVICE,
                 INVASION_SERVICE,
-                EFFECTIVE_DIFFICULTY_SCALAR_SERVICE);
+                EFFECTIVE_DIFFICULTY_SCALAR_SERVICE,
+                COMPAT_SERVICE);
+    }
+
+    private void onServerStarted(ServerStartedEvent event) {
+        WorldAwakenedConfigService.BindResult bindResult = WorldAwakenedConfigService.bind(event.getServer());
+        boolean profileOverridesPresent = WorldAwakenedProfileOverrideService.bind(event.getServer());
+        if (bindResult.requiresDatapackReload() || profileOverridesPresent) {
+            DATAPACK_SERVICE.reloadFromServer(event.getServer(), "native_config_startup");
+        }
+    }
+
+    private void onServerStopping(ServerStoppingEvent event) {
+        WorldAwakenedConfigService.unbind(event.getServer());
+        WorldAwakenedProfileOverrideService.unbind();
     }
 }
 

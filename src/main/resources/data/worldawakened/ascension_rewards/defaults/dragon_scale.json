@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/dragon_scale",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.dragon_scale" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.dragon_scale.desc" },
+  "icon": { "item": "minecraft:dragon_breath" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:armor_toughness_bonus", "parameters": { "amount": 1.0 } }
+  ],
+  "rarity": "epic",
+  "tags": ["worldawakened:defaults", "worldawakened:awakened_choice"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

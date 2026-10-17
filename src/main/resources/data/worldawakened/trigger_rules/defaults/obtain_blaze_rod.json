@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/obtain_blaze_rod",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:advancement_completed",
+  "source_scope": "player",
+  "conditions": [
+    { "type": "worldawakened:advancement_completed", "parameters": { "advancement": "minecraft:nether/obtain_blaze_rod" } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/gathering_storm" } }
+  ],
+  "actions": [
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/dormant" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/stirring" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/unease" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/nether_reached" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/gathering_storm" } }
+  ],
+  "one_shot": true
+}

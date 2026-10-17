@@ -19,5 +19,6 @@ public record WorldAwakenedTriggerMatchContext(
         Set<ResourceLocation> worldStageSnapshot,
         Set<ResourceLocation> playerStageSnapshot,
         WorldAwakenedTriggerStateSnapshot worldTriggerStateSnapshot,
-        WorldAwakenedTriggerStateSnapshot playerTriggerStateSnapshot) {
+        WorldAwakenedTriggerStateSnapshot playerTriggerStateSnapshot,
+        long worldDay) {
 }

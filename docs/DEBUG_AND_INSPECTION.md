@@ -3,7 +3,7 @@
 Canonical contract for runtime inspection surfaces, debug command minimums, trace payloads, and provenance visibility.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Runtime debug, inspect output, and trace observability contracts
 
 ---
@@ -21,7 +21,7 @@ Related contracts:
 - [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
 
@@ -54,12 +54,12 @@ Hard rule:
 | Trigger engine | `/wa trigger fire`, trigger inspect output | trigger ID, trigger type, scope | matched/rejected, cooldown, one-shot, rejection reason | `implemented` |
 | Rule engine | `/wa dump active_rules` | rule ID, scope, priority | eligible/rejected, cooldown, consumed, reason category | `implemented` |
 | Ascension | `/wa ascension inspect` | player UUID, offer ID, reward IDs, source key, active owned carriers | pending/resolved state, forfeits, suppression state, grant/reconcile outcome | `implemented` |
-| Mutators | `/wa mob inspect` | entity UUID, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
+| Mutators | `/wa mob inspect` | entity UUID, current/maximum/absorption health, mutator ID, pool ID, stage context, trace ID, mutation depth/origin marker | applied/rejected components, budget/conflict outcomes | `implemented` |
 | Mutation pools | pool inspect output | pool ID, candidate IDs | candidate eligibility, selection path, reroll count | `planned` |
 | Loot profiles | `/wa loot evaluate`, `/wa loot force_profile`, `/wa debug loot evaluate`, `/wa debug loot force_profile` | profile ID, loot target, trace ID | matched/rejected, compat safety outcome, applied operations, final outcome | `implemented` |
 | Invasions | `/wa invasion inspect`, `/wa debug invasion evaluate` | profile ID, invasion instance ID | scheduler state, active-event state, pressure modifier, duration/cooldown outcomes | `implemented` |
-| Compat/integrations | `/wa compat list`, integration inspect | integration ID/mod ID | active/inactive reason, gate path, fallback path | `implemented`/`planned` |
-| Web linked sessions | `/wa web edit`, `/wa web session status` | session ID, runtime version, schema version, revision | linked/stale/revoked state, apply outcome, mismatch diagnostics | `planned` |
+| Compat/integrations | `/wa compat list`, `/wa apotheosis tier inspect`, `/wa debug compat evaluate`, `/wa debug scalar provider` | integration ID/mod ID/provider key | active/inactive reason, gate path, fallback path, scalar contribution/fail-closed detail | `implemented` |
+| Native configuration | `/wa config` | server revision, operator identity, active Standard/custom-only state, progression summary | permission, validation, stale-revision, candidate compile, apply outcome | `implemented` |
 
 Note:
 - command naming may evolve, but equivalent functionality and payload fields are required.
@@ -130,6 +130,9 @@ Current baseline command surface:
 - `/wa difficulty world get|set`
 - `/wa difficulty vote yes|no`
 - `/wa compat list`
+- `/wa apotheosis tier inspect`
+- `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
+- `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
 
 Notes:
 - `global` means the shared save-wide progression bucket, not a second Minecraft world.
@@ -149,6 +152,7 @@ Notes:
   - `force_pool` bypasses pool chance
   - `force_mutator` bypasses pool chance
   - `spawn test` respects authored `mutation_chance` by default
+  - `spawn test` performs normal vanilla command-spawn finalization before applying World Awakened mutation components, so ordinary equipment and initialization (for example skeleton and stray bows) remain present unless an authored component replaces them
 - player-executed `/wa mob inspect` with no explicit target should inspect the mob under the player's crosshair; non-player sources must use `/wa mob inspect <entity>`
 - ascension runtime `instance_id` values are generated as short opaque command-safe IDs such as `wao_ab12cd34`; `offer_id` and `source_key` remain the inspect/debug provenance fields
 - ascension suppression `component_key` values use canonical `index|namespace:component_type` form (for example `0|worldawakened:movement_speed_bonus`); index-only shorthand (for example `0`) is accepted
@@ -158,17 +162,20 @@ Notes:
 - operator-facing difficulty vote and pressure replay outputs may expose clickable suggest/copy actions for common next steps (for example vote yes/no or replay ID copy/prefill)
 - operator command arguments that target loaded authored objects or pending runtime instances should provide Brigadier suggestions from the current loaded runtime state
 - the `/wa debug` tree is registered only when `general.enable_debug_commands = true`
+- Apotheosis inspect/debug surfaces should expose compiled `derived_stage` hook details when present so operators can see the effective threshold-to-stage mapping without opening the datapack by hand
 
 Planned minimum additions as systems complete:
 - `/wa debug perf`
 - `/wa debug rules`
 - `/wa loot inspect <target>`
-- `/wa web edit`
-- `/wa web session status`
-- `/wa web session revoke`
+- `/wa config`
+
+`/wa config` is player-only and opens the native profile dashboard for an authorised operator or integrated-server owner. The server snapshot includes independent settings/profile revisions, real runtime values, profile definition counts, configured bounds, active profile/progression summaries, actual mutation pools and mutators, compatibility metadata, running dimensions, and server-derived living entity types. The pool editor exposes initial probability, conditional additional probability, maximum mutations, ordinary weights, and either any-compatible or weighted curated combinations. Its preview is theoretical and does not inspect or mutate the world. Global Settings Apply repeats permission and revision checks; pool Apply additionally decodes the canonical codec shape, validates registry/references/bounds/combination compatibility, stores one world override, and republishes the snapshot atomically. Cancel sends no draft, and Revert removes only the selected pool override. Obsolete saved pool shapes are discarded with an actionable warning while datapack definitions remain active.
+
+Editor text is width-bounded. Overflowing button, slider, breadcrumb, summary, provenance, and result labels use a clipped pause-scroll-pause loop rather than escaping their control or panel; text that already fits does not animate.
+
+The pool editor reserves a separate apply-result line above its panels. Pool/mutator viewports are derived from screen dimensions, expose scrollbars only when their entries overflow, and preserve offsets across local draft rebuilds. Probability fields use percentages; scalar runtime settings retain multiplier notation.
 - `/wa debug trace <trace_id>`
-- `/wa debug compat evaluate <integration_id> [player] [entity] [dimension]`
-- `/wa debug scalar provider <provider_key> [player] [entity] [dimension]`
 
 Performance-debug payload minimums:
 - scope bucket sizes
@@ -198,6 +205,7 @@ Readability and autocomplete guardrails for future stages:
 - debug commands that consume dynamic runtime IDs (for example replay, instance, trace, snapshot IDs) should provide Brigadier suggestions from current runtime state wherever practical
 - rejection messages should present a human-readable reason first and keep raw code/detail as optional debug detail
 - command implementations should reuse shared output helper methods for operator/debug layering instead of ad-hoc per-command formatting
+- shared formatting uses aqua operator summaries, gold bold inspect/debug headers, aqua field or section labels, and muted detail values so dense output remains scannable without hiding copyable raw IDs
 - player/operator-facing failures should be emitted through human-readable rejection mapping helpers; raw code/detail belongs to verbose/debug lines
 - clickable copy/suggest/run affordances should be added where they improve operator/debug flow, while normal player-facing notifications remain plain and minimal
 
@@ -401,6 +409,9 @@ Player / reward reconciliation surfaces should be able to explain these outcomes
 - foreign visual/effect surface preserved
 
 Mutator / entity application surfaces should be able to explain these outcomes where relevant:
+- applied live combat component IDs (`on_hit_effect`, `life_steal`, `death_explosion`) remain visible in mutation provenance; event execution uses the exact bounded state resolved at spawn
+- the visible generated mob name is composed from resolved mutator display names, while an authored/vanilla pre-existing custom name is preserved; inspect provenance remains the authoritative source for raw mutator IDs
+- `/wa mob inspect` reports a readable core-stat summary, current/max/absorption health, non-empty equipment slots, active effects, and resolved persistent combat state: each on-hit effect's duration/amplifier/chance, the combined lifesteal ratio, and death-explosion power/triggered state; the detailed attribute base/current/delta block remains available below the summary
 - required entity capability missing
 - required hook unavailable
 - component skipped due to incompatible entity runtime surface
@@ -477,6 +488,7 @@ For ascension events:
 - selected reward
 - forfeited rewards
 - reconciliation status on login/respawn
+- personal advancement catch-up provenance: authored one-shot trigger ID, completed advancement ID, and whether the trigger was already consumed
 - active WA-owned runtime carrier IDs and stable keys when those carriers are part of the reconciled reward set
 - saved reward ownership state
 - live-applied WA-owned modifier/effect state
@@ -494,6 +506,8 @@ For loot and invasions:
 - compatibility safety decisions
 - applied operations and blocked operations
 - active cooldown/pressure guards
+- scheduler evaluation dimension and whether that dimension currently contained an eligible player
+- player-facing warning/end notifications remain concise; raw profile IDs, cooldowns, and reason paths belong in inspect/debug output
 
 ---
 

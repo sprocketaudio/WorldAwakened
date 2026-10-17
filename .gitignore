@@ -25,3 +25,11 @@ runs
 run-data
 
 repo
+
+# web
+web/node_modules
+web/**/node_modules
+web/frontend/.next
+web/frontend/out
+web/**/dist
+web/**/*.tsbuildinfo

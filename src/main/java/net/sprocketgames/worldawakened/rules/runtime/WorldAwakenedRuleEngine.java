@@ -233,14 +233,14 @@ public final class WorldAwakenedRuleEngine {
             case LOADED_MOD -> readString(parameters, "mod");
             case CONFIG_TOGGLE_ENABLED -> readString(parameters, "config_gate");
             case STRUCTURE_CONTEXT -> readString(parameters, "structure");
-            case APOTHEOSIS_WORLD_TIER_COMPARE -> readString(parameters, "op");
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> readString(parameters, "op").map(value -> value.toLowerCase(Locale.ROOT));
             case INVASION_TAG -> readString(parameters, "tag").map(value -> value.toLowerCase(Locale.ROOT));
             default -> Optional.empty();
         };
         OptionalDouble value = switch (kind) {
             case WORLD_DAY_GTE -> readDouble(parameters, "value");
             case RANDOM_CHANCE -> readDouble(parameters, "chance");
-            case APOTHEOSIS_WORLD_TIER_COMPARE -> readDouble(parameters, "value");
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> readDouble(parameters, "value", "tier");
             default -> OptionalDouble.empty();
         };
         OptionalDouble min = switch (kind) {
@@ -251,7 +251,14 @@ public final class WorldAwakenedRuleEngine {
             case PLAYER_DISTANCE_FROM_SPAWN, PLAYER_COUNT_ONLINE -> readDouble(parameters, "max");
             default -> OptionalDouble.empty();
         };
-        Set<Integer> ints = kind == ConditionKind.MOON_PHASE ? parseMoonPhases(parameters) : Set.of();
+        Set<Integer> ints = switch (kind) {
+            case MOON_PHASE -> parseMoonPhases(parameters);
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> parseApotheosisTierValues(parameters);
+            default -> Set.of();
+        };
+        if (kind == ConditionKind.APOTHEOSIS_WORLD_TIER_COMPARE && text.isEmpty() && !ints.isEmpty()) {
+            text = Optional.of("in");
+        }
         return Optional.of(new CompiledCondition(
                 typeOpt.get(),
                 kind,
@@ -557,9 +564,7 @@ public final class WorldAwakenedRuleEngine {
                 }
                 yield Optional.empty();
             }
-            case APOTHEOSIS_WORLD_TIER_COMPARE -> Optional.of(new ConditionFailure(
-                    WorldAwakenedRejectionReason.INTEGRATION_INACTIVE,
-                    "apotheosis_tier_provider_unavailable"));
+            case APOTHEOSIS_WORLD_TIER_COMPARE -> evaluateApotheosisTierCompare(condition, context);
             case RANDOM_CHANCE -> {
                 double chance = condition.value().orElse(1.0D);
                 double roll = deterministicRoll(context, rule.id(), "condition_random_chance", index);
@@ -634,6 +639,60 @@ public final class WorldAwakenedRuleEngine {
                     "unsupported_condition_type:" + condition.typeId()));
         };
     }
+
+    private static Optional<ConditionFailure> evaluateApotheosisTierCompare(
+            CompiledCondition condition,
+            WorldAwakenedRuleMatchContext context) {
+        if (!context.configToggles().getOrDefault("compat.apotheosis.enabled", false)) {
+            return Optional.of(new ConditionFailure(
+                    WorldAwakenedRejectionReason.INTEGRATION_INACTIVE,
+                    "apotheosis_disabled"));
+        }
+        if (!context.configToggles().getOrDefault("compat.apotheosis.allow_world_tier_conditions", false)) {
+            return Optional.of(new ConditionFailure(
+                    WorldAwakenedRejectionReason.CONFIG_GATE_FAILED,
+                    "apotheosis_world_tier_conditions_disabled"));
+        }
+        if (context.apotheosisWorldTier().isEmpty()) {
+            return Optional.of(new ConditionFailure(
+                    WorldAwakenedRejectionReason.INTEGRATION_INACTIVE,
+                    context.apotheosisTierDetail().orElse("apotheosis_tier_provider_unavailable")));
+        }
+        if (condition.text().isEmpty()) {
+            return Optional.of(new ConditionFailure(
+                    WorldAwakenedRejectionReason.INVALID_REFERENCED_OBJECT,
+                    "apotheosis_world_tier_compare_missing_op"));
+        }
+
+        double tier = context.apotheosisWorldTier().getAsDouble();
+        String op = condition.text().get().trim().toLowerCase(Locale.ROOT);
+        boolean matches = switch (op) {
+            case ">", "gt" -> condition.value().isPresent() && tier > condition.value().getAsDouble();
+            case ">=", "gte", "ge", "at_least" -> condition.value().isPresent() && tier >= condition.value().getAsDouble();
+            case "<", "lt" -> condition.value().isPresent() && tier < condition.value().getAsDouble();
+            case "<=", "lte", "le", "at_most" -> condition.value().isPresent() && tier <= condition.value().getAsDouble();
+            case "==", "=", "eq", "equal", "equals" -> condition.value().isPresent() && tier == condition.value().getAsDouble();
+            case "!=", "<>", "ne", "not_equal" -> condition.value().isPresent() && tier != condition.value().getAsDouble();
+            case "in", "one_of", "any_of" -> {
+                if (!condition.intValues().isEmpty()) {
+                    int roundedTier = (int) Math.round(tier);
+                    yield condition.intValues().contains(roundedTier);
+                }
+                if (condition.value().isPresent()) {
+                    yield tier == condition.value().getAsDouble();
+                }
+                yield false;
+            }
+            default -> false;
+        };
+        if (matches) {
+            return Optional.empty();
+        }
+        return Optional.of(new ConditionFailure(
+                WorldAwakenedRejectionReason.SELECTOR_MISMATCH,
+                "apotheosis_world_tier_compare_failed tier=" + tier + " op=" + op));
+    }
+
     private static boolean hasStage(
             Set<ResourceLocation> activeStages,
             WorldAwakenedStageRegistry stageRegistry,
@@ -753,6 +812,13 @@ public final class WorldAwakenedRuleEngine {
         }
         return Set.copyOf(phases);
     }
+
+    private static Set<Integer> parseApotheosisTierValues(JsonObject object) {
+        Set<Integer> values = new LinkedHashSet<>();
+        readIntArray(object, values, "values", "tiers", "in", "any_of", "one_of");
+        return Set.copyOf(values);
+    }
+
     private static void parseMoonPhaseValue(JsonElement raw, Set<Integer> phases) {
         if (raw == null || raw.isJsonNull()) {
             return;
@@ -858,6 +924,19 @@ public final class WorldAwakenedRuleEngine {
             }
         }
         return Optional.empty();
+    }
+
+    private static void readIntArray(JsonObject object, Set<Integer> collector, String... keys) {
+        for (String key : keys) {
+            if (!object.has(key) || !object.get(key).isJsonArray()) {
+                continue;
+            }
+            for (JsonElement raw : object.getAsJsonArray(key)) {
+                if (raw.isJsonPrimitive() && raw.getAsJsonPrimitive().isNumber()) {
+                    collector.add(raw.getAsInt());
+                }
+            }
+        }
     }
     private enum ConditionKind {
         STAGE_UNLOCKED,

@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -67,6 +68,8 @@ class WorldAwakenedLootServiceTest {
                 Optional.empty(),
                 Set.of(),
                 false,
+                OptionalDouble.empty(),
+                Optional.empty(),
                 Set.of("minecraft"),
                 Map.of("loot.enable_loot_evolution", true),
                 "test-seed",
@@ -121,6 +124,8 @@ class WorldAwakenedLootServiceTest {
                 Optional.empty(),
                 Set.of(),
                 false,
+                OptionalDouble.empty(),
+                Optional.empty(),
                 Set.of("minecraft"),
                 Map.of("loot.enable_loot_evolution", true),
                 "test-seed",

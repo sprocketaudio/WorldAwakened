@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/dormant",
+  "display_name": { "translate": "stage.worldawakened.defaults.dormant" },
+  "description": { "translate": "stage.worldawakened.defaults.dormant.description" },
+  "sort_index": 0,
+  "visible_to_players": true,
+  "enabled": true,
+  "progression_group": "worldawakened:default_progression",
+  "unlock_policy": "cumulative",
+  "default_unlocked": true
+}

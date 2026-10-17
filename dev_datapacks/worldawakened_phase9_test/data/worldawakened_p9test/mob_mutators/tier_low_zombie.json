@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened_p9test:tier_low_zombie",
+  "display_name": "P9 Low Tier Zombie",
+  "enabled": true,
+  "rarity": "common",
+  "weight": 10,
+  "stacking_group": "p9_tier_bucket",
+  "max_stack_count": 1,
+  "components": [
+    {
+      "type": "worldawakened:max_health_multiplier",
+      "parameters": {
+        "multiplier": 1.2
+      }
+    },
+    {
+      "type": "worldawakened:movement_speed_bonus",
+      "parameters": {
+        "amount": 0.02
+      }
+    }
+  ],
+  "eligible_entities": [
+    "minecraft:zombie"
+  ],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": false,
+  "application_contexts": [
+    "on_spawn"
+  ]
+}

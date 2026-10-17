@@ -3,7 +3,7 @@
 Reference catalog for higher-level authored presets and templates built from shared framework primitives.
 
 - Document status: Active reference catalog
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Preset/template composition patterns and shipped/example status taxonomy
 
 ---
@@ -19,7 +19,7 @@ Related contracts:
 - [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
 - [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md)
 - [ACTION_REFERENCE.md](ACTION_REFERENCE.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [docs/README.md](README.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
@@ -38,10 +38,14 @@ Purpose:
 - bridge low-level component/condition references to practical authored content patterns
 - provide reusable patterns for pack authors and contributors
 - define shipped/default vs example-only vs conceptual template status clearly
-- supply a canonical source for future web authoring preset/template browsing
+- supply a canonical source for future native-editor preset/template browsing
 
 Primary rule:
 - presets are authored compositions, not privileged code-only identities
+
+Native editor status:
+- the implemented `/wa config` foundation reports Standard as the only bundled gameplay profile and does not present Relaxed or Challenging as usable options
+- disabling Standard means `Custom datapacks only`; it filters bundled `worldawakened:defaults/...` definitions without changing external pack precedence
 
 ## 2. Overview
 
@@ -55,7 +59,8 @@ Preset vs primitive component:
 - preset/template: an authored bundle of multiple primitives plus gating/selection context
 
 Content source distinctions:
-- shipped content: distributed in the optional external example pack at `example_datapacks/worldawakened_example_pack/data/worldawakened/...`
+- bundled defaults: loaded from the mod jar under `data/worldawakened/...`
+- shipped examples: distributed in the optional external example pack at `example_datapacks/worldawakened_example_pack/data/worldawakened/...`
 - example content: documented and recommended, but not distributed in the shipped external example pack
 - conceptual templates: design patterns for bespoke packs or future example-pack sets
 
@@ -63,7 +68,7 @@ Why presets exist:
 - faster authoring
 - easier onboarding
 - practical composition examples
-- better future "build from template" UX in the web authoring tool
+- better future "build from template" UX in the native editor
 
 ## 3. Status / Source Taxonomy
 
@@ -71,6 +76,7 @@ Every catalog entry must declare one source status:
 
 | Status | Definition |
 | --- | --- |
+| `bundled` | Included in the mod jar and active by default through the normal datapack loader. |
 | `shipped` | Included in the external optional example pack under `example_datapacks/worldawakened_example_pack/data/worldawakened/`. |
 | `example-only` | Documented as a concrete reference pattern but not included in the shipped external example pack. |
 | `conceptual` | Design pattern template for bespoke/future content. |
@@ -91,6 +97,12 @@ Compact index:
 
 | Preset / Template | Category | Source Status | Role |
 | --- | --- | --- | --- |
+| `weathered` (`worldawakened:defaults/weathered`) | Mutation | bundled | Mild early Overworld resilience |
+| `nether_hardened` (`worldawakened:defaults/nether_hardened`) | Mutation | bundled | Modest Nether health/damage pressure |
+| `void_hardened` (`worldawakened:defaults/void_hardened`) | Mutation | bundled | Bounded End health/damage/speed pressure |
+| `overworld_intro` (`worldawakened:defaults/overworld_intro`) | Mutation pool | bundled | 2% day-three Overworld introduction |
+| `nether_escalation` (`worldawakened:defaults/nether_escalation`) | Mutation pool | bundled | 4% post-Nether progression pool |
+| `end_escalation` (`worldawakened:defaults/end_escalation`) | Mutation pool | bundled | 6% post-End progression pool |
 | `juggernaut` (`worldawakened:juggernaut_preset`) | Mutation | shipped | Durable slow frontline elite |
 | `summoner` (`worldawakened:summoner_preset`) | Mutation | shipped | Reinforcement pressure |
 | `hunter` (`worldawakened:hunter_preset`) | Mutation | shipped | Pursuit/tracking pressure |
@@ -135,6 +147,39 @@ Each entry follows this format:
 `Related Objects` may include supporting rules, pools, offers, triggers, profiles, and file references.
 
 ## 6. Mutation Preset Coverage (Category A)
+
+### `hindering` (`worldawakened:defaults/hindering`)
+- **Category:** Bundled Standard mutation
+- **Source Status:** `shipped`
+- **Design Intent:** Introduce a modest, readable control effect without large stat inflation.
+- **Composition Summary:** 35% chance to apply Slowness I for 3 seconds after successful health damage, with a restrained blue outline and effect particles.
+- **Key Components:** `worldawakened:on_hit_effect`, `worldawakened:glow_style`, `worldawakened:effect_particles`.
+- **Key Conditions:** Standard pool stage/dimension gating; starts at S2.
+- **Related Objects:** Ranked Standard single pools and the S5/S6 curated End/Overworld pairs.
+- **Example Use Case:** Early warning that mutations can alter combat behavior.
+- **Notes:** Spawner/trial-spawner and boss protections are inherited from the Standard pools.
+
+### `vampiric` (`worldawakened:defaults/vampiric`)
+- **Category:** Bundled Standard mutation
+- **Source Status:** `shipped`
+- **Design Intent:** Reward denying hit uptime without turning ordinary mutated mobs into extreme sustain threats.
+- **Composition Summary:** Heals 10% of actual post-mitigation health damage, capped before overkill, with a red pulsing outline and particles.
+- **Key Components:** `worldawakened:life_steal`, `worldawakened:glow_style`, `worldawakened:effect_particles`.
+- **Key Conditions:** Standard pool stage/dimension gating; rare from S3.
+- **Related Objects:** Ranked Standard single pools and curated `Vampiric + Bulwark`, `Hindering + Vampiric`, and `Hunter + Vampiric` pairs.
+- **Example Use Case:** A sustain threat that becomes more dangerous in complementary late-game pairs.
+- **Notes:** Healing occurs only after successful mob-attributed health damage; mob-owned projectiles use the damage-source owner.
+
+### `volatile` (`worldawakened:defaults/volatile`)
+- **Category:** Bundled Standard mutation
+- **Source Status:** `shipped`
+- **Design Intent:** Create clear spacing pressure on death without terrain damage or recursive explosion chains.
+- **Composition Summary:** One power-2.5 entity-damaging death explosion, bright orange pulsing outline, and frequent flame particles.
+- **Key Components:** `worldawakened:death_explosion`, `worldawakened:glow_style`, `worldawakened:ambient_particles`.
+- **Key Conditions:** Standard pool stage/dimension gating; rare from S4; default entity allowlist excludes creepers.
+- **Related Objects:** Ranked Standard single pools and curated `Volatile + Nether-Hardened` and `Volatile + Void-Hardened` pairs.
+- **Example Use Case:** A late-mid-game target that must be identified and finished at a safe distance.
+- **Notes:** Uses no block interaction, fires once, and suppresses synchronous World Awakened death-explosion chains.
 
 ### `juggernaut` (`worldawakened:juggernaut_preset`)
 - **Category:** Mutation preset
@@ -322,7 +367,7 @@ Each entry follows this format:
 - **Category:** Mutation pool template
 - **Source Status:** `shipped`
 - **Design Intent:** Introduce elite behavior early with controlled intensity.
-- **Composition Summary:** Pool with low cap (`max_mutators_per_entity: 1`) and weighted starter mutators.
+- **Composition Summary:** Unified pool with required initial/additional chances, low cap (`max_mutators_per_entity: 1`), and weighted starter mutators.
 - **Key Components:** Through mutator refs: hunter tracking (`wall_sense` set), defense (`temporary_shield` set), sustain offense (`life_steal` set).
 - **Key Conditions:** `worldawakened:current_dimension` (overworld), `worldawakened:world_day_gte` (0), plus rule-side `worldawakened:random_chance`.
 - **Related Objects:** Pool `worldawakened:starter_elite_pool`; rule `worldawakened:mutators/overworld_starter_mutation_pressure`; mutators `hunter_preset`, `unyielding_guard`, `vampiric_predator`.
@@ -579,7 +624,22 @@ Authoring-shape note:
 
 ## 10. Shipped Content Alignment
 
-Shipped alignment snapshot date: 2026-03-12.
+Shipped alignment snapshot date: 2026-10-17.
+
+Bundled Standard source root:
+- `src/main/resources/data/worldawakened/`
+
+Current bundled Standard object counts:
+- `stages`: 7
+- `trigger_rules`: 9
+- `mob_mutators`: 8
+- `mutation_pools`: 23 (12 ranked single classes, 8 ranked pair classes, 3 invasion classes)
+- `ascension_rewards`: 9
+- `ascension_offers`: 3
+- `loot_profiles`: 3
+- `invasion_profiles`: 3
+
+All bundled gameplay IDs are in `worldawakened:defaults/...`. Detailed mappings and provisional values are maintained in [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md).
 
 External example-pack source root for shipped entries:
 - `example_datapacks/worldawakened_example_pack/data/worldawakened/`
@@ -599,16 +659,16 @@ Shipped template/preset entries in this catalog map directly to external example
 - mutation pool templates: `mutation_pools/*.json`
 - shipped rule template family: `rules/mutators/*.json` and `rules/ascension/*.json`
 
-## 11. Future Web-Editor Relevance
+## 11. Future Native-Editor Relevance
 
 This catalog is the intended source document for:
 - preset browser candidates
 - starter template cards
 - guided authoring examples
-- future "build from template" flows in the web authoring tool
+- future "build from template" flows in the native editor
 
 UI/tooling guidance:
-- expose `Source Status` badges directly (`shipped`, `example-only`, `conceptual`, `deprecated`)
+- expose `Source Status` badges directly (`bundled`, `shipped`, `example-only`, `conceptual`, `deprecated`)
 - allow filtering by category and status
 - keep template cards linked to real object IDs/paths when `shipped`
 

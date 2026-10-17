@@ -3,7 +3,7 @@
 Canonical reference for shared execution scopes, guaranteed context, and condition/action legality.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Shared scope model used by runtime, validators, and tooling
 
 ---
@@ -89,6 +89,7 @@ Each scope entry in this file defines:
   - world reference
   - world progression state snapshot
   - world config gates/toggles
+  - world day/time context when supplied by a world evaluation event such as `world_day_milestone`
   - world scalar context when relevant
 - Optional context:
   - none unless explicitly attached by event wrappers
@@ -148,6 +149,7 @@ Each scope entry in this file defines:
   - missing player reference invalidates `player` scope evaluation and fails closed
 - Notes/example:
   - Example: player rule checks `ascension_reward_owned` and grants `grant_ascension_offer`.
+  - Player-scoped one-shot `advancement_completed` triggers own their consumed state per player and may be replayed on login only for personally completed advancements; shared world stage state is not a substitute for that qualification.
 
 ### C. `entity`
 

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/kill_dragon",
+  "enabled": true,
+  "priority": 100,
+  "trigger_type": "worldawakened:advancement_completed",
+  "source_scope": "player",
+  "conditions": [
+    { "type": "worldawakened:advancement_completed", "parameters": { "advancement": "minecraft:end/kill_dragon" } },
+    { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/world_awakened" } }
+  ],
+  "actions": [
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/dormant" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/stirring" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/unease" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/nether_reached" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/gathering_storm" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/end_reached" } },
+    { "type": "worldawakened:unlock_stage", "parameters": { "stage": "worldawakened:defaults/world_awakened" } }
+  ],
+  "one_shot": true
+}

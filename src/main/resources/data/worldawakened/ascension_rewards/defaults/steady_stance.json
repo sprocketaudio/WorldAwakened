@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/steady_stance",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.steady_stance" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.steady_stance.desc" },
+  "icon": { "item": "minecraft:shield" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:knockback_resistance_bonus", "parameters": { "amount": 0.08 } }
+  ],
+  "rarity": "rare",
+  "tags": ["worldawakened:defaults", "worldawakened:survival"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

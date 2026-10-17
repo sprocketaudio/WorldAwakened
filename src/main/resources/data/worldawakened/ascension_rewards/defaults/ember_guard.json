@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/ember_guard",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.ember_guard" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.ember_guard.desc" },
+  "icon": { "item": "minecraft:blaze_powder" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:fire_resistance_passive", "parameters": {} }
+  ],
+  "rarity": "rare",
+  "tags": ["worldawakened:defaults", "worldawakened:survival"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/awakened_choice",
+  "display_name": { "translate": "ascension_offer.worldawakened.defaults.awakened_choice" },
+  "description": { "translate": "ascension_offer.worldawakened.defaults.awakened_choice.desc" },
+  "enabled": true,
+  "trigger_conditions": [],
+  "choice_count": 3,
+  "selection_count": 1,
+  "candidate_rewards": [
+    "worldawakened:defaults/dragon_fang",
+    "worldawakened:defaults/dragon_scale",
+    "worldawakened:defaults/awakened_fortune"
+  ],
+  "candidate_reward_tags": [],
+  "offer_mode": "explicit_list",
+  "weighting_rules": {},
+  "ui_priority": 10,
+  "allow_duplicates_across_players": true,
+  "reward_repeat_policy": "block_all"
+}

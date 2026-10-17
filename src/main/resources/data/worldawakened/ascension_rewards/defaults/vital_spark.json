@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/vital_spark",
+  "display_name": { "translate": "ascension_reward.worldawakened.defaults.vital_spark" },
+  "description": { "translate": "ascension_reward.worldawakened.defaults.vital_spark.desc" },
+  "icon": { "item": "minecraft:golden_apple" },
+  "enabled": true,
+  "components": [
+    { "type": "worldawakened:max_health_bonus", "parameters": { "amount": 2.0 } }
+  ],
+  "rarity": "uncommon",
+  "tags": ["worldawakened:defaults", "worldawakened:adaptation"],
+  "offer_weight": 1,
+  "requires_conditions": [],
+  "forbidden_conditions": [],
+  "max_rank": 1
+}

@@ -38,5 +38,7 @@ public record WorldAwakenedRuleMatchContext(
         boolean invasionActive,
         Optional<ResourceLocation> invasionProfileId,
         Set<String> invasionTags,
-        Optional<String> structureContext) {
+        Optional<String> structureContext,
+        OptionalDouble apotheosisWorldTier,
+        Optional<String> apotheosisTierDetail) {
 }

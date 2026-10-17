@@ -1,9 +1,9 @@
 # World Awakened Wiki
 
-Human-friendly guide set for operators, pack authors, testers, and server owners.
+Friendly guide set for operators, pack authors, testers, and server owners.
 
 - Document status: Active companion guide index
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Scope: Plain-language concepts, recipes, workflows, troubleshooting, and FAQs
 
 ---
@@ -18,6 +18,8 @@ This `docs/wiki/` layer exists to explain World Awakened the way a real user nee
 - how to test and recover safely
 
 Use this layer when you need the framework explained in plain language rather than as a strict reference contract.
+
+New installations include a conservative Standard gameplay profile. Start with [QUICKSTARTS.md](QUICKSTARTS.md) to verify it, then use `/wa config` for Global Settings or the native mutation-pool editor. The editor can search the running server's living mobs and persist validated world overrides without rewriting datapacks; use the datapack guides for definition types not yet exposed. The hosted web editor is retired.
 
 ## What This Layer Is Not
 

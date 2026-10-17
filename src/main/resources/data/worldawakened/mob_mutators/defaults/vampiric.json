@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/vampiric",
+  "display_name": { "translate": "mutator.worldawakened.defaults.vampiric" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 4,
+  "stacking_group": "worldawakened:default_sustain",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:life_steal", "parameters": { "amount": 0.10 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#b8324a", "brightness": 0.68, "see_through_walls": false, "pulse": true, "pulse_speed": 0.55, "pulse_strength": 0.10 } },
+    { "type": "worldawakened:effect_particles", "parameters": { "effect_type": "minecraft:regeneration", "color": "#b8324a", "count": 2, "interval_ticks": 10 } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:vindicator", "minecraft:pillager", "minecraft:wither_skeleton", "minecraft:piglin_brute", "minecraft:hoglin", "minecraft:endermite", "minecraft:shulker"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

@@ -28,6 +28,7 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentValidation;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.codec.WorldAwakenedJsonCodecs;
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinition;
@@ -41,6 +42,7 @@ import net.sprocketgames.worldawakened.data.definition.LootProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationComponentDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationPoolDefinition;
+import net.sprocketgames.worldawakened.data.validation.WorldAwakenedMutationPoolValidation;
 import net.sprocketgames.worldawakened.data.definition.RuleDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageUnlockPolicy;
@@ -78,6 +80,7 @@ public final class WorldAwakenedDatapackLoader {
             "stage_unlocked",
             "stage_locked",
             "current_dimension",
+            "world_day_gte",
             "advancement_completed",
             "entity_type",
             "entity_tag",
@@ -367,7 +370,19 @@ public final class WorldAwakenedDatapackLoader {
                             "mutation_chance must be a number in range [0.0, 1.0]",
                             "disabled_object"));
                 }
-                if (definition.maxMutatorsPerEntity().isPresent() && definition.maxMutatorsPerEntity().get() < 1) {
+                if (!Double.isFinite(definition.additionalMutationChance())
+                        || definition.additionalMutationChance() < 0.0D
+                        || definition.additionalMutationChance() > 1.0D) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.MUTATION_CHANCE_INVALID,
+                            "mutation_pools",
+                            definition.id(),
+                            sourcePath,
+                            "additional_mutation_chance must be a number in range [0.0, 1.0]",
+                            "disabled_object"));
+                }
+                if (definition.maxMutatorsPerEntity() < 1) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.POOL_SELECTION_IMPOSSIBLE,
@@ -535,6 +550,24 @@ public final class WorldAwakenedDatapackLoader {
         Map<ResourceLocation, IntegrationProfileDefinition> integrationProfiles = loadType(resourceManager, INTEGRATION_PROFILES, collector, logger);
         Map<ResourceLocation, EntityBossFlagMapDefinition> entityBossFlags = loadType(resourceManager, ENTITY_BOSS_FLAGS, collector, logger);
 
+        if (!WorldAwakenedConfigService.settings().defaultGameplayEnabled()) {
+            stages = filterBundledDefaults(stages, false);
+            triggerRules = filterBundledDefaults(triggerRules, false);
+            rules = filterBundledDefaults(rules, false);
+            ascensionRewards = filterBundledDefaults(ascensionRewards, false);
+            ascensionOffers = filterBundledDefaults(ascensionOffers, false);
+            mobMutators = filterBundledDefaults(mobMutators, false);
+            mutationPools = filterBundledDefaults(mutationPools, false);
+            lootProfiles = filterBundledDefaults(lootProfiles, false);
+            invasionProfiles = filterBundledDefaults(invasionProfiles, false);
+            integrationProfiles = filterBundledDefaults(integrationProfiles, false);
+            entityBossFlags = filterBundledDefaults(entityBossFlags, false);
+            WorldAwakenedLog.info(
+                    logger,
+                    WorldAwakenedLogCategory.DATA_LOAD,
+                    "Bundled gameplay profile disabled by general.enable_builtin_gameplay");
+        }
+
         stages = dropConflictingStages(stages, collector);
         triggerRules = dropObjectsMissingStageRefs("trigger_rules", triggerRules, stages, TriggerRuleDefinition::id, rule ->
                 mergeStageRefs(extractStageReferences(rule.conditions()), extractStageReferences(rule.actions())), collector);
@@ -548,6 +581,7 @@ public final class WorldAwakenedDatapackLoader {
                 mergeStageRefs(extractStageReferences(profile.conditions()), extractStageReferences(profile.stageFilters())), collector);
         invasionProfiles = dropObjectsMissingStageRefs("invasion_profiles", invasionProfiles, stages, InvasionProfileDefinition::id, profile ->
                 mergeStageRefs(extractStageReferences(profile.conditions()), extractStageReferences(profile.stageFilters())), collector);
+        validateIntegrationStageHooks(integrationProfiles, stages.keySet(), collector);
 
         mutationPools = dropInvalidMutationPools(mutationPools, mobMutators, collector);
         ascensionOffers = dropInvalidAscensionOffers(ascensionOffers, ascensionRewards, collector);
@@ -578,6 +612,27 @@ public final class WorldAwakenedDatapackLoader {
                         Map.copyOf(entityBossFlags),
                         WorldAwakenedDataDrivenBossClassifier.fromMaps(entityBossFlags.values().stream().toList())),
                 summary);
+    }
+
+    static <T extends WorldAwakenedDataDefinition> Map<ResourceLocation, T> filterBundledDefaults(
+            Map<ResourceLocation, T> definitions,
+            boolean enabled) {
+        if (enabled || definitions.isEmpty()) {
+            return definitions;
+        }
+        Map<ResourceLocation, T> filtered = new LinkedHashMap<>();
+        definitions.forEach((id, definition) -> {
+            if (!isBundledDefaultId(id)) {
+                filtered.put(id, definition);
+            }
+        });
+        return Map.copyOf(filtered);
+    }
+
+    private static boolean isBundledDefaultId(ResourceLocation id) {
+        return id != null
+                && "worldawakened".equals(id.getNamespace())
+                && id.getPath().startsWith("defaults/");
     }
 
     private static <T extends WorldAwakenedDataDefinition> Map<ResourceLocation, T> loadType(
@@ -797,6 +852,102 @@ public final class WorldAwakenedDatapackLoader {
         }
     }
 
+    static void validateIntegrationStageHooks(
+            Map<ResourceLocation, IntegrationProfileDefinition> integrationProfiles,
+            Set<ResourceLocation> knownStageIds,
+            WorldAwakenedValidationSummary.Builder collector) {
+        for (IntegrationProfileDefinition definition : integrationProfiles.values()) {
+            String sourcePath = definition.id().toString();
+            for (int index = 0; index < definition.stageHooks().size(); index++) {
+                JsonElement raw = definition.stageHooks().get(index);
+                if (!raw.isJsonObject()) {
+                    continue;
+                }
+
+                JsonObject node = raw.getAsJsonObject();
+                JsonElement rawType = node.get("type");
+                if (rawType == null || !rawType.isJsonPrimitive()) {
+                    continue;
+                }
+
+                ResourceLocation typeId = ResourceLocation.tryParse(rawType.getAsString());
+                if (typeId == null) {
+                    continue;
+                }
+                if (!"tier_threshold_unlock".equals(typeId.getPath().toLowerCase(Locale.ROOT))) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INTEGRATION_STAGE_HOOK_INVALID,
+                            "integration_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "stage_hooks[" + index + "] unsupported type: " + typeId,
+                            "disabled_branch"));
+                    continue;
+                }
+
+                JsonElement rawParameters = node.get("parameters");
+                if (rawParameters == null || !rawParameters.isJsonObject()) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INTEGRATION_STAGE_HOOK_INVALID,
+                            "integration_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "stage_hooks[" + index + "] parameters must be an object",
+                            "disabled_branch"));
+                    continue;
+                }
+
+                JsonObject parameters = rawParameters.getAsJsonObject();
+                OptionalDouble threshold = readAnyDouble(parameters, "tier", "threshold", "value", "min", "gte", "at_least");
+                if (threshold.isEmpty() || threshold.getAsDouble() < 0.0D) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INTEGRATION_STAGE_HOOK_INVALID,
+                            "integration_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "stage_hooks[" + index + "] tier_threshold_unlock requires non-negative numeric tier/threshold",
+                            "disabled_branch"));
+                }
+
+                ResourceLocation unlockStage = null;
+                for (String key : List.of("unlock_stage", "stage", "stage_id")) {
+                    JsonElement rawStage = parameters.get(key);
+                    if (rawStage == null || !rawStage.isJsonPrimitive()) {
+                        continue;
+                    }
+                    unlockStage = ResourceLocation.tryParse(rawStage.getAsString());
+                    if (unlockStage != null) {
+                        break;
+                    }
+                }
+                if (unlockStage == null) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INTEGRATION_STAGE_HOOK_INVALID,
+                            "integration_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "stage_hooks[" + index + "] tier_threshold_unlock requires parameters.unlock_stage",
+                            "disabled_branch"));
+                    continue;
+                }
+                if (!knownStageIds.contains(unlockStage)) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.STAGE_REF_MISSING,
+                            "integration_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "stage_hooks[" + index + "] references missing stage " + unlockStage,
+                            "disabled_branch"));
+                }
+            }
+        }
+    }
+
     static Optional<WorldAwakenedDiagnostic> evaluateMutatorComponentCountLimit(
             MobMutatorDefinition definition,
             String sourcePath,
@@ -829,14 +980,11 @@ public final class WorldAwakenedDatapackLoader {
         if (maxMutatorsPerSpawn < 1) {
             return Optional.empty();
         }
-        int fallbackMax = Math.max(1, defaultMaxMutatorsPerEntity);
-        int requestedMax = definition.maxMutatorsPerEntity().orElse(fallbackMax);
+        int requestedMax = definition.maxMutatorsPerEntity();
         if (requestedMax <= maxMutatorsPerSpawn) {
             return Optional.empty();
         }
-        String source = definition.maxMutatorsPerEntity().isPresent()
-                ? "pool max_mutators_per_entity"
-                : "default mutators.max_mutators_per_mob";
+        String source = "pool max_mutators_per_entity";
         return Optional.of(new WorldAwakenedDiagnostic(
                 WorldAwakenedDiagnosticSeverity.WARNING,
                 WorldAwakenedDiagnosticCodes.PERF_MUTATOR_COUNT_EXCEEDED,
@@ -1256,19 +1404,19 @@ public final class WorldAwakenedDatapackLoader {
             WorldAwakenedValidationSummary.Builder collector) {
         Map<ResourceLocation, MutationPoolDefinition> filtered = new LinkedHashMap<>();
         for (MutationPoolDefinition pool : mutationPools.values()) {
-            boolean invalid = false;
-            for (ResourceLocation mutatorId : extractMutatorRefs(pool.mutators())) {
-                if (!mutators.containsKey(mutatorId)) {
-                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
-                            WorldAwakenedDiagnosticSeverity.ERROR,
-                            WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
-                            "mutation_pools",
-                            pool.id(),
-                            null,
-                            "Missing mutator reference: " + mutatorId,
-                            "pool_disabled"));
-                    invalid = true;
-                }
+            List<String> errors = WorldAwakenedMutationPoolValidation.validate(pool, mutators);
+            boolean invalid = !errors.isEmpty();
+            for (String error : errors) {
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        error.contains("exclusive") || error.contains("stacking group")
+                                ? WorldAwakenedDiagnosticCodes.COMPONENT_COMPOSITION_INVALID
+                                : WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                        "mutation_pools",
+                        pool.id(),
+                        null,
+                        error,
+                        "pool_disabled"));
             }
             if (invalid) {
                 collector.incrementDisabled("mutation_pools");
@@ -1448,6 +1596,7 @@ public final class WorldAwakenedDatapackLoader {
             case "stage_unlocked",
                     "stage_locked",
                     "current_dimension",
+                    "world_day_gte",
                     "advancement_completed",
                     "entity_type",
                     "entity_tag",

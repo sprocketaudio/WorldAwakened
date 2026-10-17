@@ -3,7 +3,7 @@
 Datapack format and content contract for user-created progression/content packs.
 
 - Document status: Draft for implementation
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Applies to: Minecraft 1.21.1 + NeoForge + World Awakened (`worldawakened`)
 
 ---
@@ -22,7 +22,7 @@ Related contracts:
 - [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [docs/README.md](README.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
@@ -44,7 +44,7 @@ This document defines:
 
 This is a format/contract guide. It does not define Java internals.
 For the canonical mutation/ascension component catalog and per-component parameter/status details, see [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md).
-For the web authoring companion behavior and UX contract, see [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md).
+For built-in content and the future native editor direction, see [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md).
 Shared framework contracts for scopes, conditions, actions, component composition, and status taxonomy are defined in [SPECIFICATION.md](SPECIFICATION.md) Sections `3B`-`3F`.
 
 ---
@@ -74,18 +74,19 @@ Note on `pack.mcmeta`:
 
 ---
 
-## 2A. Web Authoring Tool Interop Contract
+## 2A. Bundled Content and Native Editor Interop Contract
 
-World Awakened v1 includes a browser-based authoring companion.
+World Awakened includes a conservative built-in Standard profile and will add a native in-game editor incrementally.
 
 Interop rules:
-- there is one shared datapack/data contract across manual JSON authoring, web-tool authoring, runtime-authored state, and hosted live-session payloads
-- tool exports must remain canonical World Awakened datapack JSON, not a proprietary intermediate format
+- there is one shared datapack/data contract across manual JSON authoring, bundled defaults, runtime-authored state, and native-editor overrides
+- editor exports must remain canonical World Awakened datapack JSON, not a proprietary intermediate format
 - deterministic export ordering is recommended to keep diffs stable
 - import workflows should preserve IDs and references unless intentionally edited
 - schema-version mismatches should surface as migration warnings or errors with actionable diagnostics
-- live linked session apply payloads must use the same canonical object shapes as datapack files
-- live linked apply operations are runtime-validated before commit; invalid objects fail closed with diagnostics
+- native-editor apply payloads must use the same canonical object shapes as datapack files
+- native-editor apply operations are permission-checked, revision-checked, and runtime-validated before commit; invalid objects fail closed with diagnostics
+- internal scopes are inferred where safe, while advanced JSON authoring retains the full explicit contract
 
 Canonical export layout must remain:
 
@@ -102,6 +103,12 @@ data/<namespace>/
   invasion_profiles/
   integration_profiles/
 ```
+
+Bundled defaults use the `worldawakened:defaults/...` ID family. An external datapack resource with the exact same namespace and path replaces its bundled counterpart through normal pack precedence. A differently named object is additive, so authors building a fully custom experience should deliberately replace or disable the bundled definitions rather than unintentionally layering more eligible pools onto them.
+
+The shipped family includes ranked stages with unified mutation pools and optional curated combinations, personal Ascension offers/rewards, additive mutation loot profiles, and pressure-event profiles. The exact provisional values and stable IDs are catalogued in [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md).
+
+Set `general.enable_builtin_gameplay=false` in `worldawakened-common.toml` to filter the complete `worldawakened:defaults/...` family during reload. Other namespaces and other `worldawakened` paths remain available.
 
 ---
 
@@ -620,7 +627,7 @@ Recommended full shape:
 Field notes:
 - `display_name`: string or text component object
 - `unlock_policy`: `cumulative | exclusive_group | replace_group`
-- `default_unlocked`: useful for baseline stage
+- `default_unlocked`: enabled default stages are idempotently inserted into each selected progression bucket on access, with unlock source `default_unlocked`; use this for true baselines rather than expecting a separate trigger
 - `aliases`: optional legacy stage IDs used for save migration after renames
 
 Field defaults:
@@ -702,6 +709,7 @@ Common `trigger_type` values:
 - `worldawakened:item_crafted`
 - `worldawakened:block_placed`
 - `worldawakened:block_broken`
+- `worldawakened:world_day_milestone`
 - `worldawakened:manual_debug`
 - `worldawakened:apotheosis_tier_threshold`
 
@@ -723,7 +731,10 @@ Manual debug flow:
 - execute with `/wa trigger fire <trigger_rule_id>`
 
 Note:
-- world-context checks like world day and player distance from spawn should be expressed in `rules.conditions`, not as core trigger types
+- `world_day_milestone` is a bounded generic evaluation event, not a hardcoded day threshold; author `worldawakened:world_day_gte` plus `one_shot` to define the actual milestone
+- on player login, World Awakened replays only unconsumed `source_scope: "player"`, `one_shot: true`, `advancement_completed` triggers whose authored advancement is already complete; this supports personal milestone catch-up through the normal matcher/action pipeline
+- world-scoped and repeatable advancement triggers are not login-replayed
+- other world-context checks like player distance from spawn remain conditions evaluated by an appropriate surrounding event/rule context
 
 Field defaults:
 - `schema_version`: `1`
@@ -904,6 +915,11 @@ Authoring model:
 - `worldawakened:equip_item` may replace one vanilla equipment slot on the spawned mob; unsupported slot/item cases fail closed at the component level and do not invalidate unrelated components on the same mutator
 - `worldawakened:equip_item` uses `parameters.item` (required), optional `parameters.slot` (`auto` by default), optional `parameters.drop_chance`, and optional `parameters.enchantments[]` entries of shape `{ "id": "<enchantment_id>", "level": <int> }`
 - when `worldawakened:equip_item` omits `slot` or uses `auto`, runtime resolves the target slot from the item's vanilla equipable metadata and otherwise falls back to `mainhand`
+- `worldawakened:on_hit_effect` uses a registered `effect`, optional `duration_ticks` (`100` default, maximum `12000`), optional `amplifier` (`0` default, maximum `255`), and optional `chance` (`1` default, range `0..1`)
+- `worldawakened:life_steal.amount` is an actual post-mitigation health-damage healing ratio in `(0,1]`, capped by the target's health before the hit so overkill cannot inflate healing; selected contributions add and clamp to `1`
+- `worldawakened:death_explosion.amount` is explosion power in `(0,8]`; the strongest selected contribution wins, block damage is disabled, and synchronous explosion chains are suppressed
+- these live combat components are compiled into bounded persistent mob state during spawn application; hit/death event paths do not parse datapack JSON
+- after successful mutation application, resolvable mutator `display_name` components are composed with the vanilla entity name and shown above the mob; mobs that already have a custom name keep it unchanged
 - compat-sensitive components should document required optional runtime surfaces (for example extra slot systems, custom combat hooks, boss-runtime metadata, custom attributes, or visual channels) so operators can gate content per modpack
 - missing mutator definitions referenced by persisted provenance remain inspectable and non-fatal; World Awakened does not auto-substitute another definition
 - use `/wa mob inspect` during testing to verify resolved mutator branches, failed-closed component branches, active visual state (`glow_style` and particle emitters) when present, and missing-definition provenance state
@@ -1032,6 +1048,17 @@ Example:
   "enabled": true,
   "weight": 20,
   "mutation_chance": 0.35,
+  "additional_mutation_chance": 0.10,
+  "max_mutators_per_entity": 2,
+  "combination_mode": "curated",
+  "rare_combinations": [
+    {
+      "id": "my_pack:overworld_night_berserker_shielded",
+      "weight": 1,
+      "mutators": ["my_pack:berserker_t1", "my_pack:shielded_t1"],
+      "eligible_entities": ["minecraft:zombie"]
+    }
+  ],
   "conditions": [
     {
       "type": "worldawakened:current_dimension",
@@ -1060,8 +1087,7 @@ Example:
   "mutators": [
     { "id": "my_pack:berserker_t1", "weight": 10 },
     { "id": "my_pack:shielded_t1", "weight": 6 }
-  ],
-  "max_mutators_per_entity": 2
+  ]
 }
 ```
 
@@ -1070,7 +1096,11 @@ Field defaults:
 - `id`: required
 - `enabled`: `true`
 - `weight`: `1`
-- `mutation_chance`: `1.0`
+- `mutation_chance`: required, `0.0..1.0`
+- `additional_mutation_chance`: required, `0.0..1.0`
+- `max_mutators_per_entity`: required, minimum `1`
+- `combination_mode`: `any_compatible`
+- `rare_combinations`: `[]`
 - `conditions`: `[]`
 - `stage_filters`: absent
 - `apotheosis_tier_filters`: absent
@@ -1080,13 +1110,20 @@ Field defaults:
 - `allow_from_spawner`: `false`
 - `allow_from_trial_spawner`: `false`
 - `mutators`: required
-- `max_mutators_per_entity`: inherit global `mutators.max_mutators_per_mob`
 
 Runtime notes:
 - spawner and trial spawner mobs are excluded by default; opt in per pool with `allow_from_spawner` and `allow_from_trial_spawner`
 - `mutation_chance` is evaluated after pool selection:
   - `1.0`: always proceed (roll skipped)
   - `0.0`: always stop with `chance_failed`
+  - it is rolled once, never once per candidate mutator
+- after a first mutation succeeds, `additional_mutation_chance` is rolled once per further slot until it fails or a cap/compatibility boundary is reached
+- the theoretical chance of exactly two mutations with initial `0.11`, additional `0.02`, and maximum `2` is `0.11 * 0.02 = 0.0022` (0.22%); exactly one is `0.11 * 0.98 = 10.78%`
+- `any_compatible` draws additional distinct compatible mutators from the ordinary weighted list
+- `curated` selects eligible `rare_combinations` as complete weighted units; each combination needs a stable ID, positive weight, at least two distinct parent-pool mutators, and no more members than the pool maximum
+- an empty combination `eligible_entities` list inherits the parent; a non-empty list narrows it and cannot introduce entities outside the parent
+- actual observed counts may be lower than the theoretical distribution because entity eligibility, mutator eligibility, compatibility, and safety budgets can stop selection
+- `apotheosis_tier_filters` are evaluated against the active compat tier provider when enabled; missing provider/context fails closed for the affected pool
   - `0.0 < x < 1.0`: one deterministic roll per selected-pool spawn evaluation
 - in `per_player` progression mode, spawn-time mutator evaluation attributes the spawn to the nearest nearby non-spectator player; if no player can be attributed, the mutator pass fails closed for that spawn
 
@@ -1421,6 +1458,9 @@ Authoring note:
 - user-authored invasion profiles are first-class definitions and should not rely on code-level preset names
 - invasion profiles are pressure-event definitions, not spawn plans
 - Phase 8 v1 invasions do not support WA-owned wave spawning
+- `random_periodic` profiles are evaluated in an allowed loaded dimension that currently contains a player; a dimension-restricted profile cannot schedule from an empty dimension
+- the scheduler does not currently evaluate `time_of_day_range`; do not describe a periodic profile as night-only unless a later implemented condition supplies that guarantee
+- omit significant `reward_profile` completion rewards unless a separate bounded participation check makes timeout completion meaningful
 
 Deferred from Phase 8 v1:
 - `wave_count`
@@ -1522,6 +1562,16 @@ Activation still requires runtime conditions:
 - mod loaded
 - config enabled
 - profile enabled
+
+Simple/default Apotheosis authoring path:
+- use `stage_hooks` with `worldawakened:tier_threshold_unlock` when you want "Apotheosis tier reached -> unlock WA stage"
+- `parameters.tier` is a minimum threshold (`>=`)
+- `parameters.unlock_stage` is the WA stage to unlock
+- these hooks are evaluated only when `compat.apotheosis.mode` is `derived_stage` or `hybrid`
+- runtime checks happen on player login/respawn and on a bounded server-side periodic reconcile pass so external Apotheosis tier changes are picked up without manual WA commands
+
+Advanced Apotheosis authoring path:
+- keep using direct tier-aware conditions and filters (`worldawakened:apotheosis_world_tier_compare`, offer/pool/profile tier filters) when you want explicit per-system control instead of stage-derived progression
 
 Design guidance:
 - do not create an integration profile just to reference a modded mob or boss by entity ID
@@ -1746,6 +1796,7 @@ Offer rules:
 - players may choose exactly one reward from a v1 offer
 - unchosen displayed rewards become permanently forfeited for that offer
 - resolved offers do not reopen for a different choice
+- `apotheosis_tier_filters` fail closed when Apotheosis tier context is unavailable or compat/config gates disable the tier provider path
 - `reward_repeat_policy = "block_all"` excludes both previously chosen and previously forfeited rewards from later offers for that player
 - `reward_repeat_policy = "allow_forfeited_only"` keeps previously chosen rewards blocked but allows previously forfeited rewards to reappear later if the rest of the offer logic permits it
 - `reward_repeat_policy = "allow_all"` allows both previously chosen and previously forfeited rewards to reappear later if the rest of the offer logic permits it
@@ -1938,6 +1989,10 @@ Recommended log format:
 - Conflict winner (if one is retained) follows pack priority order.
 - Pack authors should avoid duplicate IDs across packs.
 - Selectors, conditions, and other hot-path filters should compile during reload, not during live event evaluation
+- `/wa config` does not rewrite external datapack JSON. Its mutation frequency and cap settings are bounded world-level runtime layers over every compiled pool, including external pools.
+- disabling `Default gameplay` through `/wa config` candidate-compiles the same `worldawakened:defaults/...` filter used by `general.enable_builtin_gameplay`; other namespaces and non-default World Awakened IDs remain loaded
+- the native editor exposes outcome-level settings and mutation-pool overrides. Pool edits retain the canonical mutation-pool shape, overlay only the selected source ID, and do not rewrite pack files or unrelated probabilities
+- a local pool override follows its source across reloads while that source ID exists; Revert reveals the currently loaded bundled/external definition, and an absent source disables the orphaned override rather than creating a new pool
 
 ---
 

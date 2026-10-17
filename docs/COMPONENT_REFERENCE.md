@@ -3,7 +3,7 @@
 Canonical reference for mutation and ascension component IDs, schemas, statuses, and composition rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-03-14
+- Last updated: 2026-10-17
 - Scope: Runtime component contracts and authoring/tooling alignment
 
 ---
@@ -22,7 +22,7 @@ Related contracts:
 - [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md)
+- [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
 - [docs/README.md](README.md)
 - [README.md](../README.md)
 - [AGENTS.md](../AGENTS.md)
@@ -60,7 +60,7 @@ Phase 4 runtime application note:
 - Component behavior is server-authoritative.
 - Datapacks may combine supported components freely within validation/runtime safety rules.
 - New behavior categories require Java implementation and registry registration.
-- Built-in presets are examples, not privileged code-only gameplay identities.
+- Bundled presets are ordinary authored datapack compositions, not privileged code-only gameplay identities.
 
 ### 2A. Shared Status Taxonomy
 
@@ -121,14 +121,14 @@ Current v1 codec note:
 Mutation components are reusable mob-affecting behavior/stat packages used inside named mutation definitions in `mob_mutators`.
 A mutation definition may combine multiple compatible components.
 
-### 3A. Mutation Selection Caps (Global Default + Pool Override)
+### 3A. Mutation Selection Caps (Pool Request + Global Ceiling)
 
 Mutation selection limits resolve from config plus pool metadata.
 
 Hard rules:
-- global default per-spawn mutator cap comes from `mutators.max_mutators_per_mob` in server config
-- a mutation pool may define `max_mutators_per_entity` to override that default for the selected pool
-- when no pool override is present, runtime uses the global config default
+- every mutation pool must define `max_mutators_per_entity`
+- the live global maximum is an authoritative ceiling, not a fallback for an omitted pool value
+- the effective cap is the lowest of the pool request, live global maximum, and hard runtime budget
 - applied mutator count still respects runtime spawn-time guardrails documented in [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - these are mutator-selection limits, not component-entry fields
 
@@ -997,8 +997,11 @@ Applies `on_hit_effect` behavior to a named mutation definition in `mob_mutators
 - Fits `Offensive`-focused preset compositions.
 
 **Parameters:**
-- `effect` (`namespace:path` string, non-blank).
-- Optional duration/amplifier keys are component-specific.
+- `effect` (registered mob-effect resource location, required).
+- `duration_ticks` (integer `1..12000`, optional, default `100`).
+- `amplifier` (integer `0..255`, optional, default `0`).
+- `chance` (number `0..1`, optional, default `1`).
+- Runs after successful server-side health damage; projectile hits resolve through the damage-source owner.
 
 **Defaults / Notes:**
 - **Status:** `implemented`.
@@ -1025,8 +1028,9 @@ Applies `life_steal` behavior to a named mutation definition in `mob_mutators`.
 - Fits `Offensive`-focused preset compositions.
 
 **Parameters:**
-- `amount` (number).
-- Flat additive scalar unless component-specific behavior states otherwise.
+- `amount` (number greater than `0` and at most `1`).
+- The value is the fraction of actual post-mitigation health damage healed by the attacking mob (`0.10` means 10%). Credited damage is capped at the target's health immediately before the hit, so overkill cannot inflate healing.
+- Multiple selected lifesteal contributions add together and clamp to a combined ratio of `1.0`.
 
 **Defaults / Notes:**
 - **Status:** `implemented`.
@@ -1950,8 +1954,9 @@ Applies `death_explosion` behavior to a named mutation definition in `mob_mutato
 - Fits `Aura / retaliation / death`-focused preset compositions.
 
 **Parameters:**
-- `amount` (number).
-- Flat additive scalar unless component-specific behavior states otherwise.
+- `amount` (explosion power greater than `0` and at most `8`).
+- The explosion is server-side, damages entities, does not damage blocks, triggers once, and suppresses synchronous death-explosion chains.
+- If selected mutators contribute more than one death explosion, the strongest power wins.
 
 **Defaults / Notes:**
 - **Status:** `implemented`.

@@ -3,6 +3,8 @@
   "id": "worldawakened:invasion_pool",
   "enabled": true,
   "weight": 9,
+  "mutation_chance": 1.0,
+  "additional_mutation_chance": 1.0,
   "conditions": [
     {
       "type": "worldawakened:invasion_active",

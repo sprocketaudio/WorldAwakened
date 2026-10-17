@@ -2,8 +2,8 @@
 
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
-- Document status: Active implementation spec (Phase 8 complete, Phase 9 active)
-- Last updated: 2026-03-18
+- Document status: Active implementation spec (Phase 9 work preserved; default gameplay rollout active)
+- Last updated: 2026-10-17
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -23,7 +23,8 @@ World Awakened Framework for Minecraft 1.21.1 + NeoForge
   - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md) for scope-indexing, hot-path limits, and performance guardrails
   - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md) for diagnostic taxonomy and stable code naming
   - [PRESET_CATALOG.md](PRESET_CATALOG.md) when shipped external example-pack presets/templates or their status taxonomy changes
-  - [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) for hosted web authoring workflows (offline + live-linked), import/export behavior, session/apply safety rules, and validation UX contracts
+  - [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) for built-in gameplay and native-editor product direction
+  - [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md) for the bundled Standard progression, rates, roster, and delivery-pass boundaries
   - [FUTURE_IDEAS.md](FUTURE_IDEAS.md) when promoting, removing, or reclassifying deferred ideas
   - [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) when promoting, removing, or reshaping the deferred in-game/admin runtime UI feature
   - [README.md](../README.md) for high-level goals, status, and roadmap summary
@@ -35,7 +36,7 @@ World Awakened Framework for Minecraft 1.21.1 + NeoForge
 - New implementation work should not proceed on stale documentation when the mismatch is known.
 - Maintain the `Last updated` field at the top of this file on spec revisions.
 - `docs/FUTURE_IDEAS.md` is a non-normative backlog and does not alter MVP scope unless an idea is promoted into this spec.
-- `docs/FUTURE_ADMIN_UI.md` is a non-normative future feature document for deferred in-game/admin runtime UI scope and does not alter MVP scope unless it is promoted into this spec.
+- `docs/FUTURE_ADMIN_UI.md` is a superseded historical proposal; active native-editor scope is defined here and in the simplification plan.
 
 ---
 
@@ -58,7 +59,8 @@ The framework must:
 - support user-extensible rules through datapacks
 - expose optional world-context inputs (for example world day and player distance from spawn) as datapack rule conditions, not primary trigger types
 - support Apotheosis World Tiers as an optional condition/scalar input
-- provide a hosted web-based datapack authoring and validation platform that supports offline import/export and live-linked runtime editing while round-tripping the canonical World Awakened datapack/data contract
+- provide a playable, conservative built-in difficulty profile through the canonical datapack engine
+- provide an incremental native, server-authoritative configuration interface that round-trips the canonical World Awakened datapack/data contract
 - keep gameplay logic on server side
 - keep balance/content externalized to data files
 
@@ -141,9 +143,9 @@ Hard constraints:
 
 ### 3A. Content Distribution Rule
 
-World Awakened must ship as a framework-first mod jar with no gameplay-active datapack content embedded in the jar.
+World Awakened ships conservative gameplay-active defaults as embedded datapack resources using the same schema exposed to pack authors. The defaults must pass through the normal resource manager, codecs, validation, dependency resolution, compilation, indexing, and runtime services.
 
-Reference/default/example content should be distributed as optional external datapacks alongside the mod or release package, using the same schema exposed to pack authors.
+External datapacks remain supported. Normal resource-pack precedence applies: an external resource at the same namespace/path replaces the bundled object, while objects at other IDs are additive and participate in the usual deterministic rules. Optional examples may still be distributed as external datapacks.
 
 Java owns:
 - component registries
@@ -153,7 +155,7 @@ Java owns:
 - persistence logic
 - debug and introspection behavior
 
-External optional datapack content owns:
+Datapack content, whether bundled or external, owns:
 - example mutation definitions
 - example ascension reward definitions
 - example ascension offers
@@ -163,6 +165,15 @@ External optional datapack content owns:
 
 Default progression mode in v1:
 - `GLOBAL`
+
+Bundled Standard gameplay:
+- uses the `worldawakened:defaults/...` ID family
+- contains ranked S0-S6 milestone stages, eleven live-safe mutation archetypes, unified ranked pools with optional curated combinations, composed visible mutation names, three personal Ascension offers, additive mutation loot, and three pressure-event profiles
+- keeps one final `mutation_chance` gate per eligible natural spawn
+- uses `additional_mutation_chance` as a conditional repeated roll after the first mutation and caps every pool explicitly
+- excludes bosses, spawner/trial-spawner mobs, unsupported components, wave spawning, terrain edits, and timeout-based invasion rewards
+- can be removed as a family with `general.enable_builtin_gameplay=false`
+- is specified in [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md); its numerical balance remains provisional until play-tested
 
 Supported modes:
 - `GLOBAL` (implemented in v1)
@@ -241,7 +252,7 @@ Cross-scope hard rule:
 ### 3C. Shared Condition System (Canonical)
 
 Purpose:
-- one condition model shared across trigger rules, runtime rules, mutation definitions/components, ascension rewards/components, ascension offers, mutation pools, loot profiles, invasion profiles, and web authoring validation
+- one condition model shared across trigger rules, runtime rules, mutation definitions/components, ascension rewards/components, ascension offers, mutation pools, loot profiles, invasion profiles, and native-editor validation
 
 Hard rules:
 - all conditions use one canonical shape
@@ -334,7 +345,7 @@ Condition catalog status labels use Section `3F` taxonomy.
 | --- | --- | --- | --- | --- | --- | --- |
 | `loaded_mod` | True when a mod ID is present in the loaded mod list. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "mod": "<string_mod_id>" }` | `{ "type":"worldawakened:loaded_mod","parameters":{"mod":"apotheosis"} }` | `implemented` | False when loaded-mod provider is unavailable. |
 | `config_toggle_enabled` | True when a config toggle path resolves true. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "config_gate": "<dot_path>" }` | `{ "type":"worldawakened:config_toggle_enabled","parameters":{"config_gate":"compat.apotheosis.enabled"} }` | `implemented` | False when toggle map is unavailable or key missing. |
-| `apotheosis_world_tier_compare` | Compare external Apotheosis world tier using operator/value. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "op": "<comparison_operator>", "value": "<number>" }` | `{ "type":"worldawakened:apotheosis_world_tier_compare","parameters":{"op":">=","value":3} }` | `planned` | False when Apotheosis provider/config gate is unavailable. |
+| `apotheosis_world_tier_compare` | Compare external Apotheosis world tier using operator/value or set-membership payloads. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "op"?: "<comparison_operator>", "value"?: "<number>", "tier"?: "<number>", "values"?: ["<number>", ...] }` | `{ "type":"worldawakened:apotheosis_world_tier_compare","parameters":{"op":">=","value":3} }` | `implemented` | False when Apotheosis provider/config gate is unavailable, tier context is missing, or comparison does not match. |
 | `external_scalar_range` | Match a named external scalar against min/max. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "scalar": "<string>", "min"?: "<number>", "max"?: "<number>" }` | `{ "type":"worldawakened:external_scalar_range","parameters":{"scalar":"pressure_tier","min":2} }` | `planned` | False when external scalar provider/key is unavailable. |
 | `integration_active` | True when a named integration profile is active. | `world`,`player`,`entity`,`spawn_event`,`loot`,`invasion`,`event_context` | `{ "integration": "<string_or_resource_location>" }` | `{ "type":"worldawakened:integration_active","parameters":{"integration":"apotheosis"} }` | `planned` | False when integration activation context is unavailable. |
 
@@ -352,7 +363,7 @@ Condition catalog status labels use Section `3F` taxonomy.
 ### 3D. Shared Action System (Canonical)
 
 Purpose:
-- one action model shared across trigger outputs, runtime rules, event/profile execution, and web authoring validation
+- one action model shared across trigger outputs, runtime rules, event/profile execution, and native-editor validation
 
 Hard rules:
 - all actions use one canonical shape
@@ -529,7 +540,7 @@ Docs/tooling rule:
   - this spec
   - `docs/DATAPACK_AUTHORING.md`
   - `docs/COMPONENT_REFERENCE.md`
-  - future web authoring/validation outputs
+  - future native-editor validation outputs
 
 ---
 
@@ -552,6 +563,8 @@ Each stage is a datapack object with fields:
 - `progression_group: string` (optional)
 - `unlock_policy: cumulative | exclusive_group | replace_group` (default cumulative)
 - `default_unlocked: bool` (default false)
+
+Enabled `default_unlocked` stages are reconciled idempotently into the selected progression bucket when that bucket is first accessed. Their recorded unlock source is `default_unlocked`; initialization does not emit a normal milestone trigger.
 
 ### 4.1A Parallel Stage Groups
 
@@ -922,6 +935,12 @@ Required reapplication points:
 - player respawn
 - datapack reload when reward definitions remain valid
 - dimension change only if an effect implementation requires refresh
+
+Personal milestone qualification:
+- bundled Ascension offers are granted by player-scoped one-shot advancement triggers, independently of global stage ownership
+- on login, unconsumed player-scoped one-shot `advancement_completed` triggers are replayed only for advancement IDs that the player has actually completed
+- replay remains data-driven by authored trigger conditions and uses the normal trigger matcher/action pipeline
+- repeatable or world-scoped advancement triggers are never login-replayed by this catch-up path
 
 Application model:
 - rewards grant persistent player state or modifiers
@@ -1554,6 +1573,14 @@ World tier can be used as:
 - `scalar`: tier only modifies numeric scaling
 - `hybrid`: derived stage + scalar modifiers together
 
+`derived_stage` runtime contract:
+- `integration_profiles.stage_hooks[]` may contain `worldawakened:tier_threshold_unlock`
+- `parameters.tier` is treated as a minimum threshold (`>=`)
+- `parameters.unlock_stage` identifies the WA stage to unlock
+- reconciliation is server-authoritative and idempotent
+- reconciliation runs on player login/respawn and on a bounded periodic server-level pass so external Apotheosis tier changes are picked up without requiring a WA-specific command
+- direct tier-aware conditions/filters remain available for advanced packs even when `derived_stage` is used as the primary authoring path
+
 ### 6.5 Safety Rules
 
 - no hard class references without safe gating
@@ -1663,10 +1690,11 @@ Responsibility split:
 - block placed
 - block broken
 - command/manual debug trigger
+- bounded world-day milestone evaluation event
 - Apotheosis tier threshold reached
 - integration-specific signal event
 
-World-context checks such as world day and distance-from-spawn must be modeled with shared conditions (Section `3C`) through rules, not as core trigger types.
+World-context thresholds remain shared authored conditions rather than hardcoded progression. `worldawakened:world_day_milestone` is a generic once-per-second Overworld evaluation event; an authored `world_day_gte` condition supplies the threshold and normal one-shot trigger state supplies persistence. Distance-from-spawn remains condition-only and event-driven by the surrounding rule context.
 
 ### 7.2 Trigger Output Actions
 
@@ -2204,15 +2232,15 @@ Invasion pressure-event lifecycle:
 1. scheduler tick or command trigger starts evaluation
 2. check global invasion feature gate
 3. check current active-state and cooldown gates
-4. build world/player scheduler context snapshot
+4. choose an allowed loaded dimension that currently contains a player and build its scheduler context snapshot
 5. evaluate invasion trigger conditions
 6. match/select invasion profile deterministically
 7. activate invasion runtime state
-8. emit optional warning period
+8. emit the warning period and a concise notice naming the profile and affected dimension
 9. apply temporary invasion pressure modifier
 10. expose invasion runtime context to mutation/reward/debug paths
 11. maintain active duration
-12. end invasion
+12. end invasion and emit a concise ending notice
 13. cleanup runtime state and remove temporary pressure modifier
 14. enter cooldown state
 
@@ -2225,6 +2253,9 @@ Hard rules:
 - vanilla and other mods continue owning actual mob spawning
 - World Awakened invasion logic influences spawn outcomes only through context and pressure modifiers
 - invasion-gated mutation pools become eligible through shared conditions/context, not through hidden spawn scripts
+- periodic profiles restricted to the Nether or another dimension must be evaluated in that dimension rather than against the Overworld scheduler context
+- a periodic profile is not eligible when none of its allowed dimensions currently contains a player
+- significant timeout rewards remain forbidden without bounded participation accounting; the bundled profiles therefore define none
 - failed activation/end/cleanup paths must degrade safely without leaving the invasion permanently stuck active
 
 ### Stage Unlock Propagation Rules
@@ -2581,6 +2612,13 @@ Examples:
 - `effect_particles`
 - `ambient_particles`
 
+Core live combat-handler contract:
+- `on_hit_effect` applies a validated registered mob effect after successful server-side damage; parameters are `effect`, optional `duration_ticks` (`1..12000`, default `100`), optional `amplifier` (`0..255`, default `0`), and optional `chance` (`0..1`, default `1`)
+- `life_steal.amount` is a ratio in `(0,1]` of actual post-mitigation health damage, capped at the victim's health immediately before the hit so overkill cannot inflate healing; resolved contributions add and clamp to `1.0`
+- `death_explosion.amount` is explosion power in `(0,8]`; the strongest resolved contribution wins, fires once, uses no block interaction, and cannot synchronously chain into another WA death explosion
+- spawn application writes bounded, compiled combat state to the mob; combat hot paths must not parse component JSON or scan datapack definition collections
+- successful mutation application composes the resolved mutators' authored display names with the vanilla entity name and makes that name visible; a pre-existing custom name is authoritative and must be preserved
+
 ### 9.5 Stat Domains
 
 - max health
@@ -2728,6 +2766,8 @@ spawn event
 -> perform pool selection
 -> apply selected pool mutation_chance gate
 -> evaluate candidate mutators
+-> repeat the conditional additional-mutation roll within the effective cap
+-> resolve either ordinary compatible candidates or one eligible curated combination
 -> apply composition rules
 -> enforce component-count guardrails
 -> apply mutator components
@@ -2812,7 +2852,11 @@ Fields:
 - `id`
 - `enabled`
 - `weight`
-- `mutation_chance` (default `1.0`, range `0.0..1.0`)
+- `mutation_chance` (required, range `0.0..1.0`)
+- `additional_mutation_chance` (required, range `0.0..1.0`)
+- `max_mutators_per_entity` (required, minimum `1`)
+- `combination_mode` (`any_compatible` by default, or `curated`)
+- `rare_combinations[]` (optional weighted whole-combination definitions)
 - `conditions[]`
 - `stage_filters`
 - `apotheosis_tier_filters`
@@ -2822,7 +2866,6 @@ Fields:
 - `allow_from_spawner`
 - `allow_from_trial_spawner`
 - `mutators[]`
-- `max_mutators_per_entity` (optional override)
 
 Use cases:
 - `undead_tier_1`
@@ -2836,6 +2879,11 @@ Runtime notes:
   - `1.0` skips rolling and always proceeds
   - `0.0` fails closed with `WA_MUTATION_CHANCE_FAILED`
   - `(0.0, 1.0)` performs one deterministic roll per selected pool evaluation
+- after the initial roll succeeds, each further slot performs one conditional `additional_mutation_chance` roll; evaluation stops on the first failure, the pool maximum, lack of a compatible candidate, or a global runtime budget
+- `any_compatible` uses ordinary mutator weights for each successful slot without selecting the same mutator twice
+- `curated` resolves an eligible authored combination as a whole, weighted against other eligible combinations of the resolved size; this avoids making a combination depend on first selecting one of its members
+- curated combination entity lists inherit the parent pool when empty and otherwise must be a subset of the parent entity list
+- invalid, incompatible, duplicate, over-cap, or unavailable combinations are rejected; runtime failure safely falls back to one ordinary valid mutator
 - when progression mode is `per_player`, spawn-time mutator stage context is resolved from the nearest nearby non-spectator player; if no player can be attributed, the mutator pass fails closed
 
 ---
@@ -3111,16 +3159,16 @@ Hard rule:
 - invasion-gated eligibility must not automatically apply additional scalar amplification
 - eligibility and scalar amplification are separate concerns and must remain independently authored/policy-controlled
 
-### 13.2D Regression Anti-Patterns (Phase 7/8/10 Lock)
+### 13.2D Regression Anti-Patterns (Phase 7/8/Editor Lock)
 
 Do not reintroduce:
 - direct attachment systems for rewards
 - wave-based invasion spawning
 - hidden scalar stacking across unrelated subsystems
 - duplicated/parallel reward pipelines
-- schema divergence between runtime contracts and web-tool payloads
-- hardcoded entity or loot catalogs for live linked authoring
-- web-tool behavior that bypasses runtime validation or becomes gameplay authority
+- schema divergence between runtime contracts and native-editor payloads
+- hardcoded entity or loot catalogs for registry-aware authoring
+- editor behavior that bypasses runtime validation or becomes gameplay authority
 
 ### 13.3 Trigger Modes
 
@@ -3205,6 +3253,7 @@ Dedicated profile requirements:
 - `mod_id = apotheosis`
 - world-tier condition provider
 - world-tier trigger provider
+- simple stage-derivation path through `stage_hooks[]` using `worldawakened:tier_threshold_unlock`
 - optional scalar provider for:
   - mutation pressure outputs
   - mutation pool eligibility/scalar gates
@@ -3221,6 +3270,7 @@ Baseline config groups (v1):
 ```toml
 [general]
 enable_mod = true
+enable_builtin_gameplay = true
 debug_logging = false
 enable_debug_commands = true
 validation_logging = true
@@ -4191,45 +4241,48 @@ Hard rule:
 
 ---
 
-## 20B. World Awakened Web Authoring Tool (v1 Release Requirement)
+## 20B. Native In-Game Configuration Direction
 
-The World Awakened web authoring tool is a required v1 companion deliverable.
+World Awakened will provide a native NeoForge configuration interface incrementally after the built-in Standard profile has been play-tested.
 
 Hard design boundary:
-- website: authoring, validation, and editor workflow authority
-- mod/runtime: execution and apply-commit authority
-- hosted tooling must never become a second gameplay authority
-- website must consume runtime/exported schema contracts and must not become an independent schema authority
-- live-linked apply operations must be validated by runtime before commit
-- one shared datapack/data contract must be used across raw datapacks, runtime-authored state, and hosted-session payloads
+- the server owns permissions, registry truth, validation, revisions, persistence, compilation, and apply authority
+- the client owns presentation and an uncommitted draft only
+- editor changes compile into the existing World Awakened definitions/override layer; the editor must not become a second gameplay engine
+- raw datapacks remain available for advanced features that cannot be represented clearly
 
-Release position:
-- required for v1 release
-- implemented late, after core gameplay systems and schema contracts are stable
-
-Required editing modes:
-- offline project mode (import/export authoring without a running game)
-- live linked session mode (runtime-connected editing through a short-lived hosted session)
-
-Hosted networking contract for live mode:
-- browser connects only to hosted World Awakened frontend/backend
-- mod/runtime connects outbound to hosted backend relay
-- normal supported flow must not require exposing a dedicated public API port on the game/server
-
-Live session safety contract:
-- unique session ID and short-lived signed token
-- session expiry and revision/version tracking
-- stale-session and revision-mismatch protection (fail safely with diagnostics)
-- runtime validation required before commit
-- branch/object-level isolation for invalid payload portions where possible
+Implemented initial editor scope:
+- `/wa config` opens a native dashboard for authorised operators; integrated-server owners are authorised even when cheats are disabled
+- the dashboard reports real loaded-definition counts and routes to Mob Mutations and Global Settings; future Progression, full Mutator, Rewards, and World Events editors are visibly unavailable
+- the only functional bundled profile choice is Standard; no unfinished preset is exposed
+- overall intensity, bundled-gameplay enablement, mutation enablement/frequency/multiple-mutation cap, pressure-event enablement/frequency, and Ascension enablement are editable
+- progression mode and unlocked-stage counts are informational/read-only until a saved-history migration preview exists
+- Cancel sends nothing; Reset restores the built-in Standard values in the local draft and still requires Apply
+- every apply packet repeats the server permission check, validates bounded values, and carries a base revision so stale clients cannot overwrite newer state
+- accepted settings persist in world `SavedData`; disabling active pressure events ends the active event, while existing mutated mobs, stage history, and Ascension ownership are preserved
+- the first world initialization seeds native settings from existing common-config values and the saved global intensity; after that, world-persistent native settings are authoritative for the exposed controls, while TOML kill switches and safety bounds remain authoritative guardrails
+- changing the bundled-gameplay gate candidate-compiles through the normal datapack loader before atomic publication
+- mutation/event frequency overrides and mutation caps are bounded runtime layers over compiled definitions, including external datapacks; they do not rewrite authored JSON or create a second engine
+- Mob Mutations browses actual compiled pools with search and discovered stage/dimension/enabled filters; it edits enablement, pool mutation chance, eligible dimensions/entities, mutator membership/weights, and the pool maximum
+- pool edits persist as full canonical `MutationPoolDefinition` overrides in world `SavedData`, with a profile revision independent from runtime settings
+- apply decodes through the existing codec, validates numeric bounds, source existence, mutator references/weights, running-server dimensions, and server-derived living entity types, then republishes the existing snapshot atomically
+- reload overlays each saved override once onto a matching bundled or external source ID; missing sources fail closed, and per-pool Revert removes the override to reveal the currently loaded source
+- unsaved pool drafts remain client-only; navigation warns before discard, entity/mutator selector Cancel preserves the parent draft, and stale concurrent editors are rejected rather than merged
 
 Registry-aware authoring contract:
-- live linked sessions must surface runtime-provided registry metadata (entity types/tags, items, blocks, dimensions, biomes, loot tables, effects, and other WA-relevant sets)
-- live-mode selectors must prefer runtime-provided metadata over static baked catalogs
+- selector data comes from the actual running server and is cached outside gameplay hot paths
+- initial selector work starts with living entity types, then reuses the pattern for effects, items, blocks, biomes, dimensions, and tags
+- entries show a readable name, raw ID, namespace/mod, and safe classification where reliable
+- removed or missing registry IDs remain visible as validation errors and are never silently substituted
+- the implemented living-entity selector enumerates the running server registry only when the editor opens, filters by actual `LivingEntity` construction, and shows readable name, raw registry ID, and namespace
 
-Normative detail:
-- full contract for workflows, UI modules, validation layers, schema/versioning, import/export layout, templates, and acceptance criteria is defined in `docs/WEB_AUTHORING_TOOL_SPEC.md`
-- any change to web authoring behavior or data contract must keep this section, `docs/WEB_AUTHORING_TOOL_SPEC.md`, `docs/DATAPACK_AUTHORING.md`, `README.md`, and `AGENTS.md` in sync
+Simplified rule authoring contract:
+- user-facing rules use `WHEN -> IF -> THEN`
+- `source_scope`, `execution_scope`, persistence buckets, and spawn contexts remain internal
+- the editor infers internal scope from the event, conditions, outcome, and friendly target choice where unambiguous
+- impossible or ambiguous combinations are unavailable or rejected with a plain-language explanation
+
+The concise architecture, migration risks, and delivery order are defined in `docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md`. The former hosted web plan is retired.
 
 ---
 
@@ -4331,7 +4384,7 @@ Phase impact expectations:
 - Phase 5: preserve strict ownership boundaries so mutator and reward application reconcile only World Awakened-owned state, use WA-owned carriers where needed, and fail closed when external capabilities, hooks, or carrier classes are unavailable
 - Phase 6: rule-event and spawn guardrails must satisfy performance budget and debug-observability contracts
 - Phase 7-9: downstream systems (loot/invasion/compat) must preserve bounded evaluation and traceable rejection diagnostics
-- Phase 10: web authoring must include hosted offline and live-linked session workflows, registry-aware selectors, and runtime-validated apply/revision safeguards while still surfacing composition/performance diagnostics
+- Phase 10: native editing must use server-derived registry selectors and runtime-validated revision/apply safeguards while still surfacing composition/performance diagnostics
 - Phase 11: hardening must confirm telemetry/debug surfaces, large-pack stability, linked-session safety (auth/token/revision/apply), and regression coverage for earlier-phase guardrails
 
 Outcome rule:
@@ -4504,45 +4557,21 @@ Exit criteria:
 - compat/scalar debug commands expose loaded-mod/config/profile/provider gates and explain fail-closed results
 - `/wa compat list` and `/wa apotheosis tier inspect` are functional
 
-### Phase 10 - Web Authoring Tool (Browser Companion)
-- implement centrally hosted React/TypeScript editor frontend
-- implement hosted backend session/relay service for linked runtime editing
-- implement web authoring project model with three project kinds (offline local, imported datapack, live linked runtime)
-- implement schema-backed validation layers (schema, semantic, cross-object reference)
-- implement import pipelines for folder, zip, and selected JSON object files
-- implement deterministic export generation for canonical datapack layout
-- implement visual editors, structured editors, and raw JSON editor synchronization across both offline and live linked modes
-- implement condition and component builders with implemented/planned/deprecated markers
-- implement runtime-linked session flow:
-  - start link via `/wa web edit` baseline command
-  - load current runtime-authored WA state into hosted editor
-  - apply validated changes back through backend relay
-  - enforce revision checks and stale-session safeguards
-- keep runtime command guidance aligned:
-  - required baseline: `/wa web edit`
-  - optional future variants: `/wa web edit live`, `/wa web edit export`, `/wa web session status`, `/wa web session revoke`
-- implement registry-aware selector support fed by runtime metadata in live mode
-- implement live-mode project/session status surfaces (runtime version, schema version, modpack metadata, registry freshness, last sync, pending changes, apply history)
-- implement performance budget validation and warnings in authoring workflows:
-  - scope bucket size estimation warnings
-  - actions-per-rule warnings
-  - mutator/component hot-path warnings
-- implement template starter sets for mutators, ascension content, and common rule patterns
-- integrate inline documentation links and reference-navigation helpers
+### Phase 10 - Playable Defaults and Native Editor Foundation
+- play-test and tune the bundled Standard profile in real singleplayer and multiplayer worlds
+- add Relaxed and Challenging presets through the same datapack/runtime engine
+- implement `/wa config` with permission-gated, revisioned server snapshots and apply results **(implemented for the initial settings slice)**
+- persist world-specific operator overrides and compile bundled-profile changes through the normal validation pipeline **(implemented)**
+- expose Standard profile status, intensity, read-only progression information, mutation, invasion, and ascension controls first **(implemented)**
+- add a cached server-derived registry catalogue, beginning with living entity types
+- grow into visual mutation editing and `WHEN -> IF -> THEN` rule editing only after the basic flow is proven
 
 Exit criteria:
-- tool can import, edit, validate, and export all v1 object types using one shared datapack format
-- exported datapacks load in World Awakened without format translation
-- validation errors block export and are surfaced with object-level context
-- performance budget warnings are surfaced with actionable object-level context
-- users can switch between visual, structured, and raw JSON layers without losing semantic fidelity
-- deterministic export output remains stable for unchanged project content
-- operators can start a linked web editing session from runtime command surface
-- hosted editor can load current runtime-authored WA state from linked session
-- live-mode selectors show runtime/modpack-aware registry values
-- runtime rejects invalid linked apply operations safely with diagnostics
-- successful linked apply operations commit cleanly into running runtime state
-- stale/conflicting browser sessions fail safely with clear revision diagnostics
+- a new installation provides a balanced difficulty experience without an external datapack
+- custom datapack additive and exact-path override behavior is documented and tested
+- invalid or stale editor changes cannot affect runtime state
+- ordinary users never need raw registry IDs or internal scope terminology for supported editor workflows
+- server authority, compiled hot paths, deterministic conflict resolution, and existing budgets remain intact
 
 ### Phase 11 - Hardening, Examples, and Release Prep
 - complete validation rule coverage and improve error quality
@@ -4550,13 +4579,10 @@ Exit criteria:
 - complete docs pass across spec/readme/authoring/agents
 - perform performance sanity checks for reload and spawn-path logic
 - validate large-pack hot-path behavior against performance contracts (thousands of authored objects)
-- harden linked-session auth/token expiry and relay security boundaries
-- polish revision-conflict handling and stale-session UX messaging
-- polish linked apply safety/retry behavior and diagnostics quality
-- evaluate deployment hardening including optional self-hosted backend/frontend pathways
-- run regression verification that Phase 7 reward boundaries still hold after live-linked apply/reload (downstream event-only reward triggers, canonical single resolver, no progression mutation side effects)
-- run regression verification that Phase 8 invasion behavior remains pressure-event-only after live-linked apply/reload (no WA-owned wave spawning assumptions)
-- run regression verification that Phase 9 compat influence boundaries remain intact after live-linked apply/reload (invasion-adjacent influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling)
+- harden native-editor revision conflicts, permission failures, apply safety, and diagnostics
+- run regression verification that Phase 7 reward boundaries still hold after editor apply/reload (downstream event-only reward triggers, canonical single resolver, no progression mutation side effects)
+- run regression verification that Phase 8 invasion behavior remains pressure-event-only after editor apply/reload (no WA-owned wave spawning assumptions)
+- run regression verification that Phase 9 compat influence boundaries remain intact after editor apply/reload (invasion-adjacent influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling)
 - implement minimum performance-debug command surfaces:
   - `/wa debug perf`
   - `/wa debug rules`
@@ -4569,8 +4595,8 @@ Exit criteria:
 - docs are synchronized and reflect implemented behavior
 - performance-debug outputs expose bucket sizes, evaluation counts, and mutation budget telemetry
 - migration and downgrade behavior degrade safely without corrupting saves
-- linked-session expiry/revision/apply failure modes are explicit, safe, and operator-inspectable
-- hardening verification confirms no regressions of Phase 7-9 gameplay guardrails when content is edited via hosted live-linked sessions
+- native-editor permission/revision/apply failure modes are explicit, safe, and operator-inspectable
+- hardening verification confirms no regressions of Phase 7-9 gameplay guardrails when content is edited in game
 
 ### Cross-Phase Quality Gates
 - each phase ends with successful compile/build and server startup smoke test
@@ -4604,11 +4630,12 @@ Must-have:
 - optional world-context conditions as datapack rule inputs (non-core progression drivers)
 - debug commands
 - datapack-driven rules
-- hosted web authoring, validation, import/export, and live-linked runtime-session editing using the same canonical datapack/data contract as runtime
+- playable bundled defaults using the same canonical datapack/data contract as custom content
+- a focused native, server-authoritative configuration interface
 
 Deferred:
 - full hybrid conflict resolver
-- in-game admin GUI authoring and deep runtime inspection beyond the web authoring companion
+- exhaustive GUI coverage for every advanced datapack-only option
 - large integration catalog
 - custom boss bar visuals
 - retroactive mutation of pre-existing entities

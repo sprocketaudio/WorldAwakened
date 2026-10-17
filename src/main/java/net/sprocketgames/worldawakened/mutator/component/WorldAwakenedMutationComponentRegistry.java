@@ -19,6 +19,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedGlowStyleState;
+import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutationCombatState;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedVisualParticleEmitters;
 
 public final class WorldAwakenedMutationComponentRegistry {
@@ -46,8 +47,8 @@ public final class WorldAwakenedMutationComponentRegistry {
         register(type("temporary_shield", WorldAwakenedMutationComponentRegistry::requireAmount));
         register(type("equip_item", true, WorldAwakenedMutationComponentRegistry::requireEquipItem));
         register(type("projectile_resistance", WorldAwakenedMutationComponentRegistry::requireAmount));
-        register(type("on_hit_effect", WorldAwakenedMutationComponentRegistry::requireEffect));
-        register(type("life_steal", WorldAwakenedMutationComponentRegistry::requireAmount));
+        register(type("on_hit_effect", WorldAwakenedMutationComponentRegistry::requireOnHitEffect));
+        register(type("life_steal", WorldAwakenedMutationComponentRegistry::requireLifeSteal));
         register(type("reinforcement_summon", WorldAwakenedMutationComponentRegistry::requireSummonTarget));
         register(type("summon_cooldown", WorldAwakenedMutationComponentRegistry::requireCooldownSeconds));
         register(type("summon_cap", WorldAwakenedMutationComponentRegistry::requireSummonCap));
@@ -59,7 +60,7 @@ public final class WorldAwakenedMutationComponentRegistry {
         register(type("lightning_package", Set.of(id("fire_package"), id("frost_package"), id("poison_package"))));
         register(type("poison_package", Set.of(id("fire_package"), id("frost_package"), id("lightning_package"))));
         register(type("damage_aura", WorldAwakenedMutationComponentRegistry::requireAmount));
-        register(type("death_explosion", WorldAwakenedMutationComponentRegistry::requireAmount));
+        register(type("death_explosion", WorldAwakenedMutationComponentRegistry::requireDeathExplosion));
         register(type("retaliation_thorns", WorldAwakenedMutationComponentRegistry::requireAmount));
         register(type("glow_style", WorldAwakenedGlowStyleState::validateParameters));
         register(type("effect_particles", true, WorldAwakenedVisualParticleEmitters::validateEffectParticles));
@@ -164,6 +165,47 @@ public final class WorldAwakenedMutationComponentRegistry {
         }
         String value = parameters.getAsJsonPrimitive("effect").getAsString();
         return value.isBlank() ? Optional.of("parameters.effect must not be blank") : Optional.empty();
+    }
+
+    private static Optional<String> requireOnHitEffect(JsonObject parameters) {
+        Optional<String> effectError = requireEffect(parameters);
+        if (effectError.isPresent()) {
+            return effectError;
+        }
+        ResourceLocation effectId = ResourceLocation.tryParse(parameters.getAsJsonPrimitive("effect").getAsString());
+        if (effectId == null || BuiltInRegistries.MOB_EFFECT.getOptional(effectId).isEmpty()) {
+            return Optional.of("parameters.effect must reference a registered mob effect");
+        }
+        if (WorldAwakenedMutationCombatState.parseOnHitEffect(parameters).isEmpty()) {
+            return Optional.of("duration_ticks must be 1..12000, amplifier 0..255, and chance 0..1");
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> requireLifeSteal(JsonObject parameters) {
+        Optional<String> error = requireNumber(parameters, "amount");
+        if (error.isPresent()) {
+            return error;
+        }
+        double amount = parameters.get("amount").getAsDouble();
+        if (!Double.isFinite(amount) || amount <= 0.0D || amount > WorldAwakenedMutationCombatState.MAX_LIFE_STEAL_RATIO) {
+            return Optional.of("parameters.amount must be > 0 and <= "
+                    + WorldAwakenedMutationCombatState.MAX_LIFE_STEAL_RATIO);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> requireDeathExplosion(JsonObject parameters) {
+        Optional<String> error = requireNumber(parameters, "amount");
+        if (error.isPresent()) {
+            return error;
+        }
+        double amount = parameters.get("amount").getAsDouble();
+        if (!Double.isFinite(amount) || amount <= 0.0D || amount > WorldAwakenedMutationCombatState.MAX_DEATH_EXPLOSION_POWER) {
+            return Optional.of("parameters.amount must be > 0 and <= "
+                    + WorldAwakenedMutationCombatState.MAX_DEATH_EXPLOSION_POWER);
+        }
+        return Optional.empty();
     }
 
     private static Optional<String> requireSummonTarget(JsonObject parameters) {

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/hunter",
+  "display_name": { "translate": "mutator.worldawakened.defaults.hunter" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 6,
+  "stacking_group": "worldawakened:default_mobility",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:pursuit_speed_boost", "parameters": { "amount": 0.018 } },
+    { "type": "worldawakened:follow_range_bonus", "parameters": { "amount": 8.0 } },
+    { "type": "worldawakened:attack_damage_multiplier", "parameters": { "multiplier": 1.08 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#d09b62", "brightness": 0.58, "see_through_walls": false, "pulse": false } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:spider", "minecraft:wither_skeleton", "minecraft:hoglin"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

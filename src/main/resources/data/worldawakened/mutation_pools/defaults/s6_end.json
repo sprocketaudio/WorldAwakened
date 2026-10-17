@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/s6_end",
+  "enabled": true,
+  "weight": 100,
+  "mutation_chance": 0.18,
+  "additional_mutation_chance": 0.09,
+  "combination_mode": "curated",
+  "rare_combinations": [
+    {
+      "id": "worldawakened:defaults/s6_end_volatile_void_hardened",
+      "weight": 1,
+      "mutators": ["worldawakened:defaults/volatile", "worldawakened:defaults/void_hardened"],
+      "eligible_entities": ["minecraft:endermite"]
+    }
+  ],
+  "conditions": [
+    { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/world_awakened" } },
+    { "type": "worldawakened:current_dimension", "parameters": { "dimension": "minecraft:the_end" } }
+  ],
+  "eligible_dimensions": ["minecraft:the_end"],
+  "eligible_entities": ["minecraft:endermite", "minecraft:shulker"],
+  "allow_from_spawner": false,
+  "allow_from_trial_spawner": false,
+  "mutators": [
+    { "id": "worldawakened:defaults/restless", "weight": 32 },
+    { "id": "worldawakened:defaults/bulwark", "weight": 30 },
+    { "id": "worldawakened:defaults/void_hardened", "weight": 25 },
+    { "id": "worldawakened:defaults/hindering", "weight": 5 },
+    { "id": "worldawakened:defaults/vampiric", "weight": 5 },
+    { "id": "worldawakened:defaults/volatile", "weight": 3 }
+  ],
+  "max_mutators_per_entity": 2
+}

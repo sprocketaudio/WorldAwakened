@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/nether_surge",
+  "display_name": { "translate": "invasion.worldawakened.defaults.nether_surge" },
+  "enabled": true,
+  "trigger_mode": "random_periodic",
+  "conditions": [
+    { "type": "worldawakened:player_count_online", "parameters": { "min": 1 } },
+    { "type": "worldawakened:random_chance", "parameters": { "chance": 0.0000925926 } }
+  ],
+  "stage_filters": { "all_of": ["worldawakened:defaults/end_reached"] },
+  "dimensions": ["minecraft:the_nether"],
+  "biome_filters": [],
+  "min_players": 1,
+  "cooldown_seconds": 7200,
+  "warning_seconds": 40,
+  "duration_seconds": 240,
+  "pressure_modifier": 1.20,
+  "tags": ["worldawakened:defaults", "nether", "nether_surge"]
+}

@@ -2,7 +2,7 @@
 
 World Awakened is a NeoForge mod framework for Minecraft 1.21.1 focused on **server-authoritative progression-driven difficulty**.
 
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
 The core model is:
@@ -11,25 +11,28 @@ The core model is:
 - All subsystems share one canonical condition model, action model, scope model, component composition/conflict model, and status taxonomy.
 - Datapack object files use the standard layout `data/<namespace>/<object_type>/*.json` (no duplicate namespace folder layer).
 - TOML config provides operator-level overrides, safety gates, and the `/wa debug` command-tree kill switch.
-- The mod jar intentionally ships no gameplay-active datapack content.
-- Example/default content is distributed as optional external datapacks using the same schemas available to pack authors.
+- The mod jar ships a conservative Standard gameplay profile through the same datapack schemas available to pack authors.
+- External datapacks remain supported and can add definitions or replace bundled resources by normal resource-pack precedence.
 
 Repository/distribution note:
 - Optional example content currently lives under `example_datapacks/worldawakened_example_pack/` and must be installed like a normal datapack.
 
 ## Status
 Phase 8 core complete.
-Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery. Phase 5 is now implemented: compiled selector-index mutator narrowing, per-pool `mutation_chance` gating (default `1.0`), spawn-time mutator application budgets, deterministic provenance metadata (`WA_MUTATION_*` keys), recursion/re-entry guards, data-driven vanilla-slot mob equipment via `worldawakened:equip_item`, silhouette outline mutation visuals via `worldawakened:glow_style`, simple vanilla effect-style visual emitters via `worldawakened:effect_particles`, advanced raw particle emitters via `worldawakened:ambient_particles`, and command-driven mutator verification (`/wa mob inspect`, `/wa debug mutators evaluate|force_pool|force_mutator`, `/wa debug spawn test`) including explicit chance-pass/chance-fail debug output. Phase 6 is implemented: bounded spawn-pressure + difficulty scalar composition and command/debug evaluation surfaces. Phase 7 is implemented: live loot-profile resolution on WA reward-capable events, canonical loot-context evaluation, Apotheosis-sensitive safety behavior, concise operator loot commands (`/wa loot evaluate|force_profile`), and deep debug loot inspection (`/wa debug loot evaluate|force_profile`).
+Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery. Phase 5 is now implemented: compiled selector-index mutator narrowing, required per-pool initial and conditional-additional chance gates, bounded any-compatible or curated multi-mutation selection, spawn-time mutator application budgets, deterministic provenance metadata (`WA_MUTATION_*` keys), recursion/re-entry guards, data-driven vanilla-slot mob equipment via `worldawakened:equip_item`, silhouette outline mutation visuals via `worldawakened:glow_style`, simple vanilla effect-style visual emitters via `worldawakened:effect_particles`, advanced raw particle emitters via `worldawakened:ambient_particles`, and command-driven mutator verification (`/wa mob inspect`, `/wa debug mutators evaluate|force_pool|force_mutator`, `/wa debug spawn test`) including explicit chance-pass/chance-fail debug output. Phase 6 is implemented: bounded spawn-pressure + difficulty scalar composition and command/debug evaluation surfaces. Phase 7 is implemented: live loot-profile resolution on WA reward-capable events, canonical loot-context evaluation, Apotheosis-sensitive safety behavior, concise operator loot commands (`/wa loot evaluate|force_profile`), and deep debug loot inspection (`/wa debug loot evaluate|force_profile`).
 Phase 8 is implemented: invasion pressure-event scheduler with persistent active-state tracking, warning/duration/cooldown handling, temporary invasion pressure modifier context, invasion-aware condition context (`invasion_active`, `invasion_tag`) across rules/mutators/loot, and command/debug verification surfaces (`/wa invasion start|stop|inspect`, `/wa debug invasion evaluate`).
-Architecture baseline correction is applied: mutation definitions and ascension reward definitions are component-based authored objects, and the framework jar remains content-empty until a datapack is installed.
-Current active milestone is Phase 9 (Compatibility framework + external tier providers).
-The hosted React-based web authoring tool is part of v1 scope and is planned as a late-phase companion deliverable after core runtime systems stabilize, with both offline import/export authoring and live linked runtime-session editing in Phase 10.
+Phase 9 implementation is active in code: compatibility profile activation evaluation, Apotheosis world-tier provider integration, simple `derived_stage` threshold hooks (`stage_hooks -> tier_threshold_unlock`) for automatic WA stage unlocks, advanced tier-filter enforcement for ascension/mutator/loot paths, and compat/scalar inspect-debug command surfaces (`/wa compat list`, `/wa apotheosis tier inspect`, `/wa debug compat evaluate`, `/wa debug scalar provider`).
+The built-in Standard profile is implemented as normal datapack definitions. It supplies S0-S6 milestone progression, eleven live-safe mutation archetypes (including status-on-hit, lifesteal, and block-safe death-explosion threats), unified mutation pools with progressive additional rolls and mob-restricted curated combinations, composed visible mutation names, three player-owned Ascension offers, bounded additive mutation loot, and three warning-backed pressure events without bypassing validation, composition, indexing, or runtime budgets. Personal advancement milestones reconcile idempotently on login, and periodic invasion profiles evaluate only in an allowed dimension that currently has players. Rates and rewards remain provisional pending world play-testing.
+The native profile editor now opens on a WorldAwakened dashboard. Global Settings retains the live Standard controls, while Mob Mutations browses the actual compiled pools and can edit pool enablement, mutation chance, eligible dimensions/living mobs, mutator membership and relative weights, and per-mob maximums. World overrides are persistent, revision-protected, operator-checked, codec-backed, validated on the server, and atomically overlaid without modifying bundled or external datapack files. Progression, full mutator components, rewards, and event authoring remain visibly unavailable rather than pretending to work.
+The hosted web-authoring platform is retired. Later native-editor milestones may add the remaining definition editors and simplified rule authoring; advanced datapacks remain supported.
 
 ## Primary Documentation
 - Documentation index and required read order: [docs/README.md](docs/README.md)
-- Human-friendly wiki index: [docs/wiki/README.md](docs/wiki/README.md)
+- Friendly wiki index: [docs/wiki/README.md](docs/wiki/README.md)
 - Full design spec: [docs/SPECIFICATION.md](docs/SPECIFICATION.md)
-- Web authoring tool spec: [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md)
+- Simplification/default gameplay plan: [docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
+- Standard gameplay contract: [docs/DEFAULT_GAMEPLAY_SPEC.md](docs/DEFAULT_GAMEPLAY_SPEC.md)
+- Retired web authoring plan: [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md)
 - Datapack format/authoring guide: [docs/DATAPACK_AUTHORING.md](docs/DATAPACK_AUTHORING.md)
 - Component authoring reference: [docs/COMPONENT_REFERENCE.md](docs/COMPONENT_REFERENCE.md)
 - Composition and stacking contract: [docs/COMPOSITION_AND_STACKING.md](docs/COMPOSITION_AND_STACKING.md)
@@ -41,14 +44,15 @@ The hosted React-based web authoring tool is part of v1 scope and is planned as 
 - Validation/error code taxonomy: [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md)
 - Preset/template catalog: [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md)
 - Future backlog and long-term ideas: [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md)
-- Future in-game/admin runtime UI concept (post-v1): [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md)
+- Superseded in-game/admin UI proposal: [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md)
 - Agent operating guidance: [AGENTS.md](AGENTS.md)
 
 ## Documentation Sync Policy
 - `docs/README.md` defines required read order, cross-update matrix, and shared reference-doc format expectations.
-- `docs/wiki/README.md` defines the human-friendly wiki layer and when it must be updated.
+- `docs/wiki/README.md` defines the friendly wiki layer and when it must be updated.
 - `docs/SPECIFICATION.md` is the source-of-truth design contract.
-- `docs/WEB_AUTHORING_TOOL_SPEC.md` is the detailed contract for the v1 hosted web authoring/validation companion (offline + live-linked modes).
+- `docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md` is the active product plan for built-in gameplay and the native editor.
+- `docs/WEB_AUTHORING_TOOL_SPEC.md` is a retired historical pointer.
 - `docs/DATAPACK_AUTHORING.md` is the source-of-truth authoring format contract for user datapacks.
 - `docs/COMPONENT_REFERENCE.md` is the canonical component catalog and must be updated whenever a component type/schema changes.
 - `docs/COMPOSITION_AND_STACKING.md` is the canonical component composition resolver contract (duplicate/conflict/order/budget/no-op).
@@ -58,7 +62,7 @@ The hosted React-based web authoring tool is part of v1 scope and is planned as 
 - `docs/VALIDATION_AND_ERROR_CODES.md` is the canonical diagnostics taxonomy and should be updated with validator/runtime diagnostic changes.
 - `docs/PRESET_CATALOG.md` must stay aligned with shipped external example-pack content or canonical authored preset/template compositions.
 - `docs/FUTURE_IDEAS.md` is a non-normative backlog and does not expand MVP scope by itself.
-- `docs/FUTURE_ADMIN_UI.md` is a non-normative post-v1 in-game/admin runtime UI concept and does not expand MVP scope by itself.
+- `docs/FUTURE_ADMIN_UI.md` records that its older deferred proposal has been superseded.
 - The `docs/wiki/` layer is the human-readable companion set for operators, authors, testers, and server owners; keep it aligned with real workflows, commands, and recovery guidance.
 - Command output is intentionally layered: default gameplay/operator output should stay concise and human-readable, while dense raw IDs/reason paths belong in inspect/debug surfaces or behind `general.debug_logging`.
 - Every implementation task should reference the governing docs from `docs/README.md` + `AGENTS.md` before making changes.
@@ -92,6 +96,7 @@ Based on current `gradle.properties`:
 - Optional bounded challenge modifier layer (player/world scoped by policy) for accessibility and opt-in escalation
 - Command-driven inspect/evaluate/force/live-test verification surfaces for Phases 5-9 runtime systems
 - Spawn-time mutation definitions (`mob_mutators`) composed from mutation components
+- Server-side live mutation combat handlers for bounded on-hit effects, lifesteal, and block-safe one-shot death explosions
 - Loot evolution through profile-driven injection/replacement rules
 - Apotheosis loot compatibility that composes additively and preserves Apotheosis-owned tier-gated loot behavior when integration is active
 - One configurable invasion pressure-event loop
@@ -99,14 +104,14 @@ Based on current `gradle.properties`:
 - Optional compatibility layer with explicit toggles
 - Optional Apotheosis World Tier integration (conditions + scalar inputs)
 - Debug command suite for inspection, validation, and targeted operator recovery/reset
-- Hosted React-based datapack authoring/validation platform with offline import/export and live linked runtime-session editing, using one shared datapack/data contract with runtime
-- A framework jar that remains inert until a server/world installs a datapack
+- A conservative playable Standard profile loaded through the canonical datapack engine
+- A native, server-authoritative in-game configuration interface with registry-aware selectors, delivered incrementally
 
 ## Non-Goals for v1
 - Arbitrary user scripting language
 - Full vanilla spawn engine replacement
 - Retroactive mutation of already-loaded mobs
-- Full in-game admin GUI rule editor beyond the browser authoring companion
+- A second gameplay/configuration engine separate from the datapack compiler
 
 ## Planned High-Level Implementation Sequence
 1. Phase 0 (Complete): Data contracts/codecs + datapack reload + validation pipeline + initial test harness
@@ -119,8 +124,9 @@ Based on current `gradle.properties`:
 8. Phase 7 (Complete): Loot evolution profiles and bonus reward integration as downstream WA-owned event pipelines (inject-first defaults, deterministic attribution, and scalar-isolated reward resolution in Phase 7)
 9. Phase 8 (Complete): Invasion pressure-event system (scheduler, active state, warning window, temporary pressure modifiers, and command mode MVP)
 10. Phase 9: Compatibility framework + Apotheosis world tier and external tier providers (integration-tier influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling; no wave assumptions)
-11. Phase 10: Hosted web authoring platform (React/TypeScript frontend + backend session relay, offline project mode, live linked runtime-session editing, registry-aware selectors, visual/structured/raw editors, validation/import/export, performance-budget warnings)
-12. Phase 11: Hardening, example datapack, and release-prep docs + linked-session auth/conflict/apply polish + Phase 7-9 guardrail regression verification + `/wa debug perf|rules|mutators` surfaces
+11. Default gameplay: play-test and expand Standard, then add Relaxed/Challenging presets through the same engine
+12. Native editor foundation and mutation-pool editor (implemented): dashboard, Global Settings, server-derived living-entity selection, revisioned per-world pool overrides, validation and source reversion; remaining definition editors and simplified rules remain later work
+13. Hardening: regression verification, documentation, example datapacks, and `/wa debug perf|rules|mutators` surfaces
 
 ## Dev Notes
 - Keep all gameplay authority server-side.

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/volatile",
+  "display_name": { "translate": "mutator.worldawakened.defaults.volatile" },
+  "enabled": true,
+  "rarity": "epic",
+  "weight": 2,
+  "stacking_group": "worldawakened:default_death",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:death_explosion", "parameters": { "amount": 2.5 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#ff7a24", "brightness": 0.82, "see_through_walls": false, "pulse": true, "pulse_speed": 1.10, "pulse_strength": 0.28 } },
+    { "type": "worldawakened:ambient_particles", "parameters": { "particle": "minecraft:flame", "count": 2, "offset_x": 0.35, "offset_y": 0.55, "offset_z": 0.35, "speed": 0.01, "interval_ticks": 5 } }
+  ],
+  "eligible_entities": ["minecraft:zombie", "minecraft:husk", "minecraft:cave_spider", "minecraft:wither_skeleton", "minecraft:magma_cube", "minecraft:endermite"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}

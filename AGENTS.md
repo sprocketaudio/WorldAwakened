@@ -5,7 +5,7 @@ This repository is building **World Awakened**, a Minecraft 1.21.1 + NeoForge fr
 
 This file defines how coding agents should operate in this repo.
 
-- Last updated: 2026-03-18
+- Last updated: 2026-10-17
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
 ## Read Order Before Any Task
@@ -22,10 +22,12 @@ This file defines how coding agents should operate in this repo.
 11. [docs/PERFORMANCE_BUDGETS.md](docs/PERFORMANCE_BUDGETS.md)
 12. [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md)
 13. [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md)
-14. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md)
-15. [docs/wiki/README.md](docs/wiki/README.md) when changes affect user-facing workflows, operator flows, testing guidance, troubleshooting, or author mental models
-16. [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md) only when discussing post-v1 backlog or promoting deferred ideas
-17. [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md) only when discussing the deferred in-game/admin runtime inspection/authoring UI concept
+14. [docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
+15. [docs/DEFAULT_GAMEPLAY_SPEC.md](docs/DEFAULT_GAMEPLAY_SPEC.md) when built-in gameplay content, balance, rewards, or pressure events are relevant
+16. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) only when historical web-tool context is relevant
+17. [docs/wiki/README.md](docs/wiki/README.md) when changes affect user-facing workflows, operator flows, testing guidance, troubleshooting, or author mental models
+18. [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md) only when discussing post-v1 backlog or promoting deferred ideas
+19. [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md) only when historical admin-UI context is relevant
 
 Task citation rule:
 - In every task response, list the docs consulted before implementation.
@@ -39,7 +41,7 @@ If there is a conflict, follow this priority:
 ## Core Product Rules
 - Keep gameplay authority on the server.
 - Keep content and balance data-driven via datapacks and config.
-- Keep one shared datapack/data contract across raw datapacks, mod runtime state, and hosted web-tool session payloads.
+- Keep one shared datapack/data contract across raw datapacks, bundled defaults, runtime state, and native-editor overrides.
 - Keep one shared framework contract for conditions, actions, scopes, component composition semantics, and status taxonomy across all systems.
 - Never hardcode stage names, ordering, or progression paths.
 - Internal logic must use stage IDs, not display names.
@@ -60,9 +62,9 @@ If there is a conflict, follow this priority:
 ## Architecture Boundaries
 - Java defines behavior engines and execution flow (`HOW`).
 - Datapacks define stage/rule/profile content (`WHAT`).
-- The web authoring tool is an authoring/validation/editor layer (offline and live-linked) only; it must not become runtime gameplay authority.
-- The core mod jar must not ship gameplay-active datapack content.
-- Example/default content should be distributed as optional external datapacks using the same schema exposed to pack authors.
+- The native in-game editor is a server-authoritative authoring/validation layer; it must compile into the existing runtime definitions rather than become another gameplay engine.
+- The core mod jar should ship conservative gameplay-active defaults using the same schema exposed to pack authors.
+- Example content may remain external; custom datapacks must have predictable additive/override behavior with bundled defaults.
 - TOML config defines server/operator overrides and kill-switches.
 - Do not introduce arbitrary scripting language in v1.
 - Do not attempt full replacement of vanilla spawning in v1.
@@ -79,8 +81,10 @@ If there is a conflict, follow this priority:
 8. Phase 7: Loot evolution integration + Apotheosis-sensitive loot safety behavior
 9. Phase 8: Invasion pressure-event MVP implementation (scheduler + active-state + temporary pressure modifier; no WA-owned wave spawning)
 10. Phase 9: Compatibility framework + Apotheosis world tier/external tier support + loot-target sensitivity enforcement (invasion-adjacent influence limited to mutation pressure, mutation pool eligibility/scalar gates, and reward scaling)
-11. Phase 10: Hosted web authoring platform (browser companion) + React/TypeScript frontend + backend session relay + offline and live-linked session editing + schemas/validation/import-export + visual/structured/raw editors + templates + performance-budget warnings
-12. Phase 11: Validation hardening + docs + example datapack + release prep + linked-session auth/token/revision/apply hardening + regression checks for Phase 7-9 guardrails + `/wa debug perf|rules|mutators`
+11. Default gameplay: conservative Standard profile, world play-testing, then Relaxed/Challenging presets using the same engine
+12. Native editor foundation: `/wa config`, permissions, revisioned server validation/apply, preset and common difficulty controls
+13. Native editor growth: cached server registry browser, mutation editing, simplified `WHEN -> IF -> THEN` rules with inferred internal scopes
+14. Validation hardening + docs + example datapacks + regression checks for Phase 7-9 guardrails + `/wa debug perf|rules|mutators`
 
 ## Engineering Expectations
 - Prefer small, testable, additive changes.
@@ -152,23 +156,24 @@ When behavior changes, update:
 9. [docs/PERFORMANCE_BUDGETS.md](docs/PERFORMANCE_BUDGETS.md) for hot-path limits, rule indexing, and runtime guardrail changes
 10. [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md) for diagnostics taxonomy/code changes
 11. [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md) for canonical preset/template status/composition changes
-12. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) for browser authoring/validation/import-export and live-linked session workflow changes
-13. [docs/README.md](docs/README.md) for read order or cross-update matrix changes
-14. [docs/wiki/README.md](docs/wiki/README.md) and affected files under `docs/wiki/` for human-friendly operator/author/testing/troubleshooting guidance
-15. [README.md](README.md) for user-facing scope/status changes
-16. [AGENTS.md](AGENTS.md) for contributor/agent workflow expectation changes
+12. [docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) for built-in gameplay and native-editor direction changes
+13. [docs/DEFAULT_GAMEPLAY_SPEC.md](docs/DEFAULT_GAMEPLAY_SPEC.md) for bundled Standard content, provisional balance, rewards, and pressure-event changes
+14. [docs/README.md](docs/README.md) for read order or cross-update matrix changes
+15. [docs/wiki/README.md](docs/wiki/README.md) and affected files under `docs/wiki/` for friendly operator/author/testing/troubleshooting guidance
+16. [README.md](README.md) for user-facing scope/status changes
+17. [AGENTS.md](AGENTS.md) for contributor/agent workflow expectation changes
 
 ## Documentation Currency Rule
 - Treat documentation sync as mandatory, not optional cleanup.
 - Treat `docs/README.md` as the index for read order, shared reference format, and cross-update mapping.
-- Treat `docs/wiki/` as the human-friendly companion layer for operators, pack authors, testers, and server owners.
+- Treat `docs/wiki/` as the friendly companion layer for operators, pack authors, testers, and server owners.
 - Keep the `docs/wiki/` layer plain-language, example-driven, and practical; it must explain the system in human terms, not just restate contract tables.
 - If a concept caused confusion during testing, implementation, review, or operator use, update the relevant wiki docs in the same task.
 - Shared-contract lock rule: if any shared framework contract (conditions, actions, scopes, component composition semantics, status taxonomy) changes, update all related shared-contract docs in the same task.
 - Any spec expansion must update all impacted docs in the same task/commit:
   - [docs/README.md](docs/README.md) (documentation set map and cross-update contract)
   - [docs/wiki/README.md](docs/wiki/README.md) and affected files under `docs/wiki/` when user-facing workflows, explanations, command usage, testing patterns, recipes, or troubleshooting are impacted
-  - [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) (hosted web authoring/validation companion contract, including offline and live-linked session workflows)
+  - [docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) (built-in gameplay and native-editor product contract)
   - [docs/DATAPACK_AUTHORING.md](docs/DATAPACK_AUTHORING.md) (user datapack schema/content contract)
   - [docs/COMPONENT_REFERENCE.md](docs/COMPONENT_REFERENCE.md) (canonical mutation/ascension component reference; keep implemented vs planned accurate)
   - [docs/COMPOSITION_AND_STACKING.md](docs/COMPOSITION_AND_STACKING.md) (shared composition resolver contract for duplicates/conflicts/ordering/budget/no-op behavior)
@@ -187,7 +192,7 @@ When behavior changes, update:
 - If docs are out of sync, fix docs before or alongside code changes.
 
 ## Human Docs Rule
-- Maintain a separate human-friendly/wiki-like docs layer under `docs/wiki/`.
+- Maintain a separate friendly/wiki-like docs layer under `docs/wiki/`.
 - This layer must cover concepts, quickstarts, operator guidance, cookbook patterns, troubleshooting, and FAQ content.
 - Write this layer for humans first: plain language, practical examples, decision rules, and recovery steps.
 - Do not leave an important behavior explained only in deep technical docs when operators or pack authors are likely to hit it in normal use.
@@ -195,7 +200,7 @@ When behavior changes, update:
 
 ## Backlog Rule
 - `docs/FUTURE_IDEAS.md` is not active scope by itself.
-- `docs/FUTURE_ADMIN_UI.md` is not active scope by itself (it covers deferred in-game/admin runtime UI ideas, not the v1 web authoring companion).
+- `docs/FUTURE_ADMIN_UI.md` is superseded historical context; active native-editor scope comes from the specification and simplification plan.
 - Do not implement backlog items unless the user explicitly asks for that feature or it is promoted into [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
 - Do not promote new post-v1 systems into active scope while the Phase 0-3 foundation remains unproven unless the user explicitly redirects the project.
 
@@ -209,5 +214,5 @@ Phase 5 is complete (mutators + mutation pools + spawn-time application + inspec
 Phase 6 is complete (spawn pressure controls + rule-event guardrails + shared effective-scalar provider).  
 Phase 7 is complete (loot evolution integration + Apotheosis-sensitive loot safety behavior + loot debug evaluate/force surfaces).  
 Phase 8 is complete (invasion pressure-event scheduler + active-state + warning/duration/cooldown + temporary pressure modifier + invasion command/debug surfaces).  
-Current active target is Phase 9 unless the user redirects scope.
+The native `/wa config` dashboard, Global Settings screen, mutation-pool editor, server-derived living-entity selector, and revisioned world override bridge are implemented. Current work is in-game singleplayer/dedicated-server GUI validation and hardening before another definition editor or rule-editor expansion; preserve and validate the Phase 9 compatibility work already present.
 

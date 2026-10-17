@@ -2,8 +2,8 @@
 
 Plain-language explanation of how World Awakened thinks about progression, triggers, rules, and ascension.
 
-- Document status: Active human-friendly concept guide
-- Last updated: 2026-03-18
+- Document status: Active friendly concept guide
+- Last updated: 2026-10-17
 - Scope: Mental model for operators and datapack authors
 
 ---
@@ -268,32 +268,13 @@ A good rule:
 - use operator commands to run the system
 - use debug commands to clean up or reset the system
 
-## Web Authoring Modes: Offline vs Live Linked
+## Built-In Defaults And Future Editing
 
-The web authoring platform has two different editing modes.
+World Awakened starts with a playable Standard profile. Those defaults are not a separate hardcoded mode: stages, triggers, mutators, unified mutation pools, curated combinations, Ascension choices, loot bonuses, and pressure events all load through the same datapack engine as custom content.
 
-### Offline mode
+Advanced authors can still use datapacks. A file at the same `worldawakened:defaults/...` resource path replaces the bundled object; a new ID adds another object.
 
-Use this for import/export workflows without a running server.
-
-You can:
-- build or import a datapack project
-- validate content
-- export deterministic datapack files
-
-### Live linked mode
-
-Use this when you need to edit the currently loaded World Awakened authored state on a running server.
-
-You can:
-- start a linked session from runtime (`/wa web edit`)
-- load runtime-authored state and runtime registry metadata into the hosted editor
-- apply changes back to runtime with runtime-side validation
-
-Important authority rule:
-- editor is authoring/validation workflow authority
-- runtime is apply/commit and gameplay execution authority
-- linked sessions are short-lived and revision-checked so stale browser state cannot silently overwrite newer runtime state
+The former hosted web editor is retired. The first native `/wa config` screen is implemented for common gameplay settings. The client holds only an unsaved draft; the server owns permissions, validation, revisions, persistence, candidate compilation, and applying changes. Later definition editors will hide internal scope terms behind events, conditions, outcomes, and friendly target choices.
 
 ## Single-Pass Rule Behavior
 
@@ -348,6 +329,8 @@ Keep this model:
 - World Awakened exposes invasion context (`invasion_active`, `invasion_profile_id`, `invasion_tags`, warning/duration state, pressure modifier)
 - vanilla and other mods still own actual mob spawning
 - invasion-gated mutation pools become eligible through invasion conditions; they are not spawned by a WA wave engine
+- periodic profiles are checked only in allowed dimensions that currently contain a player
+- the built-in events announce their warning and ending, but do not pay a timeout-completion reward
 
 ## The Mental Model To Keep
 

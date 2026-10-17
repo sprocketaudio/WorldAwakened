@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/nether_hardened",
+  "display_name": { "translate": "mutator.worldawakened.defaults.nether_hardened" },
+  "enabled": true,
+  "rarity": "rare",
+  "weight": 4,
+  "stacking_group": "worldawakened:default_elite",
+  "max_stack_count": 1,
+  "components": [
+    { "type": "worldawakened:max_health_multiplier", "parameters": { "multiplier": 1.22 } },
+    { "type": "worldawakened:armor_bonus", "parameters": { "amount": 2.0 } },
+    { "type": "worldawakened:knockback_resistance_bonus", "parameters": { "amount": 0.12 } },
+    { "type": "worldawakened:glow_style", "parameters": { "color": "#d9824b", "brightness": 0.66, "see_through_walls": false, "pulse": false } }
+  ],
+  "eligible_entities": ["minecraft:piglin_brute", "minecraft:hoglin", "minecraft:wither_skeleton", "minecraft:blaze", "minecraft:magma_cube"],
+  "excluded_entity_tags": ["#c:bosses"],
+  "required_conditions": [],
+  "applies_to_bosses": false,
+  "applies_to_invaders": true,
+  "application_contexts": ["on_spawn", "on_invasion_spawn"]
+}
