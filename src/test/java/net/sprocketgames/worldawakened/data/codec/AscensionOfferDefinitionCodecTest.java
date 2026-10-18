@@ -10,6 +10,7 @@ import com.mojang.serialization.JsonOps;
 
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferMode;
+import net.sprocketgames.worldawakened.data.definition.AscensionOfferRepeatPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardRepeatPolicy;
 
 class AscensionOfferDefinitionCodecTest {
@@ -31,6 +32,7 @@ class AscensionOfferDefinitionCodecTest {
         assertEquals(2, offer.choiceCount());
         assertEquals(1, offer.selectionCount());
         assertEquals(AscensionOfferMode.EXPLICIT_LIST, offer.offerMode());
+        assertEquals(AscensionOfferRepeatPolicy.ONCE_PER_PLAYER, offer.offerRepeatPolicy());
         assertEquals(AscensionRewardRepeatPolicy.BLOCK_ALL, offer.rewardRepeatPolicy());
         assertTrue(offer.candidateRewardTags().isEmpty());
     }

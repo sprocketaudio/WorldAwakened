@@ -12,6 +12,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
 
@@ -25,6 +26,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MobCategory;
 import net.neoforged.neoforge.common.NeoForge;
 import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionService;
+import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.data.definition.SourceScope;
 import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
@@ -33,6 +35,7 @@ import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedMutableTriggerState;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationResult;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationStatus;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
@@ -67,6 +70,11 @@ public final class WorldAwakenedTriggerService {
     }
 
     public WorldAwakenedTriggerRunResult onPlayerEnteredDimension(ServerPlayer player, ResourceLocation dimensionId) {
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState playerState =
+                WorldAwakenedPlayerProgressionSavedData.get(player.serverLevel()).getOrCreate(player.getUUID());
+        if (playerState.visitedDimensions().add(dimensionId)) {
+            playerState.markDirty();
+        }
         return evaluateAndApply(new TriggerEventContext(
                 WorldAwakenedTriggerTypes.PLAYER_ENTER_DIMENSION,
                 player.serverLevel(),
@@ -122,16 +130,37 @@ public final class WorldAwakenedTriggerService {
         return replayed;
     }
 
+    /** Replays only inspectable evidence when a player joins; it does not invent historical kills or manual events. */
+    public int reconcileInspectableTriggers(ServerPlayer player) {
+        if (player == null) {
+            return 0;
+        }
+        int replayed = reconcileCompletedAdvancementTriggers(player);
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState playerState =
+                WorldAwakenedPlayerProgressionSavedData.get(player.serverLevel()).getOrCreate(player.getUUID());
+        LinkedHashSet<ResourceLocation> dimensions = new LinkedHashSet<>(playerState.visitedDimensions());
+        dimensions.add(player.serverLevel().dimension().location());
+        for (ResourceLocation dimension : dimensions) {
+            if (onPlayerEnteredDimension(player, dimension).executedRules() > 0) {
+                replayed++;
+            }
+        }
+        if (onWorldDayMilestone(player.serverLevel(), player).executedRules() > 0) {
+            replayed++;
+        }
+        return replayed;
+    }
+
     static Set<ResourceLocation> completedAdvancementTriggerIds(
             Iterable<TriggerRuleDefinition> definitions,
             Set<String> consumedOneShotTriggers) {
         LinkedHashSet<ResourceLocation> advancementIds = new LinkedHashSet<>();
         for (TriggerRuleDefinition definition : definitions) {
             if (!definition.enabled()
-                    || !definition.oneShot()
+                    || (!definition.oneShot() && !hasAction(definition, "record_unlock_condition"))
                     || definition.sourceScope() != SourceScope.PLAYER
                     || !WorldAwakenedTriggerTypes.ADVANCEMENT_COMPLETED.equals(definition.triggerType())
-                    || consumedOneShotTriggers.contains(definition.id().toString())) {
+                    || (definition.oneShot() && consumedOneShotTriggers.contains(definition.id().toString()))) {
                 continue;
             }
             for (JsonElement rawCondition : definition.conditions()) {
@@ -239,12 +268,34 @@ public final class WorldAwakenedTriggerService {
     }
 
     public WorldAwakenedTriggerRunResult onWorldDayMilestone(ServerLevel level) {
-        return evaluateAndApply(new TriggerEventContext(
+        WorldAwakenedTriggerRunResult result = evaluateAndApply(new TriggerEventContext(
                 WorldAwakenedTriggerTypes.WORLD_DAY_MILESTONE,
                 level,
                 null,
                 null,
                 level.dimension().location(),
+                Optional.empty(),
+                Optional.empty(),
+                Set.of(),
+                false,
+                Optional.empty()),
+                Optional.empty(),
+                true);
+        if (level.getServer() != null) {
+            for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+                result = sum(result, onWorldDayMilestone(level, player));
+            }
+        }
+        return result;
+    }
+
+    private WorldAwakenedTriggerRunResult onWorldDayMilestone(ServerLevel level, ServerPlayer player) {
+        return evaluateAndApply(new TriggerEventContext(
+                WorldAwakenedTriggerTypes.WORLD_DAY_MILESTONE,
+                level,
+                player,
+                null,
+                player.serverLevel().dimension().location(),
                 Optional.empty(),
                 Optional.empty(),
                 Set.of(),
@@ -329,8 +380,32 @@ public final class WorldAwakenedTriggerService {
 
             executedRules++;
             ServerPlayer scopedPlayer = scope == SourceScope.PLAYER ? eventContext.player() : null;
+            actionLoop:
             for (CompiledTriggerAction action : compileActions(rule.actions())) {
                 switch (action.actionPath()) {
+                    case "record_unlock_condition" -> {
+                        WorldAwakenedMutableTriggerState progressState = selectProgressTriggerState(
+                                eventContext.level(), eventContext.player());
+                        if (progressState == null) {
+                            break actionLoop;
+                        }
+                        String groupToken = readString(action.parameters(), "group_token").orElse("");
+                        String conditionToken = readString(action.parameters(), "condition_token").orElse("");
+                        List<String> conditionTokens = readStringList(action.parameters(), "condition_tokens");
+                        boolean requireAll = !"any".equalsIgnoreCase(
+                                readString(action.parameters(), "mode").orElse("all"));
+                        WorldAwakenedUnlockConditionProgress.Result progress =
+                                WorldAwakenedUnlockConditionProgress.record(
+                                        progressState.triggerCounters(), groupToken, conditionToken,
+                                        conditionTokens, requireAll);
+                        if (progress.newlyRecorded()) {
+                            progressState.markDirty();
+                            counterUpdates++;
+                        }
+                        if (!progress.satisfied()) {
+                            break actionLoop;
+                        }
+                    }
                     case "unlock_stage" -> {
                         Optional<ResourceLocation> stageIdOpt = readResourceLocation(action.parameters(), "stage");
                         if (stageIdOpt.isEmpty()) {
@@ -493,6 +568,18 @@ public final class WorldAwakenedTriggerService {
         return WorldAwakenedWorldProgressionSavedData.get(level);
     }
 
+    private WorldAwakenedMutableTriggerState selectProgressTriggerState(ServerLevel level, ServerPlayer player) {
+        WorldAwakenedProgressionMode mode = WorldAwakenedProgressionMode.fromConfig(
+                WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
+        if (mode == WorldAwakenedProgressionMode.PER_PLAYER) {
+            if (player == null) {
+                return null;
+            }
+            return WorldAwakenedPlayerProgressionSavedData.get(level).getOrCreate(player.getUUID());
+        }
+        return WorldAwakenedWorldProgressionSavedData.get(level);
+    }
+
     private static Set<ResourceLocation> collectEntityTags(Entity entity) {
         LinkedHashSet<ResourceLocation> tags = new LinkedHashSet<>();
         entity.getType().builtInRegistryHolder().tags().forEach(tag -> tags.add(tag.location()));
@@ -536,6 +623,33 @@ public final class WorldAwakenedTriggerService {
             }
         }
         return Optional.empty();
+    }
+
+    private static List<String> readStringList(JsonObject object, String key) {
+        if (!object.has(key) || !object.get(key).isJsonArray()) {
+            return List.of();
+        }
+        List<String> values = new ArrayList<>();
+        JsonArray array = object.getAsJsonArray(key);
+        for (JsonElement element : array) {
+            if (element.isJsonPrimitive() && !element.getAsString().isBlank()) {
+                values.add(element.getAsString());
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private static boolean hasAction(TriggerRuleDefinition definition, String path) {
+        for (JsonElement element : definition.actions()) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+            Optional<ResourceLocation> type = readResourceLocation(element.getAsJsonObject(), "type");
+            if (type.isPresent() && path.equals(type.get().getPath())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String readMessageText(JsonObject action) {

@@ -32,6 +32,8 @@ Update rule:
 
 ## 1. Runtime Philosophy
 
+The native World Phase view is compiled at publish time into the existing stage-gated mutation-pool indexes. Named mob configurations do not add a second spawn roll, runtime phase scan, or per-spawn traversal of editor metadata.
+
 - World Awakened must scale to large datapacks (including thousands of authored objects) without degrading server TPS.
 - Runtime evaluation must never perform unbounded scans across full rule sets for hot-path events.
 - Hot-path evaluators must operate on precompiled structures produced during datapack reload.
@@ -213,6 +215,8 @@ Personal advancement catch-up guardrail:
 - advancement IDs are deduplicated before replay
 - replay uses the normal compiled trigger matcher and does not enumerate or synthesize unrelated advancements
 
+Phase-linked Ascension reconciliation is also event-bounded: phase unlock evaluates the compiled offer set once for the currently online players, while login/respawn performs one eligibility pass for that player. Automatic grants use one stable per-offer source key, so reload/login reconciliation cannot create a new once-per-source identity on every pass. Pending/resolved once-per-player checks occur before candidate selection, avoiding repeated reward-pool work for already-owned offers.
+
 ## Ownership-Safe Mutator Application Guardrail
 
 Spawn-time mutator application must remain bounded, ownership-scoped, and fail-closed on unavailable runtime surfaces.
@@ -319,7 +323,15 @@ This contract aligns to future implementation phases as follows:
 - Phase 7: enforce deterministic and bounded loot/reward profile evaluation on explicit reward-capable event paths
 - Native editor settings foundation: implemented overrides are constant-time runtime reads; the mutation cap can only tighten the existing hard budget, and bundled-profile changes compile off the hot path before publication
 - Native mutation-pool editing cannot raise the engine hard cap above eight mutators per mob; the existing global and authored caps may tighten it further. Registry enumeration and living-type checks occur only when an authorised operator opens the editor, never in spawn evaluation.
+- Native Difficulty Tracks compile during profile publication into the existing pool-condition structures. Spawn evaluation does not scan tracks or progression stages: each tier pool carries precompiled `stage_unlocked` and higher-tier `stage_locked` gates, and ordinary selector indexing remains authoritative.
 - Later native editor work: expose richer component-budget warnings in guided mutator-definition workflows
+
+### Native-editor phase condition groups
+
+- A phase group is capped by the UI at three conditions.
+- Each event evaluates an ordinary scope-indexed trigger rule and performs at most three bounded trigger-counter lookups.
+- Completion is stored in existing trigger SavedData; no collection-wide scan, expression tree, or second progression engine is introduced.
+- Login reconciliation replays only inspectable evidence (completed advancements, recorded/current dimensions, and current world day). Historical kills and manual events are never invented.
 - Hardening: ship `/wa debug perf|rules|mutators` observability surfaces and verify editor apply/reload workflows cannot bypass compiled hot-path indexing, budget limits, or deterministic ordering guarantees
 
 Roadmap sync rule:

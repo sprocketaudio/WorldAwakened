@@ -1,6 +1,7 @@
 package net.sprocketgames.worldawakened.ascension;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -14,6 +15,7 @@ import com.google.gson.JsonObject;
 
 import net.minecraft.resources.ResourceLocation;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
+import net.sprocketgames.worldawakened.data.definition.AscensionOfferRepeatPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardRepeatPolicy;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
 
@@ -64,6 +66,47 @@ class WorldAwakenedAscensionServiceTest {
         assertFalse(WorldAwakenedAscensionService.rewardBlockedByOfferReusePolicy(offer, forfeited, state));
     }
 
+    @Test
+    void conditionlessOfferIsNotImplicitlyGrantedByPhaseChanges() {
+        AscensionOfferDefinition offer = offer(AscensionRewardRepeatPolicy.BLOCK_ALL);
+
+        assertFalse(WorldAwakenedAscensionService.hasExplicitAutomaticAvailability(offer));
+    }
+
+    @Test
+    void explicitStageFilterMakesOfferEligibleForAutomaticPhaseEvaluation() {
+        AscensionOfferDefinition base = offer(AscensionRewardRepeatPolicy.BLOCK_ALL);
+        JsonObject stageFilters = new JsonObject();
+        stageFilters.add("all_of", com.google.gson.JsonParser.parseString("[\"testpack:phase\"]"));
+        AscensionOfferDefinition offer = new AscensionOfferDefinition(
+                base.schemaVersion(), base.id(), base.enabled(), base.presentation(),
+                new AscensionOfferDefinition.OfferFilters(List.of(), Optional.of(stageFilters),
+                        Optional.empty(), Optional.empty()),
+                base.candidates(), base.policy());
+
+        assertTrue(WorldAwakenedAscensionService.hasExplicitAutomaticAvailability(offer));
+        assertEquals("automatic:testpack:test_offer", WorldAwakenedAscensionService.automaticOfferSourceKey(offer),
+                "phase unlock and login reconciliation must dedupe against the same source identity");
+    }
+
+    @Test
+    void pendingAndResolvedInstancesBothCountAsExistingOffers() {
+        WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = new WorldAwakenedPlayerProgressionSavedData()
+                .getOrCreate(UUID.randomUUID());
+        ResourceLocation offerId = id("testpack:test_offer");
+        ResourceLocation rewardId = id("testpack:fresh_reward");
+        WorldAwakenedAscensionOfferRuntime pending = WorldAwakenedAscensionOfferRuntime.pending(
+                "wao_pending1", offerId, "phase:a", 1L, List.of(rewardId));
+        state.pendingAscensionOfferInstances().put(pending.instanceId(), pending);
+        assertTrue(WorldAwakenedAscensionService.hasOfferInstance(state, offerId));
+
+        state.pendingAscensionOfferInstances().clear();
+        WorldAwakenedAscensionOfferRuntime resolved = pending.withInstanceId("wao_resolved").resolve(rewardId, 2L);
+        state.resolvedAscensionOfferInstances().put(resolved.instanceId(), resolved);
+        assertTrue(WorldAwakenedAscensionService.hasOfferInstance(state, offerId));
+        assertFalse(WorldAwakenedAscensionService.hasOfferInstance(state, id("testpack:other_offer")));
+    }
+
     private static AscensionOfferDefinition offer(AscensionRewardRepeatPolicy repeatPolicy) {
         return new AscensionOfferDefinition(
                 1,
@@ -87,6 +130,7 @@ class WorldAwakenedAscensionServiceTest {
                         1,
                         0,
                         true,
+                        AscensionOfferRepeatPolicy.ONCE_PER_PLAYER,
                         repeatPolicy));
     }
 

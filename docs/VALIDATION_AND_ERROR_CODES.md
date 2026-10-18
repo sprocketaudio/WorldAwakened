@@ -3,7 +3,7 @@
 Canonical reference for structured diagnostic code families, severity semantics, and publication rules.
 
 - Document status: Active shared-contract reference
-- Last updated: 2026-10-17
+- Last updated: 2026-10-18
 - Scope: Validation and diagnostics contracts across runtime, commands, and tooling
 
 ---
@@ -33,6 +33,10 @@ Update rule:
 ---
 
 ## 1. Purpose
+
+Native World Phase mutation authoring rejects more than one Default Mobs configuration for the same phase/dimension, enabled specialised configurations without explicit mobs, and overlaps where the same mob appears in multiple enabled specialised configurations. An unrestricted Default Mobs configuration is valid: publication compiles it to the current eligible living-mob registry minus enabled specialised selections without changing the authored wildcard. Disabled specialised configurations do not subtract mobs from Default Mobs. The candidate revision is rejected atomically and the currently published runtime snapshot remains active. A pre-existing native-editor validation issue does not brick unrelated recovery edits: revisioned authoring compares the submitted graph with the persisted graph, retains identical existing issues for operator review, and rejects newly introduced issues. This recovery allowance does not validate or activate the broken branch.
+
+Native Ascension authoring decodes reward and offer objects through their canonical codecs before publication. A newly created native choice must contain one to three distinct effects from the editor's live-handler allow-list, and each numeric amount must remain inside the server-owned safe range for that effect. Every offer candidate must resolve against the merged bundled/datapack plus world-authored reward set. Enabled offers must have a World Phase filter or an explicit authored grant trigger. Any failure rejects the whole revisioned apply; the offer and its newly drafted choices are never partially published.
 
 This file is the canonical reference for World Awakened structured diagnostic codes used by validators, loaders, and runtime safety guards.
 
@@ -300,10 +304,12 @@ Publication labels used below:
 | `WA_ACTION_PARAMETERS_INVALID` | canonical-target | action | error | validation | yes | Missing/wrong/contradictory action parameters. | Disable owning object branch. | Fix action `parameters` schema/value bounds. | Required canonical action-parameters code. |
 | `WA_INVALID_CONDITION_TYPE` | implemented (legacy) | condition | error | validation | yes | Consolidated condition-node failure: shape/type/scope/parameter issues. | Disable owning object. | Resolve message-specific node issue. | Legacy broad code; migrate toward granular `WA_CONDITION_*` codes. |
 | `WA_INVALID_ACTION_TYPE` | implemented (legacy) | action | error | validation | yes | Consolidated action-node failure: shape/type/scope/parameter issues. | Disable owning object. | Resolve message-specific node issue. | Legacy broad code; migrate toward granular `WA_ACTION_*` codes. |
+
+Native-editor `record_unlock_condition` validation uses `WA_INVALID_ACTION_TYPE` when its opaque `group_token`, `condition_token`, non-empty `condition_tokens`, or `mode: all|any` metadata is absent or malformed. The owning generated trigger is disabled; unrelated phases remain active.
 | `WA_CONFIG_GATE_INVALID` | implemented | config gate | error | validation | yes | Invalid `config_gate` token/shape. | Disable owning object branch. | Use valid gate key format and existing gate. | Emitted by loader gate validation. |
 | `WA_NATIVE_CONFIG_PERMISSION_DENIED` | implemented | native config | error | command/network | request-level | A player without operator or integrated-owner authority attempted to modify settings. | Reject the packet without changing revision or runtime state. | Obtain operator permission and reopen `/wa config`. | Packet handlers repeat the command permission check. |
-| `WA_NATIVE_CONFIG_REVISION_STALE` | implemented | native config | warning | network/apply | request-level | The submitted base revision no longer matches the server revision. | Reject the draft and return the newest snapshot. | Review refreshed values and apply again. | Prevents simultaneous-editor overwrite. |
-| `WA_NATIVE_CONFIG_VALIDATION_FAILED` | implemented | native config | error | validation/apply | request-level | A bounded setting or candidate bundled-profile compile is invalid. | Keep the previous settings and compiled snapshot. | Correct the reported value or datapack conflict. | Client drafts never become authority. |
+| `WA_NATIVE_CONFIG_REVISION_STALE` | implemented | native config/profile authoring | warning | network/apply | request-level | The submitted settings or profile base revision no longer matches the server revision. | Reject the draft and return the newest snapshot. | Review refreshed values and apply again. | Prevents simultaneous-editor overwrite across stage/trigger/pool/track transactions. |
+| `WA_NATIVE_CONFIG_VALIDATION_FAILED` | implemented | native config/profile authoring | error | validation/apply | request-level | A bounded setting, stage/trigger relationship, dependency, track/tier link, registry reference, mutation pool, or candidate profile compile is invalid. | Keep the previous settings, authored graph, and compiled snapshot. | Correct the reported field or dependency conflict. | Client drafts never become authority; linked definitions validate before commit. |
 | `WA_NATIVE_CONFIG_APPLY_FAILED` | implemented | native config | error | apply | request-level | The server could not safely commit an otherwise valid native-editor draft. | Keep or restore the previous authoritative state. | Review logs and retry after correcting the server-side failure. | Reserved for post-validation commit failures. |
 | `WA_SELECTOR_INVALID` | implemented | selector | error | validation | yes | Invalid selector/tag syntax for hot-path filters. | Disable owning object. | Correct selector syntax and target type. | Emitted during reload precompilation checks. |
 

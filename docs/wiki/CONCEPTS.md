@@ -161,6 +161,8 @@ Why the commands use `instance_id` for selection:
 - choosing by template ID becomes ambiguous
 - choosing by runtime instance ID is precise and operator-safe
 
+Ordinary authored offers use **Once per player**. That means either a pending or resolved instance prevents another copy of the same template for that player. **Once per source** is an explicit advanced mode for intentionally repeatable offers; it still blocks the same source from granting twice. A pending choice survives closing the screen, logout, and restart.
+
 ## Owned Carriers vs Shared Vanilla Effects
 
 This distinction matters whenever World Awakened needs to refresh or remove a long-lived effect later.
@@ -274,7 +276,9 @@ World Awakened starts with a playable Standard profile. Those defaults are not a
 
 Advanced authors can still use datapacks. A file at the same `worldawakened:defaults/...` resource path replaces the bundled object; a new ID adds another object.
 
-The former hosted web editor is retired. The first native `/wa config` screen is implemented for common gameplay settings. The client holds only an unsaved draft; the server owns permissions, validation, revisions, persistence, candidate compilation, and applying changes. Later definition editors will hide internal scope terms behind events, conditions, outcomes, and friendly target choices.
+The former hosted web editor is retired. Native `/wa config` covers common gameplay settings, a single World Phases timeline, profile creation, and phase/dimension/named mob configurations. The client holds only an unsaved draft; the server owns permissions, validation, revisions, persistence, candidate compilation, and applying changes. Friendly milestone choices infer valid trigger context instead of exposing raw scope terms.
+
+The friendly editor does not create a second progression system. A World Phase is the existing shared stage, and each named mob configuration is still an ordinary mutation pool. Hidden compatibility metadata links phase, dimension, and configuration for authoring. Publication compiles those links into existing stage conditions; the spawn runtime does not maintain or scan a second phase state machine.
 
 ## Single-Pass Rule Behavior
 

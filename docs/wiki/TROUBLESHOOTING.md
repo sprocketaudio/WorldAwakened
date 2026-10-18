@@ -3,7 +3,7 @@
 Practical checks for when World Awakened does not behave the way you expected.
 
 - Document status: Active friendly troubleshooting guide
-- Last updated: 2026-10-17
+- Last updated: 2026-10-18
 - Scope: Validation, command behavior, targeting mistakes, and common runtime surprises
 
 ---
@@ -72,8 +72,16 @@ Configuration editing checks:
 - the hosted web-session workflow is retired
 - `/wa config` requires an in-game operator or the integrated-server owner
 - Apply is server-validated and revision-checked; Cancel and an unapplied Reset do not change the server
-- Mob Mutations edits only an existing source pool; `*` means the selected pool has a world override
+- Mob Mutations can edit source pools or world-created Mob Configs. **World override** means Restore Built-in can reveal the source definition; **World authored** means no datapack fallback exists. Removing a source-backed Mob Config deactivates its phase mapping instead of deleting its datapack source, so the relevant phase/dimension can offer **Restore Built-in Settings**. Removing a fully world-authored Mob Config deletes that world definition after confirmation because there is no source to restore. **Discard Changes** affects only the unpublished local draft.
+- **Off is not removed.** An Off Mob Config remains in its dimension's picker with all settings preserved. Open the picker, select it, choose **Enable Selected**, confirm, and then Apply. Use **Remove Selected** in that same picker only when you intend to remove the configuration from the world profile; source-backed removed entries remain listed as **Removed** and offer **Restore Selected**.
+- A disabled **Using Built-in** or **Using Source** footer control means the selected Mob Config already matches its source and has nothing to restore. **Custom Config** means the world-created configuration has no source fallback; use Remove Selected in the Mob Config picker if it should be deleted. The editor discards stale mappings whose world-owned pool was already removed, allowing the next valid authoring change to repair older affected saves.
+- **Reset All Defaults** is intentionally broader than Restore Source or Discard Changes. After a second confirmation it clears every world-authored profile definition and override, selects bundled Standard, and restores all global editor settings to their built-in values. It cannot be undone from the editor. It does not delete external datapack files or earned progression history.
+- Green success feedback disappears automatically after about six seconds. Red failure feedback remains for about ten seconds. Both share the right side of the breadcrumb row; hover a shortened failure message while it is visible to see the complete server diagnostic.
+- Older development worlds can contain a configuration that newer validation would reject. Safe edits that do not add another error are allowed so the world can be repaired; the Apply result says that an older configuration still needs review, and the server log retains the exact validation message.
+- Enabling a specialised Mob Config automatically gives its selected mobs precedence over Default Mobs. If Default Mobs means all eligible living mobs, World Awakened builds the runtime remainder from the current server registry; disabling the specialised config returns those mobs to Default Mobs on the next Apply.
 - Revert removes one override and reveals the current bundled/external source without modifying its file
+- a new track legitimately has no serialized `tiers` field until its first tier is added; current clients treat that as an empty track. If Add Tier reports that `tiers` is not an array, the saved authoring data is malformed and should be corrected rather than ignored
+- stage rows show each stage's direct milestone. Later cumulative triggers may also unlock earlier stages as catch-up, but those indirect actions are not the earlier stage's displayed condition
 - use datapacks and `/wa reload validate` for definitions not yet exposed by the editor
 
 ## Problem: `/wa reload validate` Reports Errors
@@ -190,6 +198,8 @@ Why it happened:
 Read [CONCEPTS.md](CONCEPTS.md) if this distinction is the confusing part.
 
 ## Problem: The Ascension Offer Did Not Appear
+
+First open the Ascension editor and confirm the offer is enabled and has an explicit **When to Offer** source. A World Phase link grants through that phase; custom conditions grant through generated player-scoped trigger rules. An empty condition set does not grant implicitly. In the normal Once per player mode, either a pending or resolved copy already owned by that player blocks another grant. Closing the choice screen leaves the existing pending offer available; inspect that pending state rather than expecting the milestone to create a replacement.
 
 Check these in order:
 1. confirm ascension is enabled by feature gates/config

@@ -631,7 +631,7 @@ Bundled Standard source root:
 
 Current bundled Standard object counts:
 - `stages`: 7
-- `trigger_rules`: 9
+- `trigger_rules`: 6
 - `mob_mutators`: 8
 - `mutation_pools`: 23 (12 ranked single classes, 8 ranked pair classes, 3 invasion classes)
 - `ascension_rewards`: 9

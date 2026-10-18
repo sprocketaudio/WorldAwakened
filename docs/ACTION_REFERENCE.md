@@ -73,7 +73,7 @@ Actions execute under shared execution safety rules (deterministic ordering, bou
 - Planned/reserved/deprecated actions must never be treated as active runtime behavior.
 
 Current v1 validator/runtime baseline (repository state as of March 12, 2026):
-- `trigger_rules` validator accepts: `unlock_stage`, `lock_stage`, `emit_named_event`, `increment_counter`, `send_warning_message`, `grant_ascension_offer`.
+- `trigger_rules` validator accepts: `unlock_stage`, `lock_stage`, `emit_named_event`, `increment_counter`, `record_unlock_condition`, `send_warning_message`, `grant_ascension_offer`.
 - `rules` validator accepts: `unlock_stage`, `lock_stage`, `grant_ascension_offer`, `apply_mutator_pool`, `apply_stat_profile`, `inject_loot_profile`, `trigger_invasion_profile`, `send_warning_message`, `drop_reward_table`, `mark_rule_consumed`, `set_world_scalar`, `set_temp_invasion_modifier`.
 - `rules` runtime executes now: `unlock_stage`, `lock_stage`, `grant_ascension_offer`, `send_warning_message`, `mark_rule_consumed`, `set_world_scalar`.
 - `rules` runtime currently defers/no-ops: `apply_mutator_pool`, `apply_stat_profile`, `inject_loot_profile`, `trigger_invasion_profile`, `drop_reward_table`, `set_temp_invasion_modifier`.
@@ -300,6 +300,18 @@ Current action catalog state:
 }
 ```
 
+#### `worldawakened:record_unlock_condition`
+- **Category:** Progression / state
+- **Purpose:** Internal native-editor bridge that durably records one phase-unlock subcondition and gates the remaining trigger actions until the flat group is satisfied.
+- **Valid scopes:** `world`, `player`
+- **Parameters:** `group_token` and `condition_token` (`string`), `condition_tokens` (non-empty string array), `mode` (`all` or `any`)
+- **Idempotency:** `idempotent`
+- **Persistence:** Uses existing world/player trigger-counter SavedData according to configured progression mode.
+- **Ordering / Execution Notes:** The editor emits this first at priority `1000`. Unsatisfied `all` groups stop the current trigger action chain. `any` succeeds after the first recorded condition.
+- **Defaults / Notes:** Tokens are opaque stable editor metadata. A group token fingerprints the phase, operator, and complete condition set, preventing edited groups from inheriting stale completion.
+- **Compatibility Notes:** Implemented for editor-generated `trigger_rules`; existing flat condition arrays and planned general `all_of`/`any_of` wrappers are unchanged.
+- **Status:** `implemented`
+
 #### `worldawakened:set_counter`
 - **Category:** Progression / state
 - **Purpose:** Set a named counter to an explicit value.
@@ -423,8 +435,8 @@ Current action catalog state:
 - **Parameters:** `offer` (`resource_location`, required), `source_key` (`string`, optional)
 - **Idempotency:** `idempotent`
 - **Persistence:** Mutates persistent player ascension offer state.
-- **Ordering / Execution Notes:** Obeys pending-offer queue semantics and deterministic instance identity. A player-scoped one-shot advancement trigger may invoke this action during bounded login catch-up after personal completion is verified.
-- **Defaults / Notes:** Current trigger/rule handlers derive source identity from invoking rule/trigger; authored `source_key` is not consumed yet.
+- **Ordering / Execution Notes:** Obeys pending-offer queue semantics and deterministic instance identity. With the default `once_per_player` offer policy, any pending or resolved instance of the same offer blocks another grant. Explicit `once_per_source` retains source-key idempotency and may grant again from a genuinely different source. A player-scoped one-shot advancement trigger may invoke this action during bounded login catch-up after personal completion is verified.
+- **Defaults / Notes:** Current trigger/rule handlers derive source identity from invoking rule/trigger; authored `source_key` is not consumed yet. Closing the offer GUI leaves the pending instance intact.
 - **Compatibility Notes:** Implemented in `trigger_rules` (`player` scope) and `rules` (`player` scope).
 - **Status:** `implemented`
 - **Example Snippet:**
@@ -691,6 +703,7 @@ Maintenance expectations:
 | `lock_stage` | Progression/state | world, player | conditional | yes | implemented |
 | `emit_named_event` | Progression/state | world, player, entity, event_context | no | no | implemented |
 | `increment_counter` | Progression/state | world, player, event_context | no | yes | implemented |
+| `record_unlock_condition` | Progression/state | world, player | yes | yes | implemented |
 | `set_counter` | Progression/state | world, player, event_context | yes | yes | planned |
 | `start_cooldown` | Progression/state | world, player, entity, event_context | no | yes | planned |
 | `mark_rule_consumed` | Progression/state | world, player, entity, event_context | yes | yes | implemented |

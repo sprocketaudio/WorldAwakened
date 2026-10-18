@@ -1,9 +1,14 @@
 package net.sprocketgames.worldawakened.network.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.stream.Collectors;
+
 import org.junit.jupiter.api.Test;
+
+import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentRegistry;
 
 class WorldAwakenedClientConfigPayloadHandlerTest {
     @Test
@@ -40,10 +45,38 @@ class WorldAwakenedClientConfigPayloadHandlerTest {
     }
 
     @Test
+    void phasePolicyControlCyclesThroughEveryRuntimePolicy() {
+        assertEquals("Cumulative", WorldAwakenedClientConfigPayloadHandler.phasePolicyLabel(0));
+        assertEquals("Exclusive", WorldAwakenedClientConfigPayloadHandler.phasePolicyLabel(1));
+        assertEquals("Replace", WorldAwakenedClientConfigPayloadHandler.phasePolicyLabel(2));
+        assertEquals(1, WorldAwakenedClientConfigPayloadHandler.nextPhasePolicy(0));
+        assertEquals(2, WorldAwakenedClientConfigPayloadHandler.nextPhasePolicy(1));
+        assertEquals(0, WorldAwakenedClientConfigPayloadHandler.nextPhasePolicy(2));
+    }
+
+    @Test
     void mobSecondaryTextKeepsRegistryIdentityVisuallySecondary() {
         assertEquals("minecraft:endermite · Minecraft",
                 WorldAwakenedClientConfigPayloadHandler.entitySecondary("minecraft:endermite", "minecraft"));
         assertEquals("examplemod:crystal_beast · Examplemod",
                 WorldAwakenedClientConfigPayloadHandler.entitySecondary("examplemod:crystal_beast", "examplemod"));
+    }
+
+    @Test
+    void ascensionPickerShowsEveryRegisteredEffectButOnlyEnablesLiveHandlers() {
+        assertEquals(29, WorldAwakenedClientConfigPayloadHandler.ascensionChoiceEffectCount());
+        assertTrue(WorldAwakenedClientConfigPayloadHandler.ascensionChoiceEffectIds().containsAll(
+                WorldAwakenedAscensionComponentRegistry.registeredIds().stream()
+                        .filter(id -> id.getNamespace().equals("worldawakened"))
+                        .map(Object::toString)
+                        .collect(Collectors.toSet())));
+        assertTrue(WorldAwakenedClientConfigPayloadHandler
+                .ascensionChoiceEffectHasLiveRuntimeHandler("worldawakened:max_health_bonus"));
+        assertTrue(WorldAwakenedClientConfigPayloadHandler
+                .ascensionChoiceEffectHasLiveRuntimeHandler("worldawakened:night_vision_passive"));
+        assertFalse(WorldAwakenedClientConfigPayloadHandler
+                .ascensionChoiceEffectHasLiveRuntimeHandler("worldawakened:fall_damage_reduction"));
+        assertFalse(WorldAwakenedClientConfigPayloadHandler
+                .ascensionChoiceEffectHasLiveRuntimeHandler("worldawakened:life_steal_minor"));
     }
 }

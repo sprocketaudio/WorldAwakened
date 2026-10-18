@@ -3,7 +3,7 @@
 Shortest-path guides for the most common first-time workflows.
 
 - Document status: Active friendly quickstart guide
-- Last updated: 2026-10-17
+- Last updated: 2026-10-18
 - Scope: Setup, first datapack, first tests, and first recovery loop
 
 ---
@@ -33,7 +33,7 @@ What you should expect:
 - reaching later milestones raises the final per-spawn rates; S4+ can very rarely choose a curated two-mutator pool
 - Hindering on-hit effects begin at S2, rare Vampiric enemies at S3, Volatile death explosions at S4, and curated ability combinations at S5
 - mutated mobs have visible composed names and existing glow/particle tells; existing custom names are preserved
-- personal Nether, End, and Dragon advancements grant one-of-three Ascension offers
+- the Ignition, Fracture, and World Awakened phases each grant one personal one-of-three Ascension offer
 - mutated kills can add small stage-bounded bonus materials
 - S4+ can schedule infrequent warning-backed pressure events while players are present in the affected dimension
 
@@ -262,11 +262,30 @@ Use this when:
 
 ## 8. Configuration Editing Status
 
-Run `/wa config` as an operator (or as the owner of a singleplayer world). It opens the WorldAwakened profile dashboard. Use Global Settings for intensity and system controls, or Mob Mutations to browse and edit actual loaded mutation pools.
+Run `/wa config` as an operator (or as the owner of a singleplayer world). It opens the WorldAwakened profile dashboard. Use Global Settings for intensity and system controls, World Phases for the milestone timeline and mutation dimensions, Mob Mutations for a phase's dimension-specific named mob configurations, or Ascension for permanent player choices and their availability.
 
-In Mob Mutations, search or filter the pool list, select a pool, then change its enabled state, initial chance, conditional additional chance, maximum, dimensions, eligible living mobs, or ordinary mutator weights. The wrapped theoretical preview shows mutation-count probabilities before eligibility and compatibility can reduce them. Mob and dimension selectors use searchable two-line rows: the readable name is primary, while the exact registry ID remains visible underneath. Rare Combinations can use Any Compatible selection or curated weighted combinations with narrower mob eligibility; the mode tooltip explains the difference, and the combination editor separates mutation choices from eligible mobs. `*` marks a world override. Apply validates and persists only that pool; Revert restores the currently loaded datapack source. Selector windows and combination editors keep changes in the pool draft until the pool itself is applied.
+In Ascension, select or create an offer. The detail order is **General**, **Ascension Choices**, then **When to Offer**. Use **Add / Remove** to open the reward selector. There you can choose loaded rewards, create a choice with up to three different live effects, edit a compact choice, or delete/restore world-authored reward data with confirmation. Reward rows summarize their effects. Changes remain part of the local offer draft until Apply, then the offer and reward definitions save together. For the simplest availability, choose **When World Phase unlocks** and select a phase. Choose custom conditions only when the offer should be independent; the AND/OR control stays visible, gold separators show how rows combine, and **Copy from World Phase** copies the current conditions without keeping them linked. Keep **Once per player** unless distinct authored sources should intentionally grant the same offer again.
 
-Global Settings still covers intensity, bundled gameplay, mutation enablement/frequency/caps, pressure events, and Ascension. Standard is the only bundled profile; progression and other dashboard sections remain unavailable. External datapacks keep normal priority semantics, and pool overrides never rewrite their files.
+In World Phases, expand **Phases**, select a phase, and edit General, Mob Mutation Dimensions, then Unlock Conditions on the right. Rows show On/Off; the selected row also shows amber Unsaved and its ordering arrows. Configure one to three automatic conditions and choose **All conditions (AND)** or **Any condition (OR)**. AND remembers each completed condition, so day 20 and entering the Nether may happen in either order. Starting Phase and Manual are single modes. The list intentionally does not show runtime unlock ticks. Use **+ Phase** to create one, **Apply** or **Discard Changes** for the current draft, **Restore Source** for an override, and the separately confirmed **Reset All Defaults** only when the entire WorldAwakened editor state should return to bundled defaults.
+
+In Mob Mutations, expand **World Phases** or **Pressure Events** in the left browser. Search and select either kind of entry; both open in the same right-hand editor, while their gameplay eligibility remains independent. For a World Phase, choose the configured Dimension first and the named Mob Config second. The On/Off text beside the selector is status only. Open the Mob Config selector to select, create, rename, enable, disable, remove, or restore a configuration; selecting it does not toggle it. Back in the editor, change mutation and additional chances, maximum mutations, eligible living mobs, mutator weights, or rare combinations. A disabled configuration stays visible and editable, and its preview remains the configured theoretical result even though its live gameplay chance is zero. **Apply** validates and publishes the draft, **Discard Changes** reloads the current server value without leaving, and **Restore Built-in** removes the selected source-backed override or restores a removed source-backed Mob Config. Hidden datapack conditions are preserved.
+
+To build from scratch, choose the active profile and select Start Empty. Create or select a World Phase, choose **Mob mutation dimensions**, and select the installed dimensions that phase should affect. Apply the phase, open Mob Mutations, choose the phase and dimension, then edit Default Mobs or add a named specialised configuration. If a phase has no settings, **Add Mob Settings** opens the dimension picker directly. New specialised configurations are clean rather than copies: they start disabled with no eligible mobs or mutators, so configure both before enabling them. Pressure-event configurations remain independent.
+
+### Manual profile-editor test checklist
+
+These checks require a live client/server and are not replaced by unit tests:
+
+1. In singleplayer, Start Empty, create `The Awakening`, choose Enter Dimension and The Nether, create `Nether Difficulty`, add a tier using that stage, select Nether mobs/mutators, and Apply.
+2. Leave and reopen the world, then confirm the stage, trigger, track, tier, weights, and profile choice remain. Run `/reload` and confirm they remain again.
+3. Enter the Nether and confirm the phase unlocks. With later phases unlocked—including unlocking a milestone out of order—use mutation debug evaluation to confirm only the current phase's ordinary configurations qualify.
+4. Reuse the same stage in a second track, remove either tier, and confirm the other track and shared stage are unchanged.
+5. Try deleting a referenced stage and confirm the dependency message blocks it. Rename its display name and confirm both tracks still reference it.
+6. On a dedicated server, confirm a non-operator cannot open/apply the editor, two operators receive a stale-revision rejection instead of overwriting each other, and restart persistence matches singleplayer.
+7. Test both GLOBAL and PER_PLAYER progression. In PER_PLAYER, verify two players advance independently and unattributed spawn context remains fail-closed. Complete an advancement before joining/rejoining and verify supported advancement reconciliation.
+8. Repeat the screens at small GUI scales/resolutions. Verify search focus, row scrolling, visible scrollbars, fixed footer controls, confirmation screens, Cancel, Revert, and validation errors remain usable.
+
+Global Settings still covers intensity, bundled gameplay, mutation enablement/frequency/caps, pressure events, and Ascension. Standard remains the only bundled profile; the full mutator-component, rewards, world-event, and generic rule editors remain unavailable. External datapacks keep normal priority semantics, and pool overrides never rewrite their files.
 
 ## 9. Where To Go Next
 

@@ -174,6 +174,20 @@ public final class WorldAwakenedAscensionRewardEffects {
         };
     }
 
+    /**
+     * Returns whether reconciliation has a real, safe runtime application path for this component.
+     * Registry membership alone is intentionally not enough: registered schemas may be reserved for
+     * future gameplay without being safe to offer from the native editor yet.
+     */
+    public static boolean hasLiveRuntimeHandler(ResourceLocation componentType) {
+        return switch (componentType.getPath().toLowerCase(Locale.ROOT)) {
+            case "max_health_bonus", "armor_bonus", "armor_toughness_bonus", "attack_damage_bonus",
+                    "movement_speed_bonus", "knockback_resistance_bonus", "luck_bonus",
+                    "fire_resistance_passive", "night_vision_passive" -> true;
+            default -> false;
+        };
+    }
+
     public static ResourceLocation stableOwnedKeyForComponent(ResourceLocation rewardId, int index) {
         return stableOwnedKey(rewardId, index);
     }

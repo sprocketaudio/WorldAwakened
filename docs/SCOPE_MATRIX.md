@@ -117,6 +117,7 @@ Each scope entry in this file defines:
   - legal-but-context-dependent checks fail closed (`false`) when optional context is unavailable
 - Notes/example:
   - Example: world rule checks `stage_unlocked` + `world_day_gte` and applies `set_world_scalar`.
+  - Native-editor phase-condition progress is written here by `record_unlock_condition` when configured progression is global, even though the event may carry a player actor.
 
 ### B. `player`
 
@@ -144,6 +145,7 @@ Each scope entry in this file defines:
   - World-mutating actions only when an action entry explicitly allows `player` and defines world mutation semantics
 - Persistence domain:
   - player persistent state, plus world state only when the action explicitly mutates world-owned data
+  - `record_unlock_condition` resolves to player SavedData in per-player progression and world SavedData in global progression; it never leaks one player's per-player completion into another player's state
 - Invalid/missing-context behavior:
   - player-dependent conditions are legal here
   - missing player reference invalidates `player` scope evaluation and fails closed

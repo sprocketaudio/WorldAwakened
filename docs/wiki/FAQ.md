@@ -196,6 +196,15 @@ It controls whether previously forfeited rewards may show up again in later offe
 - `allow_forfeited_only`: previously chosen rewards stay blocked, but previously forfeited rewards may appear again later
 - `allow_all`: previously chosen and previously forfeited rewards may both appear again later
 
+## What Does `offer_repeat_policy` Do?
+
+It controls whether the same offer definition may create more than one runtime offer for one player.
+
+- `once_per_player` is the normal setting. A pending or resolved instance blocks another grant, even when another source tries to grant it.
+- `once_per_source` is an advanced repeatable setting. The same source is still idempotent, but a distinct source key may create another runtime instance.
+
+Closing the Ascension screen does not consume a pending offer and does not make it eligible to be granted again.
+
 ## What Does `dimension <dimension_id>` Actually Do?
 
 It changes world-context evaluation for that one command pass.
@@ -274,6 +283,8 @@ Custom datapacks remain supported. Reuse the exact bundled namespace/path to rep
 ## Where Is The Configuration Screen?
 
 Run `/wa config` in game as an operator or singleplayer owner. The server-authoritative dashboard exposes Global Settings and a functional Mob Mutations editor. You can search actual pools and server living mobs, edit supported pool fields, validate/apply a world override, or revert one pool to its datapack source.
+
+The Progression editor can also create shared stages with supported milestones, while Difficulty Tracks connect those stages to ordinary mutation pools. Choose Start Empty for a profile without bundled gameplay or Copy Standard for an independent editable copy. These operations retain saved stage history and do not rewrite external datapacks.
 
 The screen does not pretend unfinished presets or editors are ready: those tiles are marked unavailable. Standard is the only bundled profile, and full progression, mutator-component, rewards, event, and rule authoring still belongs in datapacks. The former hosted web editor remains retired.
 

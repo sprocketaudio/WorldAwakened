@@ -615,6 +615,8 @@ Inspect/debug expectation notes:
 
 ## 12. Contributor Update Rules
 
+Native-editor flat phase-condition groups reuse persistent trigger counters with opaque `worldawakened:phase_condition/...` keys. These keys are implementation metadata rather than normal operator output. Trigger/state inspection may expose them in raw debug detail when diagnosing an AND/OR group, but concise output should identify the phase, `all`/`any` mode, and completed-count summary without requiring operators to interpret tokens.
+
 - If a new subsystem is added, define its required inspection surface before declaring the feature complete.
 - If a new rejection reason category appears, update this file and [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md) together.
 - Keep command examples aligned with actual command tree behavior.

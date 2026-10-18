@@ -49,6 +49,9 @@ public record AscensionOfferDefinition(
             Codec.INT.optionalFieldOf("selection_count", 1).forGetter(OfferPolicy::selectionCount),
             Codec.INT.optionalFieldOf("ui_priority", 0).forGetter(OfferPolicy::uiPriority),
             Codec.BOOL.optionalFieldOf("allow_duplicates_across_players", true).forGetter(OfferPolicy::allowDuplicatesAcrossPlayers),
+            WorldAwakenedJsonCodecs.enumCodec(AscensionOfferRepeatPolicy.class)
+                    .optionalFieldOf("offer_repeat_policy", AscensionOfferRepeatPolicy.ONCE_PER_PLAYER)
+                    .forGetter(OfferPolicy::offerRepeatPolicy),
             WorldAwakenedJsonCodecs.enumCodec(AscensionRewardRepeatPolicy.class)
                     .optionalFieldOf("reward_repeat_policy", AscensionRewardRepeatPolicy.BLOCK_ALL)
                     .forGetter(OfferPolicy::rewardRepeatPolicy))
@@ -108,6 +111,10 @@ public record AscensionOfferDefinition(
         return policy.rewardRepeatPolicy();
     }
 
+    public AscensionOfferRepeatPolicy offerRepeatPolicy() {
+        return policy.offerRepeatPolicy();
+    }
+
     public List<ResourceLocation> candidateRewards() {
         return candidates.candidateRewards();
     }
@@ -148,6 +155,7 @@ public record AscensionOfferDefinition(
             int selectionCount,
             int uiPriority,
             boolean allowDuplicatesAcrossPlayers,
+            AscensionOfferRepeatPolicy offerRepeatPolicy,
             AscensionRewardRepeatPolicy rewardRepeatPolicy) {
     }
 }

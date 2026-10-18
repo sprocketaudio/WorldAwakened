@@ -91,6 +91,7 @@ public final class WorldAwakenedDatapackLoader {
             "lock_stage",
             "emit_named_event",
             "increment_counter",
+            "record_unlock_condition",
             "send_warning_message",
             "grant_ascension_offer");
 
@@ -1151,6 +1152,25 @@ public final class WorldAwakenedDatapackLoader {
             }
             JsonObject parameters = rawParameters.getAsJsonObject();
 
+            if (!condition && "record_unlock_condition".equals(path)) {
+                boolean validTokens = parameters.has("group_token") && parameters.get("group_token").isJsonPrimitive()
+                        && parameters.has("condition_token") && parameters.get("condition_token").isJsonPrimitive()
+                        && parameters.has("condition_tokens") && parameters.get("condition_tokens").isJsonArray()
+                        && !parameters.getAsJsonArray("condition_tokens").isEmpty();
+                String mode = parameters.has("mode") && parameters.get("mode").isJsonPrimitive()
+                        ? parameters.get("mode").getAsString() : "";
+                if (!validTokens || !("all".equals(mode) || "any".equals(mode))) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INVALID_ACTION_TYPE,
+                            objectType,
+                            objectId,
+                            sourcePath,
+                            fieldName + "[" + index + "] record_unlock_condition requires group_token, condition_token, a non-empty condition_tokens array, and mode all|any",
+                            "disabled_object"));
+                }
+            }
+
             if (condition && "world_day_gte".equals(path)) {
                 OptionalDouble threshold = readAnyDouble(parameters, "value");
                 if (threshold.isEmpty()) {
@@ -1608,7 +1628,7 @@ public final class WorldAwakenedDatapackLoader {
 
     private static boolean triggerActionAllowsScope(String path, String scope) {
         return switch (path) {
-            case "unlock_stage", "lock_stage", "increment_counter", "emit_named_event" -> isOneOf(scope, "world", "player");
+            case "unlock_stage", "lock_stage", "increment_counter", "record_unlock_condition", "emit_named_event" -> isOneOf(scope, "world", "player");
             case "send_warning_message", "grant_ascension_offer" -> "player".equals(scope);
             default -> true;
         };

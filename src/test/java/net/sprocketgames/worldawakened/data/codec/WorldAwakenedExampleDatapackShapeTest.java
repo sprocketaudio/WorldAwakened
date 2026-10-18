@@ -96,9 +96,9 @@ class WorldAwakenedExampleDatapackShapeTest {
     void modJarEmbedsAConservativeStandardGameplayProfile() throws IOException {
         LinkedHashSet<Path> embeddedFiles = new LinkedHashSet<>();
         collectJsonFiles(EMBEDDED_ROOT, embeddedFiles);
-        assertEquals(60, embeddedFiles.size(), "The bundled Standard profile object count must remain intentional");
+        assertEquals(57, embeddedFiles.size(), "The bundled Standard profile object count must remain intentional");
         assertEquals(7, countFilesUnder(embeddedFiles, "/stages/"));
-        assertEquals(9, countFilesUnder(embeddedFiles, "/trigger_rules/"));
+        assertEquals(6, countFilesUnder(embeddedFiles, "/trigger_rules/"));
         assertEquals(11, countFilesUnder(embeddedFiles, "/mob_mutators/"));
         assertEquals(15, countFilesUnder(embeddedFiles, "/mutation_pools/"));
         assertEquals(9, countFilesUnder(embeddedFiles, "/ascension_rewards/"));

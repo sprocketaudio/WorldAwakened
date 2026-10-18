@@ -17,12 +17,16 @@ public final class WorldAwakenedAscensionEventHandlers {
 
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            ascensionService.grantEligibleOffersForPlayer(
+                    player.serverLevel(), player, "automatic_reconcile", "player_login");
             ascensionService.reconcilePlayerRewards(player.serverLevel(), player, "player_login");
         }
     }
 
     public void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            ascensionService.grantEligibleOffersForPlayer(
+                    player.serverLevel(), player, "automatic_reconcile", "player_respawn");
             ascensionService.reconcilePlayerRewards(player.serverLevel(), player, "player_respawn");
         }
     }

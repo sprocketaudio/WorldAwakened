@@ -49,6 +49,7 @@ import net.sprocketgames.worldawakened.data.definition.AscensionComponentDefinit
 import net.sprocketgames.worldawakened.data.definition.AscensionComponentSuppressionPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition;
 import net.sprocketgames.worldawakened.data.definition.AscensionOfferMode;
+import net.sprocketgames.worldawakened.data.definition.AscensionOfferRepeatPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardRepeatPolicy;
 import net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition;
 import net.sprocketgames.worldawakened.data.definition.ExecutionScope;
@@ -100,6 +101,7 @@ public final class WorldAwakenedAscensionService {
         }
         int reconciled = 0;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            grantEligibleOffersForPlayer(player.serverLevel(), player, "automatic_reconcile", reason);
             reconcilePlayerRewards(player.serverLevel(), player, reason);
             reconciled++;
         }
@@ -111,12 +113,10 @@ public final class WorldAwakenedAscensionService {
             return 0;
         }
 
-        if (player != null) {
-            return grantEligibleOffersForPlayer(level, player, stageId.toString(), "stage_unlock:" + stageId);
-        }
-
+        LinkedHashSet<ServerPlayer> targets = new LinkedHashSet<>(level.getServer().getPlayerList().getPlayers());
+        if (player != null) targets.add(player);
         int granted = 0;
-        for (ServerPlayer online : level.getServer().getPlayerList().getPlayers()) {
+        for (ServerPlayer online : targets) {
             granted += grantEligibleOffersForPlayer(level, online, stageId.toString(), "stage_unlock:" + stageId);
         }
         return granted;
@@ -130,11 +130,15 @@ public final class WorldAwakenedAscensionService {
         WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
         List<AscensionOfferDefinition> offers = snapshot.data().ascensionOffers().values().stream()
                 .filter(AscensionOfferDefinition::enabled)
+                .filter(WorldAwakenedAscensionService::hasExplicitAutomaticAvailability)
                 .sorted(OFFER_PRIORITY)
                 .toList();
         int granted = 0;
         for (AscensionOfferDefinition offer : offers) {
-            GrantResult result = grantOfferInternal(level, player, offer.id(), sourceProgressionKey, grantSource, false);
+            // Automatic phase availability has one stable source per offer. This keeps login/reload
+            // reconciliation identical to the original phase-unlock path, including once-per-source mode.
+            String stableAutomaticSource = automaticOfferSourceKey(offer);
+            GrantResult result = grantOfferInternal(level, player, offer.id(), stableAutomaticSource, grantSource, false);
             if (result.status() == GrantStatus.GRANTED) {
                 granted++;
             }
@@ -895,6 +899,11 @@ public final class WorldAwakenedAscensionService {
 
         WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
         String normalizedSource = normalizeSourceKey(offerId, sourceProgressionKey);
+        if (offer.offerRepeatPolicy() == AscensionOfferRepeatPolicy.ONCE_PER_PLAYER
+                && hasOfferInstance(state, offerId)) {
+            return new GrantResult(offerId, existingOfferInstanceId(state, offerId),
+                    GrantStatus.ALREADY_PRESENT, "once_per_player");
+        }
         Optional<WorldAwakenedAscensionOfferRuntime> existingRuntime = findRuntimeByOfferAndSource(state, offerId, normalizedSource);
         if (existingRuntime.isPresent()) {
             return new GrantResult(offerId, existingRuntime.get().instanceId(), GrantStatus.ALREADY_PRESENT, "idempotent_instance");
@@ -936,6 +945,35 @@ public final class WorldAwakenedAscensionService {
                 grantSource,
                 selection.detail());
         return new GrantResult(offerId, instanceId, GrantStatus.GRANTED, selection.detail());
+    }
+
+    static boolean hasExplicitAutomaticAvailability(AscensionOfferDefinition offer) {
+        return offer != null && offer.stageFilters().isPresent();
+    }
+
+    static String automaticOfferSourceKey(AscensionOfferDefinition offer) {
+        return "automatic:" + offer.id();
+    }
+
+    static boolean hasOfferInstance(
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            ResourceLocation offerId) {
+        return state.pendingAscensionOfferInstances().values().stream().anyMatch(runtime -> runtime.offerId().equals(offerId))
+                || state.resolvedAscensionOfferInstances().values().stream().anyMatch(runtime -> runtime.offerId().equals(offerId));
+    }
+
+    private static String existingOfferInstanceId(
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            ResourceLocation offerId) {
+        return state.pendingAscensionOfferInstances().values().stream()
+                .filter(runtime -> runtime.offerId().equals(offerId))
+                .map(WorldAwakenedAscensionOfferRuntime::instanceId)
+                .findFirst()
+                .orElseGet(() -> state.resolvedAscensionOfferInstances().values().stream()
+                        .filter(runtime -> runtime.offerId().equals(offerId))
+                        .map(WorldAwakenedAscensionOfferRuntime::instanceId)
+                        .findFirst()
+                        .orElse(""));
     }
 
     private void notifyOfferAvailable(

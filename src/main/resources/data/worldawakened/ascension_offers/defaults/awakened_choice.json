@@ -5,6 +5,10 @@
   "description": { "translate": "ascension_offer.worldawakened.defaults.awakened_choice.desc" },
   "enabled": true,
   "trigger_conditions": [],
+  "stage_filters": {
+    "all_of": ["worldawakened:defaults/world_awakened"]
+  },
+  "offer_repeat_policy": "once_per_player",
   "choice_count": 3,
   "selection_count": 1,
   "candidate_rewards": [

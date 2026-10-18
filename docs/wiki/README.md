@@ -19,7 +19,7 @@ This `docs/wiki/` layer exists to explain World Awakened the way a real user nee
 
 Use this layer when you need the framework explained in plain language rather than as a strict reference contract.
 
-New installations include a conservative Standard gameplay profile. Start with [QUICKSTARTS.md](QUICKSTARTS.md) to verify it, then use `/wa config` for Global Settings or the native mutation-pool editor. The editor can search the running server's living mobs and persist validated world overrides without rewriting datapacks; use the datapack guides for definition types not yet exposed. The hosted web editor is retired.
+New installations include a conservative Standard gameplay profile. Start with [QUICKSTARTS.md](QUICKSTARTS.md) to verify it, then use `/wa config` for Global Settings, shared Progression stages, or stage-linked Difficulty Tracks. You can keep Standard, start empty, or make an independent copy of Standard. The editor searches installed dimensions, advancements, living mobs, and mutators and persists validated world definitions without rewriting datapacks; use the datapack guides for definition types not yet exposed. The hosted web editor is retired.
 
 ## What This Layer Is Not
 

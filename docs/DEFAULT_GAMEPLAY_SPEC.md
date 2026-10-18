@@ -98,13 +98,13 @@ Stable IDs from the initial slice are retained where practical:
 
 Three one-time, player-scoped offers use only reward components with confirmed live application paths:
 
-| Personal milestone | Offer | Choices |
+| World Phase | Offer | Choices |
 |---|---|---|
-| `minecraft:story/enter_the_nether` | First Adaptation | +2 max health, +0.01 movement speed, or +0.5 luck |
-| `minecraft:end/root` | Path of Survival | +1 armor, +0.08 knockback resistance, or WA-owned passive fire resistance |
-| `minecraft:end/kill_dragon` | Awakened Choice | +1 attack damage, +1 armor toughness, or +1 luck |
+| Ignition (`worldawakened:defaults/nether_reached`) | First Adaptation | +2 max health, +0.01 movement speed, or +0.5 luck |
+| Fracture (`worldawakened:defaults/end_reached`) | Path of Survival | +1 armor, +0.08 knockback resistance, or WA-owned passive fire resistance |
+| World Awakened (`worldawakened:defaults/world_awakened`) | Awakened Choice | +1 attack damage, +1 armor toughness, or +1 luck |
 
-Each offer presents three explicit candidates and accepts one permanent choice. Personal one-shot advancement triggers are replayed on login only when the corresponding advancement is already complete and that trigger has not been consumed. This supplies idempotent catch-up without granting global-world milestones to an unqualified player.
+Each offer presents three explicit candidates, accepts one permanent choice, and uses `once_per_player`. Pending and resolved instances both prevent duplicate grants, while closing the choice screen leaves the original pending offer available. The offer follows its linked phase, so changing that phase's milestone does not require duplicating the milestone in an Ascension trigger. A phase unlock evaluates every online player, and login/respawn reconciliation grants a still-missing eligible phase offer to players who were offline. Custom advancement-authored offers may still use the normal one-shot login reconciliation path.
 
 ## 7. Loot Rewards
 
@@ -128,7 +128,7 @@ Periodic scheduling evaluates a profile in one of its allowed dimensions only wh
 
 ## 9. Verification Status and Remaining Validation
 
-Automated regression coverage verifies all 60 bundled definitions, exact ranked initial/additional mutation probabilities, 100-point ordinary-mutator weight tables, intended ability stage boundaries, exact curated combination membership, definition validation, persistent combat-state and override round trips, obsolete override rejection, overkill-safe lifesteal accounting, one-shot/chain-safe death explosions, generated/preserved names, and the unchanged state of unmutated mobs.
+Automated regression coverage verifies all 57 bundled definitions, exact ranked initial/additional mutation probabilities, 100-point ordinary-mutator weight tables, intended ability stage boundaries, exact curated combination membership, definition validation, persistent combat-state and override round trips, obsolete override rejection, overkill-safe lifesteal accounting, one-shot/chain-safe death explosions, generated/preserved names, and the unchanged state of unmutated mobs.
 
 Human in-game testing remains required for feel and integration behavior that unit tests cannot establish: melee and projectile attribution, attacks against players with PvP enabled and disabled, visual readability at combat distance, save/restart persistence, datapack reload behavior on existing and new mobs, simultaneous multiplayer combat, measured server cost, spawn distribution, survival balance, and reward economy.
 

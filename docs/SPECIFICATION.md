@@ -3,7 +3,7 @@
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
 - Document status: Active implementation spec (Phase 9 work preserved; default gameplay rollout active)
-- Last updated: 2026-10-17
+- Last updated: 2026-10-18
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -397,6 +397,7 @@ Action catalog status labels use Section `3F` taxonomy.
 | `lock_stage` | Lock a stage in resolved scope context (policy-gated). | `world`,`player` | `{ "stage": "<resource_location>" }` | yes | yes | ordered with stage unlocks by action priority then queue order | `implemented` |
 | `emit_named_event` | Emit a named internal event for downstream processing. | `world`,`player`,`entity`,`event_context` | `{ "event": "<resource_location>" }` | no | no | event emissions append to bounded event queue | `implemented` |
 | `increment_counter` | Increment named counter by delta. | `world`,`player`,`event_context` | `{ "counter": "<string>", "amount"?: "<integer>" }` | no | yes | deterministic by priority then authored order | `implemented` |
+| `record_unlock_condition` | Record one native-editor phase condition and gate later actions until the authored flat AND/OR group is satisfied. | `world`,`player` | `{ "group_token": "<string>", "condition_token": "<string>", "condition_tokens": ["<string>"], "mode": "all|any" }` | yes | yes | editor emits priority `1000`; later actions execute only when the group is satisfied | `implemented` |
 | `set_counter` | Set named counter to explicit value. | `world`,`player`,`event_context` | `{ "counter": "<string>", "value": "<integer>" }` | yes | yes | executes after increments at same priority only if explicitly ordered | `planned` |
 | `start_cooldown` | Start/update cooldown key with fixed duration. | `world`,`player`,`entity`,`event_context` | `{ "key": "<string>", "duration_seconds": "<number>" }` | no | yes | repeated applications refresh or extend by policy | `planned` |
 | `mark_rule_consumed` | Mark rule consumed for resolved scope key. | `world`,`player`,`entity`,`event_context` | `{ "rule"?: "<resource_location>" }` | yes | yes | should execute late in chain after gating actions | `implemented` |
@@ -408,7 +409,7 @@ Action catalog status labels use Section `3F` taxonomy.
 
 | Action | Purpose | Valid scopes | Parameter schema | Idempotent | Persistent | Ordering notes | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `grant_ascension_offer` | Grant an ascension offer runtime instance. | `player`,`event_context` | `{ "offer": "<resource_location>", "source_key"?: "<string>" }` | yes | yes | idempotent by `(player, offer, source_key)` runtime key | `implemented` |
+| `grant_ascension_offer` | Grant an ascension offer runtime instance. | `player`,`event_context` | `{ "offer": "<resource_location>", "source_key"?: "<string>" }` | yes | yes | `once_per_player` blocks any prior pending/resolved instance; explicit `once_per_source` dedupes by `(player, offer, source_key)` | `implemented` |
 | `revoke_ascension_reward` | Revoke a chosen ascension reward (policy/admin gated). | `player`,`event_context` | `{ "reward": "<resource_location>" }` | yes | yes | should run before reconcile/apply pass | `planned` |
 | `queue_ascension_offer` | Queue offer when one-pending policy blocks immediate grant. | `player`,`event_context` | `{ "offer": "<resource_location>", "source_key"?: "<string>" }` | yes | yes | queue dedupe is keyed by runtime instance identity | `planned` |
 
@@ -748,9 +749,11 @@ Runtime instance identity:
 - if no distinct source progression key exists, the engine may fall back to the offer definition ID as the source key for v1
 
 Rules:
-- grant behavior is idempotent on runtime instance identity
+- `offer_repeat_policy = once_per_player` is the safe default: any pending or resolved instance of the same offer blocks another grant to that player, regardless of source key
+- `offer_repeat_policy = once_per_source` is the explicit advanced repeatable mode: grant behavior is idempotent on runtime instance identity, while a genuinely different source progression key may create another instance
 - reminders, pending-state checks, forfeiture state, and resolution state must attach to the runtime instance identity
 - duplicate grant attempts for the same runtime instance must not create a second pending offer
+- closing the choice screen never consumes or deletes a pending offer
 
 ### 5A.3 Trigger Sources and Scope
 
@@ -897,6 +900,7 @@ Fields:
 - `weighting_rules`
 - `ui_priority`
 - `allow_duplicates_across_players`
+- `offer_repeat_policy`
 - `reward_repeat_policy`
 
 Offer modes:
@@ -936,9 +940,12 @@ Required reapplication points:
 - datapack reload when reward definitions remain valid
 - dimension change only if an effect implementation requires refresh
 
-Personal milestone qualification:
-- bundled Ascension offers are granted by player-scoped one-shot advancement triggers, independently of global stage ownership
-- on login, unconsumed player-scoped one-shot `advancement_completed` triggers are replayed only for advancement IDs that the player has actually completed
+Offer availability and personal qualification:
+- each enabled offer must have an explicit availability source: a World Phase link (`stage_filters`) or an explicit trigger/rule action that grants the offer
+- empty offer conditions do not implicitly grant an offer
+- bundled Standard offers follow the Ignition, Fracture, and World Awakened phase unlocks and default to `once_per_player`
+- phase unlock evaluation covers every currently online eligible player; login and respawn reconcile still-missing phase-linked offers for players who were offline
+- custom player-scoped advancement conditions remain supported; on login, unconsumed one-shot `advancement_completed` triggers are replayed only for advancement IDs that the player has actually completed
 - replay remains data-driven by authored trigger conditions and uses the normal trigger matcher/action pipeline
 - repeatable or world-scoped advancement triggers are never login-replayed by this catch-up path
 
@@ -3601,6 +3608,7 @@ Required support:
 - `selection_count`
 - candidate reward refs or tags
 - `offer_mode`
+- `offer_repeat_policy`
 - `reward_repeat_policy`
 
 ---
@@ -4251,23 +4259,34 @@ Hard design boundary:
 - editor changes compile into the existing World Awakened definitions/override layer; the editor must not become a second gameplay engine
 - raw datapacks remain available for advanced features that cannot be represented clearly
 
-Implemented initial editor scope:
+Implemented native editor scope:
 - `/wa config` opens a native dashboard for authorised operators; integrated-server owners are authorised even when cheats are disabled
-- the dashboard reports real loaded-definition counts and routes to Mob Mutations and Global Settings; future Progression, full Mutator, Rewards, and World Events editors are visibly unavailable
-- the only functional bundled profile choice is Standard; no unfinished preset is exposed
+- the dashboard reports real loaded-definition counts and routes to World Phases, Mob Mutations, Ascension, profile management, and Global Settings; full Mutator, advanced multi-component Reward, and World Events editors remain visibly unavailable
+- active profile choices are bundled Standard, Start Empty, and an independent Copy Standard; Start Empty excludes bundled gameplay definitions while retaining external datapacks and available mutator templates, and Copy Standard disables the bundled source after materializing its definitions in world storage
 - overall intensity, bundled-gameplay enablement, mutation enablement/frequency/multiple-mutation cap, pressure-event enablement/frequency, and Ascension enablement are editable
-- progression mode and unlocked-stage counts are informational/read-only until a saved-history migration preview exists
+- progression mode remains informational/read-only, while stages and supported unlock milestones are authorable; existing unlocked-stage history is not erased by definition edits
 - Cancel sends nothing; Reset restores the built-in Standard values in the local draft and still requires Apply
 - every apply packet repeats the server permission check, validates bounded values, and carries a base revision so stale clients cannot overwrite newer state
 - accepted settings persist in world `SavedData`; disabling active pressure events ends the active event, while existing mutated mobs, stage history, and Ascension ownership are preserved
 - the first world initialization seeds native settings from existing common-config values and the saved global intensity; after that, world-persistent native settings are authoritative for the exposed controls, while TOML kill switches and safety bounds remain authoritative guardrails
 - changing the bundled-gameplay gate candidate-compiles through the normal datapack loader before atomic publication
 - mutation/event frequency overrides and mutation caps are bounded runtime layers over compiled definitions, including external datapacks; they do not rewrite authored JSON or create a second engine
-- Mob Mutations browses actual compiled pools with search and discovered stage/dimension/enabled filters; it edits enablement, pool mutation chance, eligible dimensions/entities, mutator membership/weights, and the pool maximum
-- pool edits persist as full canonical `MutationPoolDefinition` overrides in world `SavedData`, with a profile revision independent from runtime settings
-- apply decodes through the existing codec, validates numeric bounds, source existence, mutator references/weights, running-server dimensions, and server-derived living entity types, then republishes the existing snapshot atomically
-- reload overlays each saved override once onto a matching bundled or external source ID; missing sources fail closed, and per-pool Revert removes the override to reveal the currently loaded source
+- Mob Mutations keeps one master/detail editor: its left browser presents collapsible World Phases and Pressure Events sections, while selecting either kind opens its real definition in the same right-hand editor. A phase detail selects Dimension and then a named Mob Config; event pools remain independent and preserve their event-only conditions. Standard's fifteen canonical pools are presentation-grouped without changing IDs or runtime selection passes
+- custom track JSON may omit an empty `tiers` collection; both snapshot clients and the server codec treat that as an empty list. A present non-array `tiers` value is invalid and must be rejected rather than silently repaired
+- World Phases is also a master/detail editor: a searchable, collapsible phase browser uses consistently aligned rows whether or not a scrollbar is present. Rows show authored On/Off state, amber Unsaved state for the selected draft, and compact up/down controls on the selected row. Display, movement eligibility, draft changes, and persisted runtime order all use the same `sort_index` sequence. Starting/default-unlocked state is independent of ordering: a starting phase remains movable, cumulative progression may contain several, and exclusive/replace-group conflicts remain server-validated. Selecting a phase opens a bold phase/source header and exactly three bordered sections in order: General, Mob Mutation Dimensions, and Unlock Conditions. Unlock Conditions supports one to three simple milestones joined by one flat AND/OR operator; centred separators mirror the selected operator, its explanation sits directly below Add Condition, and the section wraps its actual content. AND completion is durable and order-independent, while Starting Phase and Manual remain exclusive single modes. Generated group tokens include the complete condition set so changed groups cannot consume stale completion. The compact name and description fields identify themselves through tooltips; descriptions accept normal authored prose beyond the vanilla short-text default and expose their complete value in the hover tooltip. Hidden progression-group IDs remain preserved, new phases use the profile's main group, and ordering controls only reorder that group. Unsupported advanced datapack trigger logic is preserved rather than simplified. Apply, restore/delete, discard, and reset continue through existing revisioned operations. Destructive confirmation controls name the actual action, and wrapped confirmation help is centred. Runtime unlocked/locked state remains an inspection concern.
+- Ascension uses the same searchable master/detail, outlined-section, transient-feedback, confirmation, scrollbar, tooltip, revision, Apply, Restore Source, Discard Changes, and Reset All Defaults conventions. Its detail order is General, Ascension Choices, then When to Offer. The reward selector owns selection, creation, editing, and confirmed deletion/restoration. Compact world-authored choices may combine one to three distinct genuinely live reward effects; the effect picker groups the complete registered catalogue into Stats, Survival, Mobility, Combat, Exploration, and Progression. It disables entries without a real player reconciliation handler, renders both lines muted without a hover highlight, and explains why on hover. The editor applies reward changes atomically with the offer. Availability defaults to following an existing World Phase. Custom availability reuses the one-to-three-condition AND/OR editor, always displays its operator, uses matching gold separators between condition rows, and may copy a phase's current conditions into an independent draft. Enabled offers without a phase or explicit generated grant trigger fail server validation. `once_per_player` is the normal mode; `once_per_source` is visibly advanced.
+- pool edits persist as full canonical `MutationPoolDefinition` objects in world `SavedData`, with explicit source-backed override and world-owned creation/deletion semantics and a profile revision independent from runtime settings
+- Progression creates stable-ID `StageDefinition` plus supported `TriggerRuleDefinition` pairs atomically; names can change without changing references, and dependency summaries/rejections protect shared stages
+- The normal native-editor presentation is one World Phases timeline. Mob Mutations selects a phase once, then a dimension, then a named Mob Config; the same browser also exposes pressure-event mutation pools without routing through another screen. Pool `enabled` controls gameplay participation and never configuration membership: disabled configurations remain selectable/editable and display Off in a bordered read-only status cell, while removal is separate phase metadata. Create starts a clean disabled specialised draft with no eligible mobs or mutators; it never clones the selected configuration. Such an incomplete draft may be persisted while disabled but must pass ordinary mob/mutator validation before it can be enabled. Create, Rename, Enable/Disable, Remove, and source-backed Restore are explicit actions in the Mob Config picker; the main header is limited to aligned selection controls and read-only status. Component settings use searchable registry selectors for supported IDs; `effect_particles` produces status-effect-coloured visuals without applying that effect, while `ambient_particles` uses a supported raw particle ID for atmospheric visuals. `equip_item` includes an equipment-slot picker: hand slots permit held items and armour/body slots filter to items whose vanilla `Equipable` data declares that slot. Local Discard does not publish, and Restore Source removes only an applicable source-backed world override or reactivates removed source-backed metadata; when no restore is available the disabled control describes the current source instead of implying an error. Reset All Defaults is a separate destructive, operator-only, revision-checked action with explicit confirmation: it clears world-authored profile definitions and overrides, selects bundled Standard, and restores built-in global editor settings. It does not modify external datapack files or earned progression history. Client-authored submissions prune only already-unresolvable tier mappings whose pool is absent from both the active source graph and the submitted authored graph, allowing earlier inconsistent saves to recover without hiding new server validation failures. Hidden authored conditions survive edits. Internal difficulty-track/tier records remain a migration-safe authoring representation, not progression state; external datapacks and old saved metadata remain valid.
+- Native-editor apply/failure feedback is transient rather than part of the saved screen state. It shares the breadcrumb row, reserves separate left and right regions so the breadcrumb and feedback do not overlap, and expires after a bounded display period. The visible message is concise; long authoritative server validation text remains available from the feedback tooltip until it expires.
+- Each named mob configuration references a shared stage, one dimension, and an ordinary pool. At most one Default Mobs configuration exists per phase/dimension. Enabled specialised configurations require non-empty, non-overlapping eligible-mob sets; publication subtracts only enabled specialised configurations' mobs from Default Mobs before the existing ordinary-pool selection pass. For an unrestricted Default Mobs pool, publication materializes the current server's eligible living-entity registry minus the enabled specialised selections into the compiled runtime definition; the authored wildcard remains unchanged. A disabled specialised configuration therefore returns its mobs to Default Mobs coverage on the next publication. If subtraction leaves no remaining eligible mobs, that compiled default is disabled rather than interpreted as a wildcard.
+- Publication orders phase mappings by stage order and compiles them into existing stage conditions: the configuration stage must be unlocked and every higher mapped phase must be locked. No second progression state machine or mutation roll is introduced.
+- track compilation occurs off the gameplay hot path; pressure-event and ungrouped datapack pools remain independent and are never guessed into tracks from dimension similarity
+- apply decodes through existing codecs, validates numeric bounds, trigger/event context, stage/pool dependencies, mutator references/weights, running-server dimensions, and server-derived living entity types, then republishes the existing snapshot atomically
+- reload overlays each saved authored graph once; Revert removes a source-backed override, while Delete removes a world-owned definition only after dependency validation
 - unsaved pool drafts remain client-only; navigation warns before discard, entity/mutator selector Cancel preserves the parent draft, and stale concurrent editors are rejected rather than merged
+- stage unlock summaries must derive from the trigger whose matching `stage_locked` guard identifies that stage's direct milestone. Extra `unlock_stage` catch-up actions are indirect effects and must not replace an earlier stage's ordinary summary
+- registry selectors show server-derived readable names plus IDs/namespaces, retain selection while filtering, and require explicit confirmation for single-choice unlock targets
 
 Registry-aware authoring contract:
 - selector data comes from the actual running server and is cached outside gameplay hot paths
@@ -4724,3 +4743,4 @@ Phase 3 completion confirmation:
 - debug-enabled rule passes emit stable per-pass trace identifiers
 - completed Phase 1-3 contracts were audited to ensure mutation/reward references remain authored-ID driven and are not coupled to hardcoded preset behavior identities
 
+- Native Ascension editor capacity: an offer may present up to five choices; each compact world-authored choice may contain one to three distinct live effects.

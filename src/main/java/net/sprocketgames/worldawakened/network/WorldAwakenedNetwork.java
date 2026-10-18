@@ -1,5 +1,7 @@
 package net.sprocketgames.worldawakened.network;
 
+import java.util.Map;
+
 import org.slf4j.Logger;
 
 import com.google.gson.JsonArray;
@@ -23,8 +25,11 @@ import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedEditorSettings;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.config.WorldAwakenedProfileOverrideService;
+import net.sprocketgames.worldawakened.config.WorldAwakenedDifficultyTrackDefinition;
 import net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationPoolDefinition;
+import net.sprocketgames.worldawakened.data.definition.StageDefinition;
+import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
@@ -65,6 +70,14 @@ public final class WorldAwakenedNetwork {
                 WorldAwakenedApplyMutationPoolPayload.TYPE,
                 WorldAwakenedApplyMutationPoolPayload.STREAM_CODEC,
                 WorldAwakenedNetwork::handleApplyMutationPool);
+        registrar.playToServer(
+                WorldAwakenedApplyAuthoringPayload.TYPE,
+                WorldAwakenedApplyAuthoringPayload.STREAM_CODEC,
+                WorldAwakenedNetwork::handleApplyAuthoring);
+        registrar.playToServer(
+                WorldAwakenedProfileOperationPayload.TYPE,
+                WorldAwakenedProfileOperationPayload.STREAM_CODEC,
+                WorldAwakenedNetwork::handleProfileOperation);
     }
 
     public static void sendOpenAscensionOffer(ServerPlayer player, WorldAwakenedAscensionService.OpenOfferView view) {
@@ -261,6 +274,126 @@ public final class WorldAwakenedNetwork {
         });
     }
 
+    private static void handleApplyAuthoring(WorldAwakenedApplyAuthoringPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            if (!WorldAwakenedConfigService.isAuthorized(player)) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "World Awakened profile update rejected: operator permission required."));
+                return;
+            }
+            try {
+                JsonObject root = JsonParser.parseString(payload.authoringJson()).getAsJsonObject();
+                var stages = decodeDefinitions(root, "stages", StageDefinition.CODEC, StageDefinition::id);
+                var triggers = decodeDefinitions(root, "trigger_rules", TriggerRuleDefinition.CODEC, TriggerRuleDefinition::id);
+                var pools = decodeDefinitions(root, "mutation_pools", MutationPoolDefinition.CODEC, MutationPoolDefinition::id);
+                var tracks = decodeDefinitions(root, "difficulty_tracks", WorldAwakenedDifficultyTrackDefinition.CODEC,
+                        WorldAwakenedDifficultyTrackDefinition::id);
+                var offers = decodeDefinitions(root, "ascension_offers",
+                        net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC,
+                        net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition::id);
+                var rewards = decodeDefinitions(root, "ascension_rewards",
+                        net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition.CODEC,
+                        net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition::id);
+                var mutators = decodeDefinitions(root, "mob_mutators",
+                        net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition.CODEC,
+                        net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition::id);
+                WorldAwakenedDatapackSnapshot source = WorldAwakenedMod.DATAPACK_SERVICE.sourceSnapshot();
+                var result = WorldAwakenedProfileOverrideService.applyAuthoring(player.serverLevel(),
+                        payload.baseRevision(), stages, triggers, pools, tracks, rewards, offers, mutators, source);
+                if (result.accepted()) {
+                    WorldAwakenedMod.DATAPACK_SERVICE.publish(source, "native_profile_authoring_apply");
+                    sendConfigSnapshot(player, "applied", result.message());
+                } else sendConfigSnapshot(player, "validation_failed", result.message());
+            } catch (RuntimeException exception) {
+                sendConfigSnapshot(player, "validation_failed", "The submitted profile changes are malformed: "
+                        + exception.getMessage());
+            }
+        });
+    }
+
+    private static void handleProfileOperation(WorldAwakenedProfileOperationPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            if (!WorldAwakenedConfigService.isAuthorized(player)) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "World Awakened profile update rejected: operator permission required."));
+                return;
+            }
+            var config = WorldAwakenedConfigService.snapshot();
+            var authored = WorldAwakenedProfileOverrideService.state();
+            if (payload.settingsRevision() != config.revision() || payload.profileRevision() != authored.revision()) {
+                sendConfigSnapshot(player, "stale_revision", "The profile changed on the server. Review it and try again."); return;
+            }
+            boolean resetDefaults = "reset_defaults".equals(payload.operation());
+            boolean bundled = "standard".equals(payload.operation()) || resetDefaults;
+            if (!bundled && !"start_empty".equals(payload.operation()) && !"copy_standard".equals(payload.operation())) {
+                sendConfigSnapshot(player, "validation_failed", "Unknown profile operation."); return;
+            }
+            WorldAwakenedEditorSettings old = config.settings();
+            WorldAwakenedEditorSettings next = profileOperationSettings(payload.operation(), old);
+            WorldAwakenedDatapackSnapshot copiedSource = null;
+            if ("copy_standard".equals(payload.operation()) || "start_empty".equals(payload.operation())) copiedSource = WorldAwakenedConfigService.withPreviewSettings(
+                    new WorldAwakenedEditorSettings(true, old.difficultyIntensity(), old.mutationsEnabled(), old.mutationFrequencyMultiplier(),
+                            old.allowMultipleMutations(), old.maximumMutationsPerMob(), old.pressureEventsEnabled(),
+                            old.eventFrequencyMultiplier(), old.ascensionEnabled()),
+                    () -> WorldAwakenedMod.DATAPACK_SERVICE.compile(player.getServer().getResourceManager()));
+            WorldAwakenedDatapackSnapshot nextSource = WorldAwakenedConfigService.withPreviewSettings(next,
+                    () -> WorldAwakenedMod.DATAPACK_SERVICE.compile(player.getServer().getResourceManager()));
+            var configResult = WorldAwakenedConfigService.apply(player.serverLevel(), payload.settingsRevision(), next,
+                    player.getGameProfile().getName());
+            if (!configResult.accepted()) { sendConfigSnapshot(player, "validation_failed", configResult.message()); return; }
+            WorldAwakenedProfileOverrideService.ApplyResult profileResult;
+            if ("copy_standard".equals(payload.operation())) profileResult = WorldAwakenedProfileOverrideService.copyProfile(
+                    player.serverLevel(), payload.profileRevision(), bundledDefaults(copiedSource.data()));
+            else if ("start_empty".equals(payload.operation())) profileResult = WorldAwakenedProfileOverrideService.startEmptyProfile(
+                    player.serverLevel(), payload.profileRevision(), bundledDefaults(copiedSource.data()).mobMutators());
+            else profileResult = WorldAwakenedProfileOverrideService.replaceProfile(player.serverLevel(), payload.profileRevision(),
+                    bundled ? "standard" : "empty", java.util.Map.of(), java.util.Map.of(), java.util.Map.of());
+            if (!profileResult.accepted()) { sendConfigSnapshot(player, "stale_revision", profileResult.message()); return; }
+            WorldAwakenedMod.DATAPACK_SERVICE.publish(nextSource, "native_profile_operation");
+            sendConfigSnapshot(player, "applied", resetDefaults
+                    ? "All WorldAwakened editor settings were restored to built-in defaults."
+                    : profileResult.message());
+        });
+    }
+
+    static WorldAwakenedEditorSettings profileOperationSettings(String operation, WorldAwakenedEditorSettings current) {
+        if ("reset_defaults".equals(operation)) return WorldAwakenedEditorSettings.builtInDefaults();
+        boolean bundled = "standard".equals(operation);
+        return new WorldAwakenedEditorSettings(bundled, current.difficultyIntensity(),
+                current.mutationsEnabled(), current.mutationFrequencyMultiplier(), current.allowMultipleMutations(),
+                current.maximumMutationsPerMob(), current.pressureEventsEnabled(), current.eventFrequencyMultiplier(),
+                current.ascensionEnabled());
+    }
+
+    private static net.sprocketgames.worldawakened.data.load.WorldAwakenedCompiledData bundledDefaults(
+            net.sprocketgames.worldawakened.data.load.WorldAwakenedCompiledData data) {
+        var bossFlags = defaults(data.entityBossFlags());
+        return new net.sprocketgames.worldawakened.data.load.WorldAwakenedCompiledData(defaults(data.stages()),
+                defaults(data.triggerRules()), defaults(data.rules()), defaults(data.ascensionRewards()),
+                defaults(data.ascensionOffers()), defaults(data.mobMutators()), defaults(data.mutationPools()),
+                defaults(data.lootProfiles()), defaults(data.invasionProfiles()), defaults(data.integrationProfiles()), bossFlags,
+                net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier.fromMaps(java.util.List.copyOf(bossFlags.values())));
+    }
+
+    private static <T> java.util.Map<ResourceLocation, T> defaults(java.util.Map<ResourceLocation, T> values) {
+        java.util.LinkedHashMap<ResourceLocation, T> result = new java.util.LinkedHashMap<>();
+        values.forEach((id, value) -> { if (id.getNamespace().equals("worldawakened") && id.getPath().startsWith("defaults/")) result.put(id, value); });
+        return java.util.Map.copyOf(result);
+    }
+
+    private static <T> java.util.Map<ResourceLocation, T> decodeDefinitions(JsonObject root, String key,
+            com.mojang.serialization.Codec<T> codec, java.util.function.Function<T, ResourceLocation> idGetter) {
+        java.util.LinkedHashMap<ResourceLocation, T> values = new java.util.LinkedHashMap<>();
+        JsonArray array = root.has(key) ? root.getAsJsonArray(key) : new JsonArray();
+        for (var json : array) {
+            T value = codec.parse(JsonOps.INSTANCE, json).getOrThrow(message -> new IllegalArgumentException(message));
+            if (values.put(idGetter.apply(value), value) != null) throw new IllegalArgumentException("Duplicate " + key + " ID.");
+        }
+        return java.util.Map.copyOf(values);
+    }
+
     private static void handleSelectAscensionReward(WorldAwakenedSelectAscensionRewardPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!WorldAwakenedFeatureGates.ascensionEnabled()) {
@@ -327,9 +460,16 @@ public final class WorldAwakenedNetwork {
         root.addProperty("message", message);
         root.addProperty("editable", WorldAwakenedConfigService.isAuthorized(player));
         root.addProperty("revision", snapshot.revision());
-        root.addProperty("active_profile", settings.defaultGameplayEnabled() ? "Standard" : "Custom datapacks only");
         WorldAwakenedDatapackSnapshot datapack = WorldAwakenedMod.DATAPACK_SERVICE.currentSnapshot();
         WorldAwakenedProfileOverrideService.State overrides = WorldAwakenedProfileOverrideService.state();
+        String profileName = switch (overrides.profileKind()) {
+            case "empty" -> "Custom (Started Empty)";
+            case "standard_copy" -> "Custom (Standard Copy)";
+            default -> !settings.defaultGameplayEnabled() ? "Custom datapacks only"
+                    : overrides.isEmpty() ? "Standard" : "Standard with World Changes";
+        };
+        root.addProperty("active_profile", profileName);
+        root.addProperty("profile_kind", overrides.profileKind());
         root.addProperty("profile_revision", overrides.revision());
         root.addProperty("profile_summary", datapack.data().stages().size() + " stages • "
                 + datapack.data().mutationPools().size() + " pools • " + datapack.data().mobMutators().size()
@@ -342,7 +482,7 @@ public final class WorldAwakenedNetwork {
         int total = WorldAwakenedMod.STAGE_SERVICE.stageRegistry().orderedStages().size();
         root.addProperty("progression_mode", mode.serializedName());
         root.addProperty("progression_summary", unlocked + " of " + total + " stages unlocked");
-        root.addProperty("progression_editable", false);
+        root.addProperty("progression_editable", true);
         root.addProperty(
                 "progression_note",
                 "Progression mode changes require a saved-history migration and are not available in this milestone.");
@@ -366,22 +506,62 @@ public final class WorldAwakenedNetwork {
         root.add("bounds", bounds);
 
         JsonArray pools = new JsonArray();
+        Map<net.minecraft.resources.ResourceLocation, MutationPoolDefinition> sourcePools =
+                WorldAwakenedMod.DATAPACK_SERVICE.sourceSnapshot().data().mutationPools();
         datapack.data().mutationPools().values().stream()
                 .sorted(java.util.Comparator.comparing(pool -> pool.id().toString()))
                 .forEach(pool -> MutationPoolDefinition.CODEC.encodeStart(JsonOps.INSTANCE, pool).result().ifPresent(json -> {
                     JsonObject node = new JsonObject();
-                    node.add("definition", json);
                     boolean overridden = overrides.mutationPools().containsKey(pool.id());
+                    MutationPoolDefinition authoringDefinition = authoringPoolDefinition(pool,
+                            overrides.mutationPools(), sourcePools);
+                    node.add("definition", MutationPoolDefinition.CODEC.encodeStart(JsonOps.INSTANCE,
+                            authoringDefinition).result().orElse(json));
                     node.addProperty("overridden", overridden);
                     node.addProperty("origin", poolOrigin(player, pool.id(), overridden));
                     pools.add(node);
                 }));
         root.add("mutation_pools", pools);
 
+        JsonArray stages = new JsonArray();
+        datapack.data().stages().values().stream()
+                .sorted(java.util.Comparator.comparingInt(StageDefinition::sortIndex).thenComparing(stage -> stage.id().toString()))
+                .forEach(stage -> StageDefinition.CODEC.encodeStart(JsonOps.INSTANCE, stage).result().ifPresent(json -> {
+                    JsonObject node = new JsonObject();
+                    node.add("definition", json);
+                    node.addProperty("world_authored", overrides.stages().containsKey(stage.id()));
+                    node.addProperty("source_backed", WorldAwakenedMod.DATAPACK_SERVICE.sourceSnapshot().data().stages().containsKey(stage.id()));
+                    node.addProperty("unlocked", WorldAwakenedMod.STAGE_SERVICE.getUnlockedStages(player.serverLevel(), player).contains(stage.id()));
+                    JsonArray uses = new JsonArray(); stageUses(datapack, overrides, stage.id()).forEach(uses::add); node.add("used_by", uses);
+                    stages.add(node);
+                }));
+        root.add("stages", stages);
+        root.add("world_authored_stages", encodeDefinitions(overrides.stages().values(), StageDefinition.CODEC));
+        root.add("world_authored_triggers", encodeDefinitions(overrides.triggerRules().values(), TriggerRuleDefinition.CODEC));
+        root.add("trigger_rules", encodeDefinitions(datapack.data().triggerRules().values(), TriggerRuleDefinition.CODEC));
+        root.add("world_authored_pools", encodeDefinitions(overrides.mutationPools().values(), MutationPoolDefinition.CODEC));
+        root.add("difficulty_tracks", encodeDefinitions(overrides.difficultyTracks().values(), WorldAwakenedDifficultyTrackDefinition.CODEC));
+        root.add("ascension_offers", encodeDefinitions(datapack.data().ascensionOffers().values(),
+                net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC));
+        root.add("world_authored_ascension_offers", encodeDefinitions(overrides.ascensionOffers().values(),
+                net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC));
+        root.add("ascension_rewards", encodeDefinitions(datapack.data().ascensionRewards().values(),
+                net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition.CODEC));
+        root.add("world_authored_ascension_rewards", encodeDefinitions(overrides.ascensionRewards().values(),
+                net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition.CODEC));
+        root.add("world_authored_mutators", encodeDefinitions(overrides.mobMutators().values(),
+                MobMutatorDefinition.CODEC));
+
         JsonArray mutators = new JsonArray();
         datapack.data().mobMutators().values().stream()
                 .sorted(java.util.Comparator.comparing(mutator -> mutator.id().toString()))
-                .forEach(mutator -> mutators.add(mutatorSummary(mutator)));
+                .forEach(mutator -> {
+                    JsonObject node = mutatorSummary(mutator);
+                    MobMutatorDefinition.CODEC.encodeStart(JsonOps.INSTANCE, mutator).result()
+                            .ifPresent(json -> node.add("definition", json));
+                    node.addProperty("world_authored", overrides.mobMutators().containsKey(mutator.id()));
+                    mutators.add(node);
+                });
         root.add("mutators", mutators);
 
         JsonArray entities = new JsonArray();
@@ -399,7 +579,67 @@ public final class WorldAwakenedNetwork {
         JsonArray dimensions = new JsonArray();
         player.getServer().levelKeys().stream().map(key -> key.location().toString()).sorted().forEach(dimensions::add);
         root.add("dimensions", dimensions);
+        JsonArray advancements = new JsonArray();
+        player.getServer().getAdvancements().getAllAdvancements().stream()
+                .sorted(java.util.Comparator.comparing(holder -> holder.id().toString()))
+                .forEach(holder -> {
+                    JsonObject node = new JsonObject();
+                    String id = holder.id().toString();
+                    node.addProperty("id", id);
+                    node.addProperty("name", holder.value().display()
+                            .map(display -> display.getTitle().getString())
+                            .orElseGet(() -> readableDefinitionId(holder.id())));
+                    node.addProperty("namespace", holder.id().getNamespace());
+                    node.addProperty("technical", holder.value().display().isEmpty()
+                            || holder.id().getPath().startsWith("recipes/"));
+                    advancements.add(node);
+                });
+        root.add("advancements", advancements);
         PacketDistributor.sendToPlayer(player, new WorldAwakenedOpenConfigPayload(root.toString()));
+    }
+
+    static MutationPoolDefinition authoringPoolDefinition(MutationPoolDefinition runtime,
+            Map<net.minecraft.resources.ResourceLocation, MutationPoolDefinition> authored,
+            Map<net.minecraft.resources.ResourceLocation, MutationPoolDefinition> source) {
+        MutationPoolDefinition worldDefinition = authored.get(runtime.id());
+        if (worldDefinition != null) return worldDefinition;
+        return source.getOrDefault(runtime.id(), runtime);
+    }
+
+    private static <T> JsonArray encodeDefinitions(java.util.Collection<T> values,
+            com.mojang.serialization.Codec<T> codec) {
+        JsonArray array = new JsonArray();
+        values.forEach(value -> codec.encodeStart(JsonOps.INSTANCE, value).result().ifPresent(array::add));
+        return array;
+    }
+
+    private static java.util.List<String> stageUses(WorldAwakenedDatapackSnapshot snapshot,
+            WorldAwakenedProfileOverrideService.State authored, ResourceLocation stageId) {
+        java.util.LinkedHashSet<String> uses = new java.util.LinkedHashSet<>();
+        String needle = "\"" + stageId + "\"";
+        snapshot.data().mutationPools().forEach((id, value) -> addUse(uses, "Mutation pool", id,
+                MutationPoolDefinition.CODEC, value, needle));
+        snapshot.data().triggerRules().forEach((id, value) -> addUse(uses, "Unlock trigger", id,
+                TriggerRuleDefinition.CODEC, value, needle));
+        snapshot.data().rules().forEach((id, value) -> addUse(uses, "Rule", id,
+                net.sprocketgames.worldawakened.data.definition.RuleDefinition.CODEC, value, needle));
+        snapshot.data().ascensionRewards().forEach((id, value) -> addUse(uses, "Ascension reward", id,
+                net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition.CODEC, value, needle));
+        snapshot.data().ascensionOffers().forEach((id, value) -> addUse(uses, "Ascension offer", id,
+                net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC, value, needle));
+        snapshot.data().lootProfiles().forEach((id, value) -> addUse(uses, "Loot profile", id,
+                net.sprocketgames.worldawakened.data.definition.LootProfileDefinition.CODEC, value, needle));
+        snapshot.data().invasionProfiles().forEach((id, value) -> addUse(uses, "World event", id,
+                net.sprocketgames.worldawakened.data.definition.InvasionProfileDefinition.CODEC, value, needle));
+        authored.difficultyTracks().forEach((id, track) -> { if (track.tiers().stream().anyMatch(tier -> tier.stageId().equals(stageId)))
+            uses.add("Difficulty track: " + track.displayName()); });
+        return java.util.List.copyOf(uses);
+    }
+
+    private static <T> void addUse(java.util.Set<String> uses, String kind, ResourceLocation id,
+            com.mojang.serialization.Codec<T> codec, T value, String needle) {
+        if (codec.encodeStart(JsonOps.INSTANCE, value).result().map(json -> json.toString().contains(needle)).orElse(false))
+            uses.add(kind + ": " + id);
     }
 
     private static JsonObject mutatorSummary(MobMutatorDefinition mutator) {
@@ -419,7 +659,8 @@ public final class WorldAwakenedNetwork {
     }
 
     private static String poolOrigin(ServerPlayer player, ResourceLocation id, boolean overridden) {
-        if (overridden) return "World override";
+        if (overridden) return WorldAwakenedMod.DATAPACK_SERVICE.sourceSnapshot().data().mutationPools().containsKey(id)
+                ? "World override" : "World authored";
         ResourceLocation resourceId = ResourceLocation.fromNamespaceAndPath(
                 id.getNamespace(), "mutation_pools/" + id.getPath() + ".json");
         var stack = player.getServer().getResourceManager().getResourceStack(resourceId);

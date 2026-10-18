@@ -35,7 +35,7 @@ public final class WorldAwakenedTriggerEventHandlers {
 
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            triggerService.reconcileCompletedAdvancementTriggers(player);
+            triggerService.reconcileInspectableTriggers(player);
         }
     }
 
