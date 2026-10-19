@@ -22,6 +22,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
@@ -705,8 +706,7 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
             case PLAYER -> ChallengeScope.PLAYER;
             case WORLD -> ChallengeScope.WORLD;
             case AUTO -> {
-                WorldAwakenedProgressionMode progressionMode =
-                        WorldAwakenedProgressionMode.fromConfig(WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
+                WorldAwakenedProgressionMode progressionMode = WorldAwakenedConfigService.settings().progressionMode();
                 yield progressionMode == WorldAwakenedProgressionMode.PER_PLAYER
                         ? ChallengeScope.PLAYER
                         : ChallengeScope.WORLD;
@@ -907,9 +907,8 @@ public final class WorldAwakenedEffectiveDifficultyScalarService {
         if (!policy.challengeRequireVoteInGlobal()) {
             return false;
         }
-        WorldAwakenedProgressionMode progressionMode =
-                WorldAwakenedProgressionMode.fromConfig(WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
-        return progressionMode == WorldAwakenedProgressionMode.GLOBAL;
+        WorldAwakenedProgressionMode progressionMode = WorldAwakenedConfigService.settings().progressionMode();
+        return progressionMode == WorldAwakenedProgressionMode.PER_SERVER;
     }
 
     private static boolean isStepAligned(double value, double anchorValue, double stepValue) {

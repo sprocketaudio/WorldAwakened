@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/early_warded",
+  "enabled": true,
+  "scope": "mob_mutation",
+  "effect_type": "worldawakened:temporary_shield",
+  "parameters": { "amount": 2.0 },
+  "power": 4,
+  "selection_weight": 1
+}

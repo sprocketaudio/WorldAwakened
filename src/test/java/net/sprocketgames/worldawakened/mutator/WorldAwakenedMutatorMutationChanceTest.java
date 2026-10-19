@@ -45,7 +45,7 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
-class WorldAwakenedMutatorMutationChanceTest {
+class WorldAwakenedMutatorMutationChanceTest extends WorldAwakenedMutatorTestSupport {
     @Test
     void poolCodecRejectsTheObsoletePoolShape() {
         assertThrows(IllegalStateException.class, () -> parsePool("""

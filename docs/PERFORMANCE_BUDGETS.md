@@ -323,7 +323,7 @@ This contract aligns to future implementation phases as follows:
 - Phase 7: enforce deterministic and bounded loot/reward profile evaluation on explicit reward-capable event paths
 - Native editor settings foundation: implemented overrides are constant-time runtime reads; the mutation cap can only tighten the existing hard budget, and bundled-profile changes compile off the hot path before publication
 - Native mutation-pool editing cannot raise the engine hard cap above eight mutators per mob; the existing global and authored caps may tighten it further. Registry enumeration and living-type checks occur only when an authorised operator opens the editor, never in spawn evaluation.
-- Native Difficulty Tracks compile during profile publication into the existing pool-condition structures. Spawn evaluation does not scan tracks or progression stages: each tier pool carries precompiled `stage_unlocked` and higher-tier `stage_locked` gates, and ordinary selector indexing remains authoritative.
+- Native Phase Mutation Configurations compile during profile publication into the existing pool-condition structures. Spawn evaluation does not scan configuration metadata or progression stages: each ordered phase assignment carries precompiled `stage_unlocked` and later-phase `stage_locked` gates, and ordinary selector indexing remains authoritative.
 - Later native editor work: expose richer component-budget warnings in guided mutator-definition workflows
 
 ### Native-editor phase condition groups

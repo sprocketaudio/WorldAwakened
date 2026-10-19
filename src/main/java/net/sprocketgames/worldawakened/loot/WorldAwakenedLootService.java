@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.SplittableRandom;
@@ -30,16 +31,22 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.storage.loot.LootContext;
+import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.neoforged.fml.ModList;
 import net.sprocketgames.worldawakened.compat.WorldAwakenedCompatibilityService;
 import net.sprocketgames.worldawakened.compat.apotheosis.WorldAwakenedApotheosisTierFilter;
 import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.data.definition.LootProfileDefinition;
+import net.sprocketgames.worldawakened.data.definition.LootProfileType;
+import net.sprocketgames.worldawakened.data.definition.LootBonusXpDefinition;
+import net.sprocketgames.worldawakened.data.definition.LootBonusXpMode;
 import net.sprocketgames.worldawakened.data.definition.LootReplaceMode;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
@@ -55,10 +62,12 @@ import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedEntityCont
 public final class WorldAwakenedLootService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final ResourceLocation EVENT_ENTITY_KILLED = id("entity_killed");
+    private static final ResourceLocation EVENT_CHEST_GENERATED = id("chest_generated");
     private static final ResourceLocation EVENT_INVASION_COMPLETED = id("invasion_completed");
     private static final ResourceLocation EVENT_DEBUG_EVALUATE = id("debug_loot_evaluate");
     private static final Set<ResourceLocation> LIVE_REWARD_EVENTS = Set.of(
             EVENT_ENTITY_KILLED,
+            EVENT_CHEST_GENERATED,
             EVENT_INVASION_COMPLETED);
     private static final Comparator<CompiledLootProfile> PROFILE_ORDER =
             Comparator.comparing(profile -> profile.id().toString());
@@ -130,6 +139,79 @@ public final class WorldAwakenedLootService {
         boolean changed = applyResolvedDrops(level, target, drops, result);
         List<RewardItem> appliedSummary = collectDropSummary(drops);
         return result.withLiveApplied(changed, appliedSummary);
+    }
+
+    public int onEntityKilledExperience(
+            ServerLevel level,
+            LivingEntity target,
+            ServerPlayer killer,
+            int vanillaExperience) {
+        if (!WorldAwakenedFeatureGates.modEnabled()
+                || !WorldAwakenedCommonConfig.ENABLE_LOOT_EVOLUTION.get()
+                || vanillaExperience <= 0) {
+            return vanillaExperience;
+        }
+
+        LootContextSnapshot context = buildEntityKillContext(level, target, killer, false);
+        int result = vanillaExperience;
+        String traceId = nextTraceId();
+        for (CompiledLootProfile profile : candidateProfiles(compiledLoot(), context, Optional.empty())) {
+            if (profile.bonusXp().isEmpty()
+                    || validateProfileAgainstContext(profile, context, false).isPresent()) {
+                continue;
+            }
+            CompiledBonusXp bonus = profile.bonusXp().get();
+            if (!bonus.enabled()
+                    || deterministicRoll(context, profile.id(), traceId, "bonus_xp_chance", -1) >= bonus.chance()) {
+                continue;
+            }
+            if (bonus.mode() == LootBonusXpMode.MULTIPLIER) {
+                result = saturatingExperience(Math.round(result * bonus.multiplier()));
+            } else {
+                int amount = bonus.minimum();
+                if (bonus.maximum() > bonus.minimum()) {
+                    double roll = deterministicRoll(context, profile.id(), traceId, "bonus_xp_amount", -1);
+                    int span = bonus.maximum() - bonus.minimum() + 1;
+                    amount += Math.min(span - 1, (int) Math.floor(roll * span));
+                }
+                result = saturatingExperience((long) result + amount);
+            }
+        }
+        return result;
+    }
+
+    public boolean onChestLootGenerated(LootContext lootContext, List<ItemStack> generatedLoot) {
+        if (!WorldAwakenedFeatureGates.modEnabled()
+                || !WorldAwakenedCommonConfig.ENABLE_LOOT_EVOLUTION.get()
+                || !(lootContext.getLevel() instanceof ServerLevel level)
+                || !lootContext.hasParam(LootContextParams.ORIGIN)) {
+            return false;
+        }
+        Object contextEntity = lootContext.getParamOrNull(LootContextParams.THIS_ENTITY);
+        if (contextEntity != null && !(contextEntity instanceof Player)) {
+            return false;
+        }
+        ResourceLocation tableId = lootContext.getQueriedLootTableId();
+        if (tableId == null) {
+            return false;
+        }
+        ServerPlayer player = contextEntity instanceof ServerPlayer serverPlayer ? serverPlayer : null;
+        BlockPos origin = BlockPos.containing(lootContext.getParam(LootContextParams.ORIGIN));
+        LootContextSnapshot context = buildChestContext(level, tableId, origin, player);
+        List<RewardItem> baseline = collectStackSummary(generatedLoot);
+        LootRunResult result = evaluate(context, Optional.empty(), baseline, false);
+        if (result.skipped() || result.operations().isEmpty()) {
+            return false;
+        }
+        return applyResolvedStacks(generatedLoot, result.operations());
+    }
+
+    private static int saturatingExperience(long value) {
+        return (int) Math.max(0L, Math.min(Integer.MAX_VALUE, value));
+    }
+
+    private static double clamp(double value, double minimum, double maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
     }
 
     public LootRunResult debugEvaluate(
@@ -245,6 +327,23 @@ public final class WorldAwakenedLootService {
                 continue;
             }
 
+            if (profile.entries().isEmpty()) {
+                continue;
+            }
+            // Rolls are in [0, 1), so zero means "never" and one means "always".
+            if (deterministicRoll(context, profile.id(), traceId, "item_chance", -1) >= profile.itemChance()) {
+                decisions.add(ProfileDecision.rejected(
+                        profile.id(),
+                        "item_chance_missed",
+                        "independent item reward chance did not pass",
+                        "",
+                        profile.replaceMode(),
+                        modeResolution.resolvedMode(),
+                        sensitiveTarget,
+                        modeResolution.fallbackAction()));
+                continue;
+            }
+
             Optional<RewardItem> selected = selectReward(profile, context, traceId);
             if (selected.isEmpty()) {
                 decisions.add(ProfileDecision.rejected(
@@ -311,6 +410,37 @@ public final class WorldAwakenedLootService {
             CompiledLootProfile profile,
             LootContextSnapshot context,
             boolean sensitiveTarget) {
+        if (!profile.appliesTo(context.targetType())) {
+            return Optional.of(ProfileDecision.rejected(
+                    profile.id(),
+                    "profile_type_mismatch",
+                    "profile type does not apply to this loot context",
+                    WorldAwakenedDiagnosticCodes.REWARD_CONTEXT_MISSING,
+                    profile.replaceMode(),
+                    profile.replaceMode(),
+                    sensitiveTarget,
+                    "context_rejected"));
+        }
+        if (context.targetType() == LootTargetType.ENTITY && !profile.targetEntities().isEmpty()
+                && (context.entityTypeId().isEmpty() || !profile.targetEntities().contains(context.entityTypeId().get()))) {
+            return Optional.of(ProfileDecision.rejected(
+                    profile.id(), "entity_target_failed", "mob is not in this profile's explicit target list",
+                    WorldAwakenedDiagnosticCodes.SELECTOR_INVALID, profile.replaceMode(), profile.replaceMode(),
+                    sensitiveTarget, "target_rejected"));
+        }
+        if (!profile.eligibleDimensions().isEmpty()
+                && !profile.eligibleDimensions().contains(context.dimensionId())) {
+            return Optional.of(ProfileDecision.rejected(
+                    profile.id(), "dimension_target_failed", "current dimension is not in this profile's selected dimensions",
+                    WorldAwakenedDiagnosticCodes.SELECTOR_INVALID, profile.replaceMode(), profile.replaceMode(),
+                    sensitiveTarget, "target_rejected"));
+        }
+        if (!profile.mutationRarityFilter().matches(context.mutationRarity())) {
+            return Optional.of(ProfileDecision.rejected(
+                    profile.id(), "mutation_rarity_filter_failed", "mob rarity did not match this profile's filter",
+                    WorldAwakenedDiagnosticCodes.SELECTOR_INVALID, profile.replaceMode(), profile.replaceMode(),
+                    sensitiveTarget, "rarity_filter_rejected"));
+        }
         if (profile.configGate().isPresent()) {
             String gate = profile.configGate().get();
             if (!context.configToggles().getOrDefault(gate, false)) {
@@ -552,6 +682,52 @@ public final class WorldAwakenedLootService {
         return List.copyOf(summary);
     }
 
+    private static List<RewardItem> collectStackSummary(Collection<ItemStack> stacks) {
+        List<RewardItem> summary = new ArrayList<>();
+        for (ItemStack stack : stacks) {
+            if (!stack.isEmpty()) {
+                summary.add(new RewardItem(BuiltInRegistries.ITEM.getKey(stack.getItem()), stack.getCount()));
+            }
+        }
+        return List.copyOf(summary);
+    }
+
+    private static boolean applyResolvedStacks(List<ItemStack> stacks, List<ResolvedOperation> operations) {
+        boolean changed = false;
+        List<ResolvedOperation> replacements = operations.stream()
+                .filter(operation -> operation.mode() == LootReplaceMode.REPLACE_ENTRIES)
+                .toList();
+        if (!replacements.isEmpty()) {
+            stacks.clear();
+            changed = true;
+            for (ResolvedOperation replacement : replacements) {
+                changed |= addRewardStack(stacks, replacement.selectedReward());
+            }
+        }
+        Set<ResourceLocation> removals = operations.stream()
+                .filter(operation -> operation.mode() == LootReplaceMode.REMOVE_ENTRIES)
+                .map(operation -> operation.selectedReward().itemId())
+                .collect(java.util.stream.Collectors.toSet());
+        if (!removals.isEmpty()) {
+            changed |= stacks.removeIf(stack -> removals.contains(BuiltInRegistries.ITEM.getKey(stack.getItem())));
+        }
+        for (ResolvedOperation operation : operations) {
+            if (operation.mode() == LootReplaceMode.INJECT || operation.mode() == LootReplaceMode.ADD_BONUS_POOL) {
+                changed |= addRewardStack(stacks, operation.selectedReward());
+            }
+        }
+        return changed;
+    }
+
+    private static boolean addRewardStack(List<ItemStack> stacks, RewardItem reward) {
+        Optional<Item> item = BuiltInRegistries.ITEM.getOptional(reward.itemId());
+        if (item.isEmpty() || reward.count() <= 0) {
+            return false;
+        }
+        stacks.add(new ItemStack(item.get(), reward.count()));
+        return true;
+    }
+
     private Optional<RewardItem> selectReward(
             CompiledLootProfile profile,
             LootContextSnapshot context,
@@ -680,10 +856,16 @@ public final class WorldAwakenedLootService {
             CompiledLootProfile forced = compiled.profilesById().get(forcedProfileId.get());
             return forced == null ? List.of() : List.of(forced);
         }
-        if (context.lootTableId().isEmpty()) {
-            return List.of();
+        LinkedHashSet<CompiledLootProfile> candidates = new LinkedHashSet<>();
+        if (context.targetType() == LootTargetType.ENTITY && context.entityTypeId().isPresent()) {
+            candidates.addAll(compiled.profilesByTargetEntity()
+                    .getOrDefault(context.entityTypeId().get(), List.of()));
         }
-        return compiled.profilesByTargetLootTable().getOrDefault(context.lootTableId().get(), List.of());
+        if (context.lootTableId().isPresent()) {
+            candidates.addAll(compiled.profilesByTargetLootTable()
+                    .getOrDefault(context.lootTableId().get(), List.of()));
+        }
+        return candidates.stream().sorted(PROFILE_ORDER).toList();
     }
 
     private LootContextSnapshot buildEntityKillContext(
@@ -701,8 +883,8 @@ public final class WorldAwakenedLootService {
         WorldAwakenedMutationProvenance.MutationProvenanceView provenance =
                 WorldAwakenedMutationProvenance.read(target.getPersistentData());
         Set<ResourceLocation> mutationTags = new LinkedHashSet<>(provenance.mutationIds());
-        Set<ResourceLocation> worldStages = stageService.getUnlockedStages(level);
-        Set<ResourceLocation> playerStages = killer == null ? Set.of() : stageService.getUnlockedStages(level, killer);
+        Set<ResourceLocation> worldStages = stageService.getActiveStages(level);
+        Set<ResourceLocation> playerStages = killer == null ? Set.of() : stageService.getActiveStages(level, killer);
         ResourceLocation lootTableId = target.getLootTable().location();
         Map<String, Boolean> toggles = configToggles();
         WorldAwakenedInvasionService.InvasionContextSnapshot invasionContext = invasionService.contextSnapshot(level);
@@ -722,6 +904,7 @@ public final class WorldAwakenedLootService {
                 entityIsBoss,
                 provenance.hasProvenance(),
                 Set.copyOf(mutationTags),
+                provenance.rarityId(),
                 killer == null ? Optional.empty() : Optional.of(killer.getUUID().toString()),
                 killer == null ? Optional.empty() : Optional.of(killer.getGameProfile().getName()),
                 level.dimension().location(),
@@ -745,13 +928,57 @@ public final class WorldAwakenedLootService {
                 debug);
     }
 
+    private LootContextSnapshot buildChestContext(
+            ServerLevel level,
+            ResourceLocation lootTableId,
+            BlockPos origin,
+            ServerPlayer player) {
+        Set<ResourceLocation> worldStages = stageService.getActiveStages(level);
+        Set<ResourceLocation> playerStages = player == null ? Set.of() : stageService.getActiveStages(level, player);
+        WorldAwakenedCompatibilityService.ApotheosisTierResolution apotheosisTier =
+                compatibilityService.resolveApotheosisWorldTier(
+                        level,
+                        player,
+                        WorldAwakenedCompatibilityService.ApotheosisTierUseCase.LOOT_SCALING);
+        return new LootContextSnapshot(
+                EVENT_CHEST_GENERATED,
+                LootTargetType.CHEST,
+                lootTableId,
+                Optional.of(lootTableId),
+                Optional.empty(),
+                Set.of(),
+                false,
+                false,
+                Set.of(),
+                Optional.empty(),
+                player == null ? Optional.empty() : Optional.of(player.getUUID().toString()),
+                player == null ? Optional.empty() : Optional.of(player.getGameProfile().getName()),
+                level.dimension().location(),
+                resolveBiome(level, origin),
+                Optional.empty(),
+                OptionalLong.of(Math.max(0L, level.getDayTime() / 24000L)),
+                Set.copyOf(worldStages),
+                Set.copyOf(playerStages),
+                stageService.stageRegistry(),
+                false,
+                Optional.empty(),
+                Set.of(),
+                compatibilityService.apotheosisCompatActive(),
+                apotheosisTier.tierValue(),
+                apotheosisTier.available() ? Optional.empty() : Optional.of(apotheosisTier.detail()),
+                loadedMods(),
+                configToggles(),
+                lootTableId + ":" + origin.asLong() + ":" + level.getGameTime(),
+                false);
+    }
+
     private Optional<LootContextSnapshot> buildDebugContext(
             ServerLevel level,
             LootTargetType targetType,
             ResourceLocation targetId,
             ServerPlayer player) {
-        Set<ResourceLocation> worldStages = stageService.getUnlockedStages(level);
-        Set<ResourceLocation> playerStages = player == null ? Set.of() : stageService.getUnlockedStages(level, player);
+        Set<ResourceLocation> worldStages = stageService.getActiveStages(level);
+        Set<ResourceLocation> playerStages = player == null ? Set.of() : stageService.getActiveStages(level, player);
         Optional<ResourceLocation> playerBiomeId = player == null
                 ? Optional.empty()
                 : resolveBiome(level, player.blockPosition());
@@ -791,6 +1018,7 @@ public final class WorldAwakenedLootService {
                         isBoss,
                         false,
                         Set.of(),
+                        Optional.empty(),
                         player == null ? Optional.empty() : Optional.of(player.getUUID().toString()),
                         player == null ? Optional.empty() : Optional.of(player.getGameProfile().getName()),
                         level.dimension().location(),
@@ -823,6 +1051,7 @@ public final class WorldAwakenedLootService {
                     false,
                     false,
                     Set.of(),
+                    Optional.empty(),
                     player == null ? Optional.empty() : Optional.of(player.getUUID().toString()),
                     player == null ? Optional.empty() : Optional.of(player.getGameProfile().getName()),
                     level.dimension().location(),
@@ -854,6 +1083,7 @@ public final class WorldAwakenedLootService {
                     false,
                     false,
                     Set.of(),
+                    Optional.empty(),
                     player == null ? Optional.empty() : Optional.of(player.getUUID().toString()),
                     player == null ? Optional.empty() : Optional.of(player.getGameProfile().getName()),
                     level.dimension().location(),
@@ -917,13 +1147,16 @@ public final class WorldAwakenedLootService {
                 .toList();
         Map<ResourceLocation, CompiledLootProfile> byId = new LinkedHashMap<>();
         Map<ResourceLocation, List<CompiledLootProfile>> byTarget = new LinkedHashMap<>();
+        Map<ResourceLocation, List<CompiledLootProfile>> byEntity = new LinkedHashMap<>();
 
         for (LootProfileDefinition definition : definitions) {
             if (!definition.enabled()) {
                 continue;
             }
-            CompiledLootProfile profile = compileProfile(definition);
-            if (profile.entries().isEmpty() || profile.targetLootTables().isEmpty()) {
+            CompiledLootProfile profile = compileProfile(definition, snapshot.data().rarities());
+            boolean hasReward = !profile.entries().isEmpty() || profile.bonusXp().isPresent();
+            boolean hasTarget = !profile.targetLootTables().isEmpty() || !profile.targetEntities().isEmpty();
+            if (!hasReward || !hasTarget) {
                 WorldAwakenedLog.warn(
                         LOGGER,
                         WorldAwakenedLogCategory.VALIDATION,
@@ -935,9 +1168,15 @@ public final class WorldAwakenedLootService {
             for (ResourceLocation target : profile.targetLootTables()) {
                 byTarget.computeIfAbsent(target, ignored -> new ArrayList<>()).add(profile);
             }
+            for (ResourceLocation entity : profile.targetEntities()) {
+                byEntity.computeIfAbsent(entity, ignored -> new ArrayList<>()).add(profile);
+            }
         }
 
         for (List<CompiledLootProfile> profiles : byTarget.values()) {
+            profiles.sort(PROFILE_ORDER);
+        }
+        for (List<CompiledLootProfile> profiles : byEntity.values()) {
             profiles.sort(PROFILE_ORDER);
         }
 
@@ -945,6 +1184,7 @@ public final class WorldAwakenedLootService {
         return new CompiledLootGraph(
                 Map.copyOf(byId),
                 freezeTargetIndex(byTarget),
+                freezeTargetIndex(byEntity),
                 List.copyOf(byId.keySet()),
                 Set.copyOf(apotheosisSensitiveTargets));
     }
@@ -958,21 +1198,41 @@ public final class WorldAwakenedLootService {
         return Map.copyOf(frozen);
     }
 
-    private static CompiledLootProfile compileProfile(LootProfileDefinition definition) {
+    private static CompiledLootProfile compileProfile(
+            LootProfileDefinition definition,
+            Map<ResourceLocation, net.sprocketgames.worldawakened.rarity.RarityDefinition> rarities) {
         List<CompiledCondition> conditions = compileConditions(definition.conditions());
         List<CompiledCondition> modConditions = compileConditions(definition.modConditions());
         StageFilter stageFilter = StageFilter.compile(definition.stageFilters());
+        RarityFilter mutationRarityFilter = RarityFilter.compile(definition.mutationRarityFilters(), rarities);
         Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter =
                 WorldAwakenedApotheosisTierFilter.compile(definition.apotheosisTierFilters());
         List<CompiledLootEntry> entries = compileEntries(definition.entries());
         LinkedHashSet<ResourceLocation> targets = new LinkedHashSet<>(definition.targetLootTables());
+        LinkedHashSet<ResourceLocation> targetEntities = new LinkedHashSet<>(definition.authoring().targetEntities());
+        LinkedHashSet<ResourceLocation> eligibleDimensions = new LinkedHashSet<>(definition.authoring().eligibleDimensions());
+        Optional<CompiledBonusXp> bonusXp = definition.authoring().bonusXp()
+                .filter(LootBonusXpDefinition::enabled)
+                .map(value -> new CompiledBonusXp(
+                        value.enabled(),
+                        value.mode(),
+                        Math.max(0, value.minimum()),
+                        Math.max(Math.max(0, value.minimum()), value.maximum()),
+                        Math.max(0.0D, value.multiplier()),
+                        clamp(value.chance(), 0.0D, 1.0D)));
 
         return new CompiledLootProfile(
                 definition.id(),
+                definition.profileType(),
                 Set.copyOf(targets),
+                Set.copyOf(targetEntities),
+                Set.copyOf(eligibleDimensions),
+                clamp(definition.authoring().itemChance(), 0.0D, 1.0D),
+                bonusXp,
                 List.copyOf(conditions),
                 List.copyOf(modConditions),
                 stageFilter,
+                mutationRarityFilter,
                 apotheosisTierFilter,
                 definition.replaceMode(),
                 entries,
@@ -1420,6 +1680,7 @@ public final class WorldAwakenedLootService {
             boolean entityIsBoss,
             boolean entityIsMutated,
             Set<ResourceLocation> mutationTags,
+            Optional<ResourceLocation> mutationRarity,
             Optional<String> playerUuid,
             Optional<String> playerName,
             ResourceLocation dimensionId,
@@ -1439,6 +1700,25 @@ public final class WorldAwakenedLootService {
             Map<String, Boolean> configToggles,
             String traceSeed,
             boolean debugEvaluation) {
+        /** Backwards-compatible constructor for callers without a mob mutation rarity context. */
+        public LootContextSnapshot(
+                ResourceLocation sourceEventId, LootTargetType targetType, ResourceLocation targetId,
+                Optional<ResourceLocation> lootTableId, Optional<ResourceLocation> entityTypeId,
+                Set<ResourceLocation> entityTags, boolean entityIsBoss, boolean entityIsMutated,
+                Set<ResourceLocation> mutationTags, Optional<String> playerUuid, Optional<String> playerName,
+                ResourceLocation dimensionId, Optional<ResourceLocation> biomeId, Optional<String> structureContext,
+                OptionalLong worldDay, Set<ResourceLocation> worldStageSnapshot,
+                Set<ResourceLocation> playerStageSnapshot, WorldAwakenedStageRegistry stageRegistry,
+                boolean invasionActive, Optional<ResourceLocation> invasionProfileId, Set<String> invasionTags,
+                boolean apotheosisCompatActive, OptionalDouble apotheosisWorldTier, Optional<String> apotheosisTierDetail,
+                Set<String> loadedMods, Map<String, Boolean> configToggles, String traceSeed, boolean debugEvaluation) {
+            this(sourceEventId, targetType, targetId, lootTableId, entityTypeId, entityTags, entityIsBoss,
+                    entityIsMutated, mutationTags, Optional.empty(), playerUuid, playerName, dimensionId, biomeId,
+                    structureContext, worldDay, worldStageSnapshot, playerStageSnapshot, stageRegistry, invasionActive,
+                    invasionProfileId, invasionTags, apotheosisCompatActive, apotheosisWorldTier, apotheosisTierDetail,
+                    loadedMods, configToggles, traceSeed, debugEvaluation);
+        }
+
         static LootContextSnapshot empty() {
             return new LootContextSnapshot(
                     EVENT_DEBUG_EVALUATE,
@@ -1450,6 +1730,7 @@ public final class WorldAwakenedLootService {
                     false,
                     false,
                     Set.of(),
+                    Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
                     ResourceLocation.fromNamespaceAndPath("minecraft", "overworld"),
@@ -1564,10 +1845,11 @@ public final class WorldAwakenedLootService {
     private record CompiledLootGraph(
             Map<ResourceLocation, CompiledLootProfile> profilesById,
             Map<ResourceLocation, List<CompiledLootProfile>> profilesByTargetLootTable,
+            Map<ResourceLocation, List<CompiledLootProfile>> profilesByTargetEntity,
             List<ResourceLocation> orderedProfileIds,
             Set<ResourceLocation> apotheosisSensitiveTargets) {
         static CompiledLootGraph empty() {
-            return new CompiledLootGraph(Map.of(), Map.of(), List.of(), Set.of());
+            return new CompiledLootGraph(Map.of(), Map.of(), Map.of(), List.of(), Set.of());
         }
     }
 
@@ -1578,14 +1860,35 @@ public final class WorldAwakenedLootService {
 
     private record CompiledLootProfile(
             ResourceLocation id,
+            LootProfileType profileType,
             Set<ResourceLocation> targetLootTables,
+            Set<ResourceLocation> targetEntities,
+            Set<ResourceLocation> eligibleDimensions,
+            double itemChance,
+            Optional<CompiledBonusXp> bonusXp,
             List<CompiledCondition> conditions,
             List<CompiledCondition> modConditions,
             StageFilter stageFilter,
+            RarityFilter mutationRarityFilter,
             Optional<WorldAwakenedApotheosisTierFilter> apotheosisTierFilter,
             LootReplaceMode replaceMode,
             List<CompiledLootEntry> entries,
             Optional<String> configGate) {
+        boolean appliesTo(LootTargetType targetType) {
+            return switch (profileType) {
+                case MOB -> targetType == LootTargetType.ENTITY;
+                case CHEST -> targetType == LootTargetType.CHEST || targetType == LootTargetType.LOOT_TABLE;
+            };
+        }
+    }
+
+    private record CompiledBonusXp(
+            boolean enabled,
+            LootBonusXpMode mode,
+            int minimum,
+            int maximum,
+            double multiplier,
+            double chance) {
     }
 
     private record CompiledLootEntry(
@@ -1734,6 +2037,87 @@ public final class WorldAwakenedLootService {
                         collector.add(parsed);
                     }
                 }
+            }
+        }
+    }
+
+    /** Rarity eligibility only; it deliberately does not alter item chance, quantity, or weight. */
+    private static final class RarityFilter {
+        private final Set<ResourceLocation> anyOf;
+        private final Set<ResourceLocation> excluded;
+        private final OptionalInt minimumPower;
+        private final Map<ResourceLocation, Integer> rarityMinimumPowers;
+
+        private RarityFilter(
+                Set<ResourceLocation> anyOf,
+                Set<ResourceLocation> excluded,
+                OptionalInt minimumPower,
+                Map<ResourceLocation, Integer> rarityMinimumPowers) {
+            this.anyOf = anyOf;
+            this.excluded = excluded;
+            this.minimumPower = minimumPower;
+            this.rarityMinimumPowers = rarityMinimumPowers;
+        }
+
+        static RarityFilter compile(
+                Optional<JsonElement> raw,
+                Map<ResourceLocation, net.sprocketgames.worldawakened.rarity.RarityDefinition> rarities) {
+            if (raw.isEmpty()) return empty();
+            LinkedHashSet<ResourceLocation> anyOf = new LinkedHashSet<>();
+            LinkedHashSet<ResourceLocation> excluded = new LinkedHashSet<>();
+            Optional<ResourceLocation> minimumRarity = Optional.empty();
+            JsonElement element = raw.get();
+            if (element.isJsonPrimitive()) {
+                add(element, anyOf);
+            } else if (element.isJsonArray()) {
+                for (JsonElement child : element.getAsJsonArray()) add(child, anyOf);
+            } else if (element.isJsonObject()) {
+                JsonObject object = element.getAsJsonObject();
+                add(object.get("rarity"), anyOf);
+                add(object.get("rarities"), anyOf);
+                add(object.get("any_of"), anyOf);
+                add(object.get("one_of"), anyOf);
+                add(object.get("none_of"), excluded);
+                add(object.get("excluded"), excluded);
+                minimumRarity = readResourceLocation(object, "minimum_rarity", "min_rarity", "minimum");
+            }
+            OptionalInt minimumPower = minimumRarity
+                    .map(rarities::get)
+                    .filter(net.sprocketgames.worldawakened.rarity.RarityDefinition::enabled)
+                    .map(net.sprocketgames.worldawakened.rarity.RarityDefinition::minimumPower)
+                    .map(OptionalInt::of)
+                    .orElseGet(OptionalInt::empty);
+            Map<ResourceLocation, Integer> thresholds = new LinkedHashMap<>();
+            rarities.values().stream()
+                    .filter(net.sprocketgames.worldawakened.rarity.RarityDefinition::enabled)
+                    .forEach(definition -> thresholds.put(definition.id(), definition.minimumPower()));
+            return new RarityFilter(Set.copyOf(anyOf), Set.copyOf(excluded), minimumPower, Map.copyOf(thresholds));
+        }
+
+        static RarityFilter empty() {
+            return new RarityFilter(Set.of(), Set.of(), OptionalInt.empty(), Map.of());
+        }
+
+        boolean matches(Optional<ResourceLocation> rarity) {
+            if (anyOf.isEmpty() && excluded.isEmpty() && minimumPower.isEmpty()) return true;
+            if (rarity.isEmpty()) return false;
+            if (excluded.contains(rarity.get())) return false;
+            if (!anyOf.isEmpty() && !anyOf.contains(rarity.get())) return false;
+            return minimumPower.isEmpty()
+                    || Optional.ofNullable(rarityMinimumPowers.get(rarity.get()))
+                    .filter(power -> power >= minimumPower.getAsInt())
+                    .isPresent();
+        }
+
+        private static void add(JsonElement raw, Set<ResourceLocation> destination) {
+            if (raw == null) return;
+            if (raw.isJsonPrimitive()) {
+                ResourceLocation parsed = ResourceLocation.tryParse(raw.getAsString());
+                if (parsed != null) destination.add(parsed);
+                return;
+            }
+            if (raw.isJsonArray()) {
+                for (JsonElement element : raw.getAsJsonArray()) add(element, destination);
             }
         }
     }

@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.ChatFormatting;
@@ -59,6 +60,14 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
+import net.sprocketgames.worldawakened.generation.ConfiguredEffectDefinition;
+import net.sprocketgames.worldawakened.generation.EffectGenerationPoolDefinition;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedEffectCandidate;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedEffectGenerationService;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedEffectScope;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedGeneratedResult;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedGenerationMode;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedGenerationSpec;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
@@ -174,7 +183,7 @@ public final class WorldAwakenedAscensionService {
 
         List<RewardChoiceView> choices = new ArrayList<>();
         for (ResourceLocation rewardId : runtime.candidateRewards()) {
-            AscensionRewardDefinition reward = snapshot.data().ascensionRewards().get(rewardId);
+            AscensionRewardDefinition reward = resolveRewardDefinition(snapshot, playerState(level, player), rewardId);
             if (reward == null) {
                 continue;
             }
@@ -387,7 +396,7 @@ public final class WorldAwakenedAscensionService {
             return List.of();
         }
         WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
-        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        AscensionRewardDefinition rewardDefinition = resolveRewardDefinition(snapshot, state, rewardId);
         if (rewardDefinition == null) {
             return List.of();
         }
@@ -416,7 +425,7 @@ public final class WorldAwakenedAscensionService {
         WorldAwakenedPlayerProgressionSavedData.PlayerStageState state = playerState(level, player);
         rewardEffects.clear(player);
         for (ResourceLocation rewardId : state.chosenAscensionRewards()) {
-            AscensionRewardDefinition reward = snapshot.data().ascensionRewards().get(rewardId);
+            AscensionRewardDefinition reward = resolveRewardDefinition(snapshot, state, rewardId);
             if (reward == null) {
                 if (state.suppressedAscensionRewards().contains(rewardId)
                         || state.suppressedAscensionComponentsByReward().containsKey(rewardId)) {
@@ -495,7 +504,7 @@ public final class WorldAwakenedAscensionService {
 
         WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
         AscensionOfferDefinition offer = snapshot.data().ascensionOffers().get(runtime.offerId());
-        AscensionRewardDefinition reward = snapshot.data().ascensionRewards().get(rewardId);
+        AscensionRewardDefinition reward = resolveRewardDefinition(snapshot, state, rewardId);
         if (offer == null || reward == null || !reward.enabled()) {
             return new ChooseResult(ChooseStatus.REJECTED, "offer_or_reward_missing");
         }
@@ -565,7 +574,7 @@ public final class WorldAwakenedAscensionService {
         }
 
         WorldAwakenedDatapackSnapshot snapshot = datapackService.currentSnapshot();
-        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        AscensionRewardDefinition rewardDefinition = resolveRewardDefinition(snapshot, state, rewardId);
         if (rewardDefinition == null) {
             return new SuppressionMutationResult(
                     false,
@@ -707,7 +716,7 @@ public final class WorldAwakenedAscensionService {
         boolean owned = state.chosenAscensionRewards().contains(rewardId);
         Set<String> configuredSuppressedComponentKeys = new LinkedHashSet<>(
                 state.suppressedAscensionComponentsByReward().getOrDefault(rewardId, Set.of()));
-        AscensionRewardDefinition rewardDefinition = snapshot.data().ascensionRewards().get(rewardId);
+        AscensionRewardDefinition rewardDefinition = resolveRewardDefinition(snapshot, state, rewardId);
         if (rewardDefinition == null) {
             return new RewardSuppressionView(
                     rewardId,
@@ -913,20 +922,21 @@ public final class WorldAwakenedAscensionService {
             return new GrantResult(offerId, "", GrantStatus.REJECTED, "offer_conditions_not_met");
         }
 
-        CandidateSelection selection = selectCandidates(level, player, offer, state, snapshot.data().ascensionRewards());
+        String instanceId = nextRuntimeInstanceId(state);
+        CandidateSelection selection = selectCandidates(
+                level, player, offer, state, snapshot, instanceId);
         if (selection.candidates().isEmpty()) {
             return new GrantResult(offerId, "", GrantStatus.REJECTED, selection.detail());
         }
         snapshot = datapackService.pinSnapshot(snapshot, "ascension.grant_offer_internal");
 
         boolean alreadyPending = !state.pendingAscensionOfferInstances().isEmpty();
-        String instanceId = nextRuntimeInstanceId(state);
         WorldAwakenedAscensionOfferRuntime runtime = WorldAwakenedAscensionOfferRuntime.pending(
                 instanceId,
                 offerId,
                 normalizedSource,
                 System.currentTimeMillis(),
-                selection.candidates());
+                selection.candidates(), selection.resolvedChoices());
         state.pendingAscensionOfferInstances().put(instanceId, runtime);
         refreshSummarySets(state);
         state.markDirty();
@@ -1005,10 +1015,16 @@ public final class WorldAwakenedAscensionService {
             ServerPlayer player,
             AscensionOfferDefinition offer,
             WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
-            Map<ResourceLocation, AscensionRewardDefinition> rewardDefinitions) {
+            WorldAwakenedDatapackSnapshot snapshot,
+            String instanceId) {
+        Optional<CandidateSelection> generated = selectGeneratedCandidates(level, player, offer, snapshot, instanceId);
+        if (generated.isPresent()) {
+            return generated.get();
+        }
+        Map<ResourceLocation, AscensionRewardDefinition> rewardDefinitions = snapshot.data().ascensionRewards();
         List<AscensionRewardDefinition> pool = resolveOfferPool(offer, rewardDefinitions);
         if (pool.isEmpty()) {
-            return new CandidateSelection(List.of(), "no_reward_pool");
+            return new CandidateSelection(List.of(), List.of(), "no_reward_pool");
         }
 
         List<AscensionRewardDefinition> eligible = new ArrayList<>();
@@ -1018,7 +1034,7 @@ public final class WorldAwakenedAscensionService {
             }
         }
         if (eligible.isEmpty()) {
-            return new CandidateSelection(List.of(), "no_eligible_rewards");
+            return new CandidateSelection(List.of(), List.of(), "no_eligible_rewards");
         }
 
         int choiceCount = Math.max(1, offer.choiceCount());
@@ -1032,7 +1048,93 @@ public final class WorldAwakenedAscensionService {
                     choiceCount,
                     player.getUUID().toString() + "|" + offer.id());
         };
-        return new CandidateSelection(selected, "selected_count=" + selected.size());
+        return new CandidateSelection(selected, List.of(), "selected_count=" + selected.size());
+    }
+
+    private Optional<CandidateSelection> selectGeneratedCandidates(
+            ServerLevel level,
+            ServerPlayer player,
+            AscensionOfferDefinition offer,
+            WorldAwakenedDatapackSnapshot snapshot,
+            String instanceId) {
+        if (offer.effectGenerationPool().isEmpty()) {
+            return Optional.empty();
+        }
+        EffectGenerationPoolDefinition pool = snapshot.data().effectGenerationPools().get(offer.effectGenerationPool().get());
+        if (pool == null || !pool.enabled() || pool.scope() != WorldAwakenedEffectScope.ASCENSION) {
+            return Optional.of(new CandidateSelection(List.of(), List.of(), "missing_generated_effect_pool"));
+        }
+        if (pool.mode() == WorldAwakenedGenerationMode.CURATED) {
+            return Optional.empty();
+        }
+        if (!evaluateStageFilters(level, player, pool.stageFilters())) {
+            return Optional.of(new CandidateSelection(List.of(), List.of(), "generated_pool_stage_filter_failed"));
+        }
+        if (pool.mode() == WorldAwakenedGenerationMode.MIXED
+                && !chooseGeneratedSource(pool, instanceId)) {
+            return Optional.empty();
+        }
+
+        List<WorldAwakenedEffectCandidate> candidates = new ArrayList<>();
+        for (ResourceLocation effectId : pool.configuredEffects()) {
+            ConfiguredEffectDefinition effect = snapshot.data().configuredEffects().get(effectId);
+            if (effect == null || !effect.enabled() || effect.scope() != WorldAwakenedEffectScope.ASCENSION) continue;
+            candidates.add(new WorldAwakenedEffectCandidate(
+                    effect.id(), effect.effectType(), effect.parameters(), effect.power(), effect.selectionWeight(),
+                    effect.allowRepeat(), Set.copyOf(effect.excludes())));
+        }
+        if (candidates.isEmpty()) {
+            return Optional.of(new CandidateSelection(List.of(), List.of(), "no_generated_effect_candidates"));
+        }
+
+        Map<Integer, Integer> sizes = new LinkedHashMap<>();
+        for (EffectGenerationPoolDefinition.SizeWeight size : pool.combinationSizes()) {
+            sizes.put(size.size(), size.weight());
+        }
+        List<WorldAwakenedAscensionOfferRuntime.ResolvedChoice> resolvedChoices = new ArrayList<>();
+        List<ResourceLocation> candidateIds = new ArrayList<>();
+        for (int index = 0; index < Math.max(1, offer.choiceCount()); index++) {
+            String choiceSeed = instanceId + ":" + index;
+            Optional<WorldAwakenedGeneratedResult> result = WorldAwakenedEffectGenerationService.generate(
+                    choiceSeed, candidates, WorldAwakenedGenerationSpec.generated(sizes), snapshot.data().rarities(), seed(choiceSeed));
+            if (result.isEmpty()) continue;
+            ResourceLocation rewardId = ResourceLocation.fromNamespaceAndPath(
+                    WorldAwakenedConstants.MOD_ID, "generated/" + instanceId + "/" + index);
+            AscensionRewardDefinition reward = generatedRewardDefinition(rewardId, result.get());
+            candidateIds.add(rewardId);
+            resolvedChoices.add(new WorldAwakenedAscensionOfferRuntime.ResolvedChoice(rewardId, reward));
+        }
+        return Optional.of(new CandidateSelection(
+                List.copyOf(candidateIds), List.copyOf(resolvedChoices), "generated_count=" + candidateIds.size()));
+    }
+
+    private static boolean chooseGeneratedSource(EffectGenerationPoolDefinition pool, String instanceId) {
+        int curated = Math.max(0, pool.curatedSourceWeight());
+        int generated = Math.max(0, pool.generatedSourceWeight());
+        if (generated <= 0) return false;
+        if (curated <= 0) return true;
+        return new SplittableRandom(seed(instanceId + ":source")).nextInt(curated + generated) >= curated;
+    }
+
+    private static AscensionRewardDefinition generatedRewardDefinition(
+            ResourceLocation rewardId, WorldAwakenedGeneratedResult result) {
+        List<AscensionComponentDefinition> components = result.effects().stream()
+                .map(effect -> new AscensionComponentDefinition(
+                        effect.effectType(), true, 0, effect.parameters(), List.of(), List.of(), List.of(),
+                        false, Optional.empty(), AscensionComponentSuppressionPolicy.REWARD_ONLY))
+                .toList();
+        String rarity = result.rarityId().map(ResourceLocation::toString).orElse("generated");
+        return new AscensionRewardDefinition(
+                1,
+                rewardId,
+                true,
+                components,
+                new AscensionRewardDefinition.RewardPresentation(
+                        new JsonPrimitive("Generated Ascension"),
+                        Optional.of(new JsonPrimitive("A generated permanent adaptation.")),
+                        Optional.empty(), Optional.of(rarity), List.of("generated"), Optional.empty()),
+                new AscensionRewardDefinition.RewardWeights(Optional.empty(), Optional.empty()),
+                new AscensionRewardDefinition.RewardConstraints(Optional.empty(), List.of(), List.of(), List.of(), 1));
     }
 
     private boolean offerEligibleForGrant(
@@ -1067,7 +1169,7 @@ public final class WorldAwakenedAscensionService {
         if (reward.uniqueGroup().isPresent()) {
             String uniqueGroup = reward.uniqueGroup().get();
             for (ResourceLocation chosenRewardId : state.chosenAscensionRewards()) {
-                AscensionRewardDefinition chosen = rewardDefinitions.get(chosenRewardId);
+                AscensionRewardDefinition chosen = resolveStoredRewardDefinition(state, rewardDefinitions, chosenRewardId);
                 if (chosen != null && chosen.uniqueGroup().isPresent() && uniqueGroup.equals(chosen.uniqueGroup().get())) {
                     return false;
                 }
@@ -1076,7 +1178,7 @@ public final class WorldAwakenedAscensionService {
 
         if (!reward.exclusionTags().isEmpty()) {
             Set<String> chosenTags = state.chosenAscensionRewards().stream()
-                    .map(rewardDefinitions::get)
+                    .map(chosenRewardId -> resolveStoredRewardDefinition(state, rewardDefinitions, chosenRewardId))
                     .filter(java.util.Objects::nonNull)
                     .flatMap(definition -> definition.tags().stream())
                     .map(tag -> tag.toLowerCase(Locale.ROOT))
@@ -1097,6 +1199,21 @@ public final class WorldAwakenedAscensionService {
             return false;
         }
         return true;
+    }
+
+    private static AscensionRewardDefinition resolveStoredRewardDefinition(
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            Map<ResourceLocation, AscensionRewardDefinition> rewardDefinitions,
+            ResourceLocation rewardId) {
+        for (WorldAwakenedAscensionOfferRuntime runtime : state.pendingAscensionOfferInstances().values()) {
+            Optional<AscensionRewardDefinition> resolved = runtime.resolvedChoice(rewardId);
+            if (resolved.isPresent()) return resolved.get();
+        }
+        for (WorldAwakenedAscensionOfferRuntime runtime : state.resolvedAscensionOfferInstances().values()) {
+            Optional<AscensionRewardDefinition> resolved = runtime.resolvedChoice(rewardId);
+            if (resolved.isPresent()) return resolved.get();
+        }
+        return rewardDefinitions.get(rewardId);
     }
 
     static boolean rewardBlockedByOfferReusePolicy(
@@ -1256,10 +1373,7 @@ public final class WorldAwakenedAscensionService {
             return true;
         }
         JsonObject filter = stageFilters.get().getAsJsonObject();
-        Set<ResourceLocation> playerStages = stageService.getUnlockedStages(level, player);
-        Set<ResourceLocation> worldStages = stageService.getUnlockedStages(level);
-        Set<ResourceLocation> active = new LinkedHashSet<>(worldStages);
-        active.addAll(playerStages);
+        Set<ResourceLocation> active = stageService.getActiveStages(level, player);
         WorldAwakenedStageRegistry registry = stageService.stageRegistry();
 
         if (filter.has("all_of") && filter.get("all_of").isJsonArray()) {
@@ -1396,6 +1510,28 @@ public final class WorldAwakenedAscensionService {
         return candidate;
     }
 
+    /**
+     * Generated choices are frozen into their offer instance. They intentionally take precedence
+     * over datapack definitions so a reload or an editor change cannot rewrite an already-offered
+     * or already-selected permanent reward.
+     */
+    private static AscensionRewardDefinition resolveRewardDefinition(
+            WorldAwakenedDatapackSnapshot snapshot,
+            WorldAwakenedPlayerProgressionSavedData.PlayerStageState state,
+            ResourceLocation rewardId) {
+        if (state != null) {
+            for (WorldAwakenedAscensionOfferRuntime runtime : state.pendingAscensionOfferInstances().values()) {
+                Optional<AscensionRewardDefinition> resolved = runtime.resolvedChoice(rewardId);
+                if (resolved.isPresent()) return resolved.get();
+            }
+            for (WorldAwakenedAscensionOfferRuntime runtime : state.resolvedAscensionOfferInstances().values()) {
+                Optional<AscensionRewardDefinition> resolved = runtime.resolvedChoice(rewardId);
+                if (resolved.isPresent()) return resolved.get();
+            }
+        }
+        return snapshot.data().ascensionRewards().get(rewardId);
+    }
+
     private static WorldAwakenedPlayerProgressionSavedData.PlayerStageState playerState(ServerLevel level, ServerPlayer player) {
         return WorldAwakenedPlayerProgressionSavedData.get(level).getOrCreate(player.getUUID());
     }
@@ -1487,7 +1623,10 @@ public final class WorldAwakenedAscensionService {
         return Component.literal(displayText(element, fallback));
     }
 
-    private record CandidateSelection(List<ResourceLocation> candidates, String detail) {
+    private record CandidateSelection(
+            List<ResourceLocation> candidates,
+            List<WorldAwakenedAscensionOfferRuntime.ResolvedChoice> resolvedChoices,
+            String detail) {
     }
 
     public record OpenOfferView(

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 
 class WorldAwakenedEditorSettingsTest {
     @Test
@@ -15,6 +16,7 @@ class WorldAwakenedEditorSettingsTest {
 
         assertEquals(defaults, decoded);
         assertEquals(2, decoded.effectiveMutationCap());
+        assertEquals(WorldAwakenedProgressionMode.PER_PLAYER, decoded.progressionMode());
     }
 
     @Test

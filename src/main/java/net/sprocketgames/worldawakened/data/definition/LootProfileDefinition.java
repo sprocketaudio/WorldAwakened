@@ -14,10 +14,13 @@ public record LootProfileDefinition(
         int schemaVersion,
         ResourceLocation id,
         boolean enabled,
+        LootProfileType profileType,
+        LootProfileAuthoringDefinition authoring,
         List<ResourceLocation> targetLootTables,
         List<JsonElement> conditions,
         Optional<JsonElement> apotheosisTierFilters,
         Optional<JsonElement> stageFilters,
+        Optional<JsonElement> mutationRarityFilters,
         LootReplaceMode replaceMode,
         List<JsonElement> entries,
         double weightMultiplier,
@@ -28,14 +31,20 @@ public record LootProfileDefinition(
             Codec.INT.optionalFieldOf("schema_version", 1).forGetter(LootProfileDefinition::schemaVersion),
             WorldAwakenedJsonCodecs.RESOURCE_LOCATION.fieldOf("id").forGetter(LootProfileDefinition::id),
             Codec.BOOL.optionalFieldOf("enabled", true).forGetter(LootProfileDefinition::enabled),
-            WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.fieldOf("target_loot_tables").forGetter(LootProfileDefinition::targetLootTables),
+            WorldAwakenedJsonCodecs.enumCodec(LootProfileType.class).fieldOf("profile_type")
+                    .forGetter(LootProfileDefinition::profileType),
+            LootProfileAuthoringDefinition.CODEC.optionalFieldOf("authoring", LootProfileAuthoringDefinition.EMPTY)
+                    .forGetter(LootProfileDefinition::authoring),
+            WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.optionalFieldOf("target_loot_tables", List.of()).forGetter(LootProfileDefinition::targetLootTables),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.listOf().optionalFieldOf("conditions", List.of()).forGetter(LootProfileDefinition::conditions),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.optionalFieldOf("apotheosis_tier_filters")
                     .forGetter(LootProfileDefinition::apotheosisTierFilters),
             WorldAwakenedJsonCodecs.JSON_ELEMENT.optionalFieldOf("stage_filters").forGetter(LootProfileDefinition::stageFilters),
+            WorldAwakenedJsonCodecs.JSON_ELEMENT.optionalFieldOf("mutation_rarity_filters")
+                    .forGetter(LootProfileDefinition::mutationRarityFilters),
             WorldAwakenedJsonCodecs.enumCodec(LootReplaceMode.class).optionalFieldOf("replace_mode", LootReplaceMode.INJECT)
                     .forGetter(LootProfileDefinition::replaceMode),
-            WorldAwakenedJsonCodecs.JSON_ELEMENT.listOf().fieldOf("entries").forGetter(LootProfileDefinition::entries),
+            WorldAwakenedJsonCodecs.JSON_ELEMENT.listOf().optionalFieldOf("entries", List.of()).forGetter(LootProfileDefinition::entries),
             Codec.DOUBLE.optionalFieldOf("weight_multiplier", 1.0D).forGetter(LootProfileDefinition::weightMultiplier),
             Codec.DOUBLE.optionalFieldOf("quality_scalar", 1.0D).forGetter(LootProfileDefinition::qualityScalar),
             Codec.STRING.optionalFieldOf("config_gate").forGetter(LootProfileDefinition::configGate),

@@ -4,6 +4,7 @@
   "display_name": { "translate": "mutator.worldawakened.defaults.volatile" },
   "enabled": true,
   "rarity": "epic",
+  "power": 8,
   "weight": 2,
   "stacking_group": "worldawakened:default_death",
   "max_stack_count": 1,

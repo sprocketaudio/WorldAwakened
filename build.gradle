@@ -196,6 +196,61 @@ tasks.named('test', Test).configure {
     jvmArgs '-Dnet.bytebuddy.experimental=true'
 }
 
+tasks.register('verifyDocumentation') {
+    group = 'verification'
+    description = 'Checks local Markdown links, required reference metadata, and known retired wording.'
+
+    doLast {
+        def rootMarkdown = [file('README.md'), file('AGENTS.md')]
+        def markdownFiles = rootMarkdown + fileTree('docs') { include '**/*.md' }.files
+        def linkPattern = ~/\[[^\]]*]\(([^)]+)\)/
+        def errors = []
+
+        markdownFiles.each { source ->
+            def text = source.getText('UTF-8')
+            (text =~ linkPattern).each { match ->
+                def target = match[1].trim().replaceAll(/^<|>$/, '')
+                if (target && !target.startsWith('#') && !target.matches(/(?i)(https?|mailto):.*/)) {
+                    def path = target.split('#', 2)[0]
+                    if (path && !new File(source.parentFile, path).canonicalFile.exists()) {
+                        errors << "${project.relativePath(source)}: missing Markdown target ${target}"
+                    }
+                }
+            }
+        }
+
+        def sharedReferences = [
+                'docs/COMPONENT_REFERENCE.md', 'docs/COMPOSITION_AND_STACKING.md',
+                'docs/CONDITION_REFERENCE.md', 'docs/ACTION_REFERENCE.md', 'docs/SCOPE_MATRIX.md',
+                'docs/DEBUG_AND_INSPECTION.md', 'docs/PERFORMANCE_BUDGETS.md',
+                'docs/VALIDATION_AND_ERROR_CODES.md', 'docs/PRESET_CATALOG.md',
+                'docs/RARITY_AND_GENERATION.md'
+        ]
+        sharedReferences.each { path ->
+            def text = file(path).getText('UTF-8')
+            ['Document status:', 'Last updated:', 'Scope:'].each { marker ->
+                if (!text.contains(marker)) errors << "${path}: missing required metadata '${marker}'"
+            }
+        }
+
+        [
+                ['docs/SPECIFICATION.md', 'progression mode remains informational/read-only'],
+                ['docs/wiki/README.md', 'stage-linked Difficulty Tracks'],
+                ['docs/wiki/FAQ.md', 'full progression, mutator-component, rewards, event, and rule authoring still belongs in datapacks']
+        ].each { check ->
+            if (file(check[0]).getText('UTF-8').contains(check[1])) {
+                errors << "${check[0]}: contains retired wording '${check[1]}'"
+            }
+        }
+
+        if (!errors.isEmpty()) throw new GradleException('Documentation verification failed:\n - ' + errors.join('\n - '))
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyDocumentation')
+}
+
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.
 idea {
     module {

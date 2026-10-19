@@ -61,7 +61,7 @@ public final class WorldAwakenedProfileOverrideService {
         triggers.putAll(authored.triggerRules());
         LinkedHashMap<ResourceLocation, MutationPoolDefinition> pools = new LinkedHashMap<>(source.data().mutationPools());
         pools.putAll(authored.mutationPools());
-        compileDifficultyTracks(pools, authored.difficultyTracks(), stages);
+        compilePhaseMutationConfigurations(pools, authored.phaseMutationConfigurations(), stages);
         WorldAwakenedCompiledData data = source.data();
         var rules = merged(data.rules(), authored.rules());
         var rewards = merged(data.ascensionRewards(), authored.ascensionRewards());
@@ -74,6 +74,7 @@ public final class WorldAwakenedProfileOverrideService {
         return new WorldAwakenedDatapackSnapshot(source.generation(), Instant.now(), new WorldAwakenedCompiledData(
                 Map.copyOf(stages), Map.copyOf(triggers), rules, rewards, offers,
                 mutators, Map.copyOf(pools), loot, invasions, integrations, bossFlags,
+                data.rarities(), data.configuredEffects(), data.effectGenerationPools(),
                 net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier.fromMaps(List.copyOf(bossFlags.values()))),
                 source.validationSummary());
     }
@@ -122,9 +123,10 @@ public final class WorldAwakenedProfileOverrideService {
         Map<ResourceLocation, TriggerRuleDefinition> triggers = data.triggerRules();
         Map<ResourceLocation, MutationPoolDefinition> pools = new LinkedHashMap<>(data.mutationPools());
         pools.put(candidate.id(), candidate);
-        errors.addAll(validateAuthoring(level.getServer(), stages, triggers, pools, data.difficultyTracks(), source));
+        errors.addAll(validateAuthoring(level.getServer(), stages, triggers, pools,
+                data.phaseMutationConfigurations(), data.mobMutators(), source));
         if (!errors.isEmpty()) return new ApplyResult(false, String.join(" ", errors.stream().distinct().toList()));
-        data.replaceAll(stages, triggers, pools, data.difficultyTracks());
+        data.replaceAll(stages, triggers, pools);
         ACTIVE.set(state(data));
         return new ApplyResult(true, "Mutation pool applied successfully.");
     }
@@ -138,7 +140,7 @@ public final class WorldAwakenedProfileOverrideService {
         }
         Map<ResourceLocation, MutationPoolDefinition> pools = new LinkedHashMap<>(data.mutationPools());
         if (pools.remove(id) == null) return new ApplyResult(false, "This pool has no world-authored changes.");
-        data.replaceAll(data.stages(), data.triggerRules(), pools, data.difficultyTracks());
+        data.replaceAll(data.stages(), data.triggerRules(), pools);
         ACTIVE.set(state(data));
         return new ApplyResult(true, source.data().mutationPools().containsKey(id)
                 ? "Mutation pool reverted to its source definition." : "World-authored mutation pool deleted.");
@@ -148,19 +150,21 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, StageDefinition> stages,
             Map<ResourceLocation, TriggerRuleDefinition> triggers,
             Map<ResourceLocation, MutationPoolDefinition> pools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
+            Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> phaseMutationConfigurations,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition> rewards,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition> offers,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition> mutators,
+            Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.LootProfileDefinition> lootProfiles,
             WorldAwakenedDatapackSnapshot source) {
         WorldAwakenedProfileOverrideSavedData data = WorldAwakenedProfileOverrideSavedData.get(level);
         if (expectedRevision != data.revision()) {
             ACTIVE.set(state(data));
             return new ApplyResult(false, "The profile changed on the server. Review the refreshed values and try again.");
         }
-        List<String> candidateErrors = validateAuthoring(level.getServer(), stages, triggers, pools, tracks, mutators, source);
+        List<String> candidateErrors = validateAuthoring(level.getServer(), stages, triggers, pools,
+                phaseMutationConfigurations, mutators, source);
         Set<String> existingErrors = Set.copyOf(validateAuthoring(level.getServer(), data.stages(),
-                data.triggerRules(), data.mutationPools(), data.difficultyTracks(), data.mobMutators(), source));
+                data.triggerRules(), data.mutationPools(), data.phaseMutationConfigurations(), data.mobMutators(), source));
         List<String> errors = new ArrayList<>(candidateErrors.stream()
                 .filter(error -> !existingErrors.contains(error)).toList());
         if (!errors.isEmpty()) return new ApplyResult(false, String.join(" ", errors));
@@ -168,8 +172,11 @@ public final class WorldAwakenedProfileOverrideService {
         Set<String> existingAscensionErrors = Set.copyOf(validateAscensionAuthoring(data.ascensionRewards(),
                 data.ascensionOffers(), data.triggerRules(), data.stages(), source));
         errors.addAll(ascensionErrors.stream().filter(error -> !existingAscensionErrors.contains(error)).toList());
+        List<String> lootErrors = validateLootAuthoring(lootProfiles);
+        Set<String> existingLootErrors = Set.copyOf(validateLootAuthoring(data.lootProfiles()));
+        errors.addAll(lootErrors.stream().filter(error -> !existingLootErrors.contains(error)).toList());
         if (!errors.isEmpty()) return new ApplyResult(false, String.join(" ", errors));
-        data.replaceAuthoring(stages, triggers, pools, tracks, rewards, offers, mutators);
+        data.replaceAuthoring(stages, triggers, pools, phaseMutationConfigurations, rewards, offers, mutators, lootProfiles);
         ACTIVE.set(state(data));
         boolean retainedExistingError = candidateErrors.stream().anyMatch(existingErrors::contains)
                 || ascensionErrors.stream().anyMatch(existingAscensionErrors::contains);
@@ -187,12 +194,66 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, StageDefinition> stages,
             Map<ResourceLocation, TriggerRuleDefinition> triggers,
             Map<ResourceLocation, MutationPoolDefinition> pools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition> rewards,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition> offers,
             WorldAwakenedDatapackSnapshot source) {
-        return applyAuthoring(level, expectedRevision, stages, triggers, pools, tracks, rewards, offers,
-                WorldAwakenedProfileOverrideSavedData.get(level).mobMutators(), source);
+        return applyAuthoring(level, expectedRevision, stages, triggers, pools,
+                WorldAwakenedProfileOverrideSavedData.get(level).phaseMutationConfigurations(), rewards, offers,
+                WorldAwakenedProfileOverrideSavedData.get(level).mobMutators(),
+                WorldAwakenedProfileOverrideSavedData.get(level).lootProfiles(), source);
+    }
+
+    /** Compatibility overload for callers which do not edit loot profiles. */
+    public static synchronized ApplyResult applyAuthoring(ServerLevel level, long expectedRevision,
+            Map<ResourceLocation, StageDefinition> stages,
+            Map<ResourceLocation, TriggerRuleDefinition> triggers,
+            Map<ResourceLocation, MutationPoolDefinition> pools,
+            Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition> rewards,
+            Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition> offers,
+            Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition> mutators,
+            WorldAwakenedDatapackSnapshot source) {
+        return applyAuthoring(level, expectedRevision, stages, triggers, pools,
+                WorldAwakenedProfileOverrideSavedData.get(level).phaseMutationConfigurations(), rewards, offers, mutators,
+                WorldAwakenedProfileOverrideSavedData.get(level).lootProfiles(), source);
+    }
+
+    private static List<String> validateLootAuthoring(
+            Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.LootProfileDefinition> profiles) {
+        List<String> errors = new ArrayList<>();
+        for (var profile : profiles.values()) {
+            if (profile.replaceMode() != net.sprocketgames.worldawakened.data.definition.LootReplaceMode.INJECT
+                    && profile.replaceMode() != net.sprocketgames.worldawakened.data.definition.LootReplaceMode.ADD_BONUS_POOL) {
+                errors.add("Native Loot profile " + profile.id() + " must preserve existing loot.");
+            }
+            if (profile.authoring().itemChance() < 0 || profile.authoring().itemChance() > 1) {
+                errors.add("Loot profile " + profile.id() + " has an item chance outside 0-100%.");
+            }
+            if (profile.profileType() == net.sprocketgames.worldawakened.data.definition.LootProfileType.MOB
+                    && profile.authoring().targetEntities().isEmpty()) {
+                errors.add("Mob Loot profile " + profile.id() + " needs at least one mob.");
+            }
+            if (profile.profileType() == net.sprocketgames.worldawakened.data.definition.LootProfileType.CHEST
+                    && profile.targetLootTables().isEmpty()) {
+                errors.add("Chest Loot profile " + profile.id() + " needs at least one chest loot table.");
+            }
+            boolean hasXp = profile.authoring().bonusXp().map(value -> value.enabled()).orElse(false);
+            if (profile.entries().isEmpty() && !hasXp) {
+                errors.add("Loot profile " + profile.id() + " needs an item or bonus XP reward.");
+            }
+            profile.authoring().bonusXp().ifPresent(xp -> {
+                if (profile.profileType() != net.sprocketgames.worldawakened.data.definition.LootProfileType.MOB)
+                    errors.add("Only Mob Loot profiles can grant bonus XP.");
+                if (xp.minimum() < 0 || xp.maximum() < xp.minimum() || xp.chance() < 0 || xp.chance() > 1
+                        || !Double.isFinite(xp.multiplier()) || xp.multiplier() < 0)
+                    errors.add("Loot profile " + profile.id() + " has invalid bonus XP settings.");
+            });
+            for (JsonElement raw : profile.entries()) {
+                if (!raw.isJsonObject() || !raw.getAsJsonObject().has("item")) {
+                    errors.add("Loot profile " + profile.id() + " has an invalid item entry.");
+                }
+            }
+        }
+        return List.copyOf(errors);
     }
 
     private static boolean hasOfferGrantTrigger(java.util.Collection<TriggerRuleDefinition> triggers,
@@ -286,12 +347,13 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, StageDefinition> stages,
             Map<ResourceLocation, TriggerRuleDefinition> triggers,
             Map<ResourceLocation, MutationPoolDefinition> pools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
             WorldAwakenedDatapackSnapshot source) {
-        return applyAuthoring(level, expectedRevision, stages, triggers, pools, tracks,
+        return applyAuthoring(level, expectedRevision, stages, triggers, pools,
+                WorldAwakenedProfileOverrideSavedData.get(level).phaseMutationConfigurations(),
                 WorldAwakenedProfileOverrideSavedData.get(level).ascensionRewards(),
                 WorldAwakenedProfileOverrideSavedData.get(level).ascensionOffers(),
-                WorldAwakenedProfileOverrideSavedData.get(level).mobMutators(), source);
+                WorldAwakenedProfileOverrideSavedData.get(level).mobMutators(),
+                WorldAwakenedProfileOverrideSavedData.get(level).lootProfiles(), source);
     }
 
     public static synchronized ApplyResult replaceProfile(ServerLevel level, long expectedRevision, String kind,
@@ -304,7 +366,7 @@ public final class WorldAwakenedProfileOverrideService {
             return new ApplyResult(false, "The profile changed on the server. Review the refreshed values and try again.");
         }
         data.clearCopiedDefinitions();
-        data.replaceProfile(kind, stages, triggers, pools, Map.of());
+        data.replaceProfile(kind, stages, triggers, pools);
         ACTIVE.set(state(data));
         return new ApplyResult(true, "Active gameplay profile changed successfully.");
     }
@@ -333,7 +395,7 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, StageDefinition> authoredStages,
             Map<ResourceLocation, TriggerRuleDefinition> authoredTriggers,
             Map<ResourceLocation, MutationPoolDefinition> authoredPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
+            Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> phaseMutationConfigurations,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition> authoredMutators,
             WorldAwakenedDatapackSnapshot source) {
         List<String> errors = new ArrayList<>();
@@ -368,20 +430,21 @@ public final class WorldAwakenedProfileOverrideService {
             for (ResourceLocation stageId : stageReferences(pool.conditions())) if (!stages.containsKey(stageId))
                 errors.add("Mutation pool " + pool.id() + " references missing stage " + stageId + ".");
         }
-        Set<ResourceLocation> usedPools = new java.util.HashSet<>();
-        for (WorldAwakenedDifficultyTrackDefinition track : tracks.values()) {
-            if (track.displayName().isBlank()) errors.add("Difficulty track " + track.id() + " needs a name.");
-            Set<ResourceLocation> usedStages = new java.util.HashSet<>();
-            boolean phaseConfigurations = isPhaseConfigurationTrack(track);
-            for (WorldAwakenedDifficultyTrackDefinition.Tier tier : track.tiers()) {
-                if (!stages.containsKey(tier.stageId())) errors.add("Track " + track.displayName() + " references missing stage " + tier.stageId() + ".");
-                if (!pools.containsKey(tier.poolId())) errors.add("Track " + track.displayName() + " references missing pool " + tier.poolId() + ".");
-                if (!phaseConfigurations && !usedStages.add(tier.stageId())) errors.add("Track " + track.displayName() + " uses a stage more than once.");
-                if (!usedPools.add(tier.poolId())) errors.add("Mutation pool " + tier.poolId() + " belongs to more than one difficulty track.");
-                if (phaseConfigurations && tier.active() && tier.dimension().isEmpty())
-                    errors.add("Mob configuration " + tier.configurationName() + " needs a dimension.");
+        for (WorldAwakenedPhaseMutationConfigurationDefinition configuration : phaseMutationConfigurations.values()) {
+            if (configuration.displayName().isBlank()) {
+                errors.add("Phase mutation configuration " + configuration.id() + " needs a display name.");
             }
-            if (phaseConfigurations) validatePhaseConfigurations(track, pools, errors);
+            for (WorldAwakenedPhaseMutationConfigurationDefinition.Tier assignment : configuration.tiers()) {
+                if (!stages.containsKey(assignment.stageId())) {
+                    errors.add("Phase mutation configuration " + configuration.id()
+                            + " references missing phase " + assignment.stageId() + ".");
+                }
+                if (!pools.containsKey(assignment.poolId())) {
+                    errors.add("Phase mutation configuration " + configuration.id()
+                            + " references missing mutation pool " + assignment.poolId() + ".");
+                }
+            }
+            validatePhaseConfigurations(configuration, pools, errors);
         }
         for (ResourceLocation previous : ACTIVE.get().stages().keySet()) {
             if (authoredStages.containsKey(previous) || source.data().stages().containsKey(previous)) continue;
@@ -395,10 +458,9 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, StageDefinition> authoredStages,
             Map<ResourceLocation, TriggerRuleDefinition> authoredTriggers,
             Map<ResourceLocation, MutationPoolDefinition> authoredPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
             WorldAwakenedDatapackSnapshot source) {
-        return validateAuthoring(server, authoredStages, authoredTriggers, authoredPools, tracks,
-                ACTIVE.get().mobMutators(), source);
+        return validateAuthoring(server, authoredStages, authoredTriggers, authoredPools,
+                ACTIVE.get().phaseMutationConfigurations(), ACTIVE.get().mobMutators(), source);
     }
 
     private static List<String> validate(MinecraftServer server, MutationPoolDefinition candidate,
@@ -503,21 +565,21 @@ public final class WorldAwakenedProfileOverrideService {
         return id != null && stages.contains(id);
     }
 
-    /** Compiles editor-only track metadata into ordinary, hot-path-ready pool definitions. */
-    static void compileDifficultyTracks(Map<ResourceLocation, MutationPoolDefinition> pools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> tracks,
+    /** Compiles editor-only phase configuration metadata into ordinary, hot-path-ready pool definitions. */
+    static void compilePhaseMutationConfigurations(Map<ResourceLocation, MutationPoolDefinition> pools,
+            Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> tracks,
             Map<ResourceLocation, StageDefinition> stages) {
-        for (WorldAwakenedDifficultyTrackDefinition track : tracks.values()) {
-            if (isPhaseConfigurationTrack(track)) {
+        for (WorldAwakenedPhaseMutationConfigurationDefinition track : tracks.values()) {
+            if (isPhaseMutationConfiguration(track)) {
                 compilePhaseConfigurations(pools, track, stages);
                 continue;
             }
-            List<WorldAwakenedDifficultyTrackDefinition.Tier> tiers = track.tiers().stream()
-                    .sorted(java.util.Comparator.comparingInt((WorldAwakenedDifficultyTrackDefinition.Tier tier) ->
+            List<WorldAwakenedPhaseMutationConfigurationDefinition.Tier> tiers = track.tiers().stream()
+                    .sorted(java.util.Comparator.comparingInt((WorldAwakenedPhaseMutationConfigurationDefinition.Tier tier) ->
                             stages.containsKey(tier.stageId()) ? stages.get(tier.stageId()).sortIndex() : Integer.MAX_VALUE)
                             .thenComparing(tier -> tier.stageId().toString())).toList();
             for (int index = 0; index < tiers.size(); index++) {
-                WorldAwakenedDifficultyTrackDefinition.Tier tier = tiers.get(index);
+                WorldAwakenedPhaseMutationConfigurationDefinition.Tier tier = tiers.get(index);
                 MutationPoolDefinition pool = pools.get(tier.poolId());
                 if (pool == null) continue;
                 List<JsonElement> conditions = new ArrayList<>();
@@ -541,22 +603,22 @@ public final class WorldAwakenedProfileOverrideService {
         }
     }
 
-    private static boolean isPhaseConfigurationTrack(WorldAwakenedDifficultyTrackDefinition track) {
+    private static boolean isPhaseMutationConfiguration(WorldAwakenedPhaseMutationConfigurationDefinition track) {
         return track.id().equals(ResourceLocation.parse("worldawakened:world/phase_mutations"))
                 || track.tiers().stream().anyMatch(tier -> tier.dimension().isPresent());
     }
 
-    private static void validatePhaseConfigurations(WorldAwakenedDifficultyTrackDefinition track,
+    private static void validatePhaseConfigurations(WorldAwakenedPhaseMutationConfigurationDefinition track,
             Map<ResourceLocation, MutationPoolDefinition> pools, List<String> errors) {
-        Map<String, List<WorldAwakenedDifficultyTrackDefinition.Tier>> groups = track.tiers().stream()
-                .filter(WorldAwakenedDifficultyTrackDefinition.Tier::active)
+        Map<String, List<WorldAwakenedPhaseMutationConfigurationDefinition.Tier>> groups = track.tiers().stream()
+                .filter(WorldAwakenedPhaseMutationConfigurationDefinition.Tier::active)
                 .filter(tier -> tier.dimension().isPresent())
                 .collect(java.util.stream.Collectors.groupingBy(tier -> tier.stageId() + "|" + tier.dimension().orElseThrow()));
-        for (List<WorldAwakenedDifficultyTrackDefinition.Tier> configurations : groups.values()) {
-            long defaults = configurations.stream().filter(WorldAwakenedDifficultyTrackDefinition.Tier::defaultConfiguration).count();
+        for (List<WorldAwakenedPhaseMutationConfigurationDefinition.Tier> configurations : groups.values()) {
+            long defaults = configurations.stream().filter(WorldAwakenedPhaseMutationConfigurationDefinition.Tier::defaultConfiguration).count();
             if (defaults > 1) errors.add("A phase and dimension may have only one Default Mobs configuration.");
             Set<ResourceLocation> specialised = new java.util.HashSet<>();
-            for (WorldAwakenedDifficultyTrackDefinition.Tier tier : configurations) {
+            for (WorldAwakenedPhaseMutationConfigurationDefinition.Tier tier : configurations) {
                 if (tier.configurationName().isBlank()) errors.add("A mob configuration needs a name.");
                 MutationPoolDefinition pool = pools.get(tier.poolId());
                 if (pool == null || tier.defaultConfiguration() || !pool.enabled()) continue;
@@ -571,16 +633,16 @@ public final class WorldAwakenedProfileOverrideService {
     }
 
     private static void compilePhaseConfigurations(Map<ResourceLocation, MutationPoolDefinition> pools,
-            WorldAwakenedDifficultyTrackDefinition track, Map<ResourceLocation, StageDefinition> stages) {
+            WorldAwakenedPhaseMutationConfigurationDefinition track, Map<ResourceLocation, StageDefinition> stages) {
         Map<String, Set<ResourceLocation>> specialisedByGroup = new java.util.HashMap<>();
-        for (WorldAwakenedDifficultyTrackDefinition.Tier tier : track.tiers()) {
+        for (WorldAwakenedPhaseMutationConfigurationDefinition.Tier tier : track.tiers()) {
             if (!tier.active() || tier.defaultConfiguration() || tier.dimension().isEmpty()) continue;
             MutationPoolDefinition pool = pools.get(tier.poolId());
             if (pool != null && pool.enabled()) specialisedByGroup.computeIfAbsent(
                     tier.stageId() + "|" + tier.dimension().orElseThrow(), ignored -> new java.util.HashSet<>())
                     .addAll(pool.eligibleEntities());
         }
-        for (WorldAwakenedDifficultyTrackDefinition.Tier tier : track.tiers()) {
+        for (WorldAwakenedPhaseMutationConfigurationDefinition.Tier tier : track.tiers()) {
             MutationPoolDefinition pool = pools.get(tier.poolId());
             if (pool == null) continue;
             List<JsonElement> conditions = pool.conditions().stream().filter(condition -> !isStageGate(condition))
@@ -634,9 +696,11 @@ public final class WorldAwakenedProfileOverrideService {
         return condition;
     }
 
+    // Phase-configuration compilation is restored below before retiring any previous representation.
     private static State state(WorldAwakenedProfileOverrideSavedData data) {
         return new State(data.revision(), data.profileKind(), data.stages(), data.triggerRules(), data.mutationPools(),
-                data.difficultyTracks(), data.rules(), data.ascensionRewards(), data.ascensionOffers(), data.mobMutators(),
+                data.phaseMutationConfigurations(),
+                data.rules(), data.ascensionRewards(), data.ascensionOffers(), data.mobMutators(),
                 data.lootProfiles(), data.invasionProfiles(), data.integrationProfiles(), data.entityBossFlags());
     }
 
@@ -669,7 +733,7 @@ public final class WorldAwakenedProfileOverrideService {
     public record State(long revision, String profileKind, Map<ResourceLocation, StageDefinition> stages,
             Map<ResourceLocation, TriggerRuleDefinition> triggerRules,
             Map<ResourceLocation, MutationPoolDefinition> mutationPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> difficultyTracks,
+            Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> phaseMutationConfigurations,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.RuleDefinition> rules,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition> ascensionRewards,
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition> ascensionOffers,
@@ -680,7 +744,7 @@ public final class WorldAwakenedProfileOverrideService {
             Map<ResourceLocation, net.sprocketgames.worldawakened.data.definition.EntityBossFlagMapDefinition> entityBossFlags) {
         public State {
             stages = Map.copyOf(stages); triggerRules = Map.copyOf(triggerRules);
-            mutationPools = Map.copyOf(mutationPools); difficultyTracks = Map.copyOf(difficultyTracks);
+            mutationPools = Map.copyOf(mutationPools); phaseMutationConfigurations = Map.copyOf(phaseMutationConfigurations);
             rules = Map.copyOf(rules); ascensionRewards = Map.copyOf(ascensionRewards); ascensionOffers = Map.copyOf(ascensionOffers);
             mobMutators = Map.copyOf(mobMutators); lootProfiles = Map.copyOf(lootProfiles);
             invasionProfiles = Map.copyOf(invasionProfiles); integrationProfiles = Map.copyOf(integrationProfiles);
@@ -689,7 +753,7 @@ public final class WorldAwakenedProfileOverrideService {
         public static State empty() { return new State(0L, "standard", Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
                 Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of()); }
         public boolean isEmpty() { return stages.isEmpty() && triggerRules.isEmpty() && mutationPools.isEmpty()
-                && difficultyTracks.isEmpty() && rules.isEmpty() && ascensionRewards.isEmpty() && ascensionOffers.isEmpty()
+                && phaseMutationConfigurations.isEmpty() && rules.isEmpty() && ascensionRewards.isEmpty() && ascensionOffers.isEmpty()
                 && mobMutators.isEmpty() && lootProfiles.isEmpty() && invasionProfiles.isEmpty()
                 && integrationProfiles.isEmpty() && entityBossFlags.isEmpty(); }
     }

@@ -47,7 +47,7 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
-class WorldAwakenedMutatorPhase5PackRegressionTest {
+class WorldAwakenedMutatorPhase5PackRegressionTest extends WorldAwakenedMutatorTestSupport {
     private static final Path PHASE5_PACK_ROOT = resolvePhase5PackRoot();
 
     @Test

@@ -29,11 +29,11 @@ class WorldAwakenedCommandsMutatorDebugFormattingTest {
     void formatMutatorSpawnContextShowsNoAttributionWhenAbsent() {
         String formatted = WorldAwakenedCommands.formatMutatorSpawnContext(
                 "other",
-                WorldAwakenedProgressionMode.GLOBAL,
+                WorldAwakenedProgressionMode.PER_SERVER,
                 Optional.empty());
 
         assertEquals(
-                "origin=other progression_mode=global attributed_player=<none>",
+                "origin=other progression_mode=per_server attributed_player=<none>",
                 formatted);
     }
 

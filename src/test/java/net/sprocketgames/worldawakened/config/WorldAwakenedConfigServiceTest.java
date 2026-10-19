@@ -82,6 +82,34 @@ class WorldAwakenedConfigServiceTest {
         assertFalse(WorldAwakenedConfigService.isAuthorized(ordinary));
     }
 
+    @Test
+    void nestedPreviewScopesRestoreThePreviousSettingsView() {
+        WorldAwakenedEditorSettings defaults = WorldAwakenedEditorSettings.builtInDefaults();
+        WorldAwakenedEditorSettings serverWide = new WorldAwakenedEditorSettings(
+                defaults.defaultGameplayEnabled(),
+                defaults.difficultyIntensity(),
+                defaults.mutationsEnabled(),
+                defaults.mutationFrequencyMultiplier(),
+                defaults.allowMultipleMutations(),
+                defaults.maximumMutationsPerMob(),
+                defaults.pressureEventsEnabled(),
+                defaults.eventFrequencyMultiplier(),
+                defaults.ascensionEnabled(),
+                net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode.PER_SERVER);
+
+        try (WorldAwakenedConfigService.PreviewSettingsScope outer =
+                WorldAwakenedConfigService.pushPreviewSettings(serverWide)) {
+            assertEquals(serverWide, WorldAwakenedConfigService.settings());
+            try (WorldAwakenedConfigService.PreviewSettingsScope inner =
+                    WorldAwakenedConfigService.pushPreviewSettings(defaults)) {
+                assertEquals(defaults, WorldAwakenedConfigService.settings());
+            }
+            assertEquals(serverWide, WorldAwakenedConfigService.settings());
+        }
+
+        assertEquals(defaults, WorldAwakenedConfigService.settings());
+    }
+
     private static ServerLevel transientLevel() {
         ServerLevel level = mock(ServerLevel.class);
         when(level.getServer()).thenReturn(null);

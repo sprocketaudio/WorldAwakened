@@ -20,27 +20,23 @@ public final class WorldAwakenedStageRegistry {
             .thenComparing(stage -> stage.id().toString());
 
     private final Map<ResourceLocation, StageDefinition> stagesById;
-    private final Map<ResourceLocation, ResourceLocation> aliasMappings;
-    private final Map<ResourceLocation, List<ResourceLocation>> aliasConflicts;
+    private final Map<ResourceLocation, ResourceLocation> canonicalIdsByAlias;
     private final Map<String, List<StageDefinition>> stagesByGroup;
     private final List<StageDefinition> orderedStages;
 
     private WorldAwakenedStageRegistry(
             Map<ResourceLocation, StageDefinition> stagesById,
-            Map<ResourceLocation, ResourceLocation> aliasMappings,
-            Map<ResourceLocation, List<ResourceLocation>> aliasConflicts,
+            Map<ResourceLocation, ResourceLocation> canonicalIdsByAlias,
             Map<String, List<StageDefinition>> stagesByGroup,
             List<StageDefinition> orderedStages) {
         this.stagesById = stagesById;
-        this.aliasMappings = aliasMappings;
-        this.aliasConflicts = aliasConflicts;
+        this.canonicalIdsByAlias = canonicalIdsByAlias;
         this.stagesByGroup = stagesByGroup;
         this.orderedStages = orderedStages;
     }
 
     public static WorldAwakenedStageRegistry empty() {
         return new WorldAwakenedStageRegistry(
-                Map.of(),
                 Map.of(),
                 Map.of(),
                 Map.of(),
@@ -57,35 +53,17 @@ public final class WorldAwakenedStageRegistry {
                 .toList();
 
         Map<ResourceLocation, StageDefinition> byId = new LinkedHashMap<>();
-        Map<ResourceLocation, ResourceLocation> aliasToCanonical = new LinkedHashMap<>();
-        Map<ResourceLocation, LinkedHashSet<ResourceLocation>> conflictCandidates = new LinkedHashMap<>();
+        Map<ResourceLocation, Set<ResourceLocation>> aliasOwners = new LinkedHashMap<>();
         Map<String, List<StageDefinition>> byGroup = new LinkedHashMap<>();
 
         for (StageDefinition stage : ordered) {
             byId.put(stage.id(), stage);
-            stage.progressionGroup().ifPresent(group -> byGroup.computeIfAbsent(group, ignored -> new ArrayList<>()).add(stage));
-        }
-
-        for (StageDefinition stage : ordered) {
             for (ResourceLocation alias : stage.aliases()) {
-                if (alias.equals(stage.id())) {
-                    continue;
-                }
-                ResourceLocation existing = aliasToCanonical.putIfAbsent(alias, stage.id());
-                if (existing != null && !existing.equals(stage.id())) {
-                    LinkedHashSet<ResourceLocation> collisions = conflictCandidates.computeIfAbsent(alias, ignored -> new LinkedHashSet<>());
-                    collisions.add(existing);
-                    collisions.add(stage.id());
+                if (alias != null) {
+                    aliasOwners.computeIfAbsent(alias, ignored -> new LinkedHashSet<>()).add(stage.id());
                 }
             }
-        }
-
-        Map<ResourceLocation, List<ResourceLocation>> frozenConflicts = new LinkedHashMap<>();
-        for (Map.Entry<ResourceLocation, LinkedHashSet<ResourceLocation>> entry : conflictCandidates.entrySet()) {
-            List<ResourceLocation> ids = entry.getValue().stream()
-                    .sorted(Comparator.comparing(ResourceLocation::toString))
-                    .toList();
-            frozenConflicts.put(entry.getKey(), ids);
+            stage.progressionGroup().ifPresent(group -> byGroup.computeIfAbsent(group, ignored -> new ArrayList<>()).add(stage));
         }
 
         Map<String, List<StageDefinition>> frozenGroups = new LinkedHashMap<>();
@@ -93,10 +71,16 @@ public final class WorldAwakenedStageRegistry {
             frozenGroups.put(entry.getKey(), List.copyOf(entry.getValue()));
         }
 
+        Map<ResourceLocation, ResourceLocation> aliases = new LinkedHashMap<>();
+        aliasOwners.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString)))
+                .filter(entry -> !byId.containsKey(entry.getKey()))
+                .filter(entry -> entry.getValue().size() == 1)
+                .forEach(entry -> aliases.put(entry.getKey(), entry.getValue().iterator().next()));
+
         return new WorldAwakenedStageRegistry(
                 Map.copyOf(byId),
-                Map.copyOf(aliasToCanonical),
-                Map.copyOf(frozenConflicts),
+                Map.copyOf(aliases),
                 Map.copyOf(frozenGroups),
                 List.copyOf(ordered));
     }
@@ -108,7 +92,7 @@ public final class WorldAwakenedStageRegistry {
         if (stagesById.containsKey(requestedStageId)) {
             return Optional.of(requestedStageId);
         }
-        return Optional.ofNullable(aliasMappings.get(requestedStageId));
+        return Optional.ofNullable(canonicalIdsByAlias.get(requestedStageId));
     }
 
     public Optional<StageDefinition> definition(ResourceLocation canonicalStageId) {
@@ -137,22 +121,62 @@ public final class WorldAwakenedStageRegistry {
         return stagesById.keySet();
     }
 
-    public Map<ResourceLocation, ResourceLocation> aliasMappings() {
-        return aliasMappings;
-    }
-
-    public Map<ResourceLocation, List<ResourceLocation>> aliasConflicts() {
-        return aliasConflicts;
-    }
 
     public Set<ResourceLocation> inactiveStageIds(Collection<ResourceLocation> unlockedStages) {
         if (unlockedStages == null || unlockedStages.isEmpty()) {
             return Set.of();
         }
         return unlockedStages.stream()
-                .filter(stageId -> !stagesById.containsKey(stageId))
+                .filter(stageId -> resolveCanonicalId(stageId).isEmpty())
                 .sorted(Comparator.comparing(ResourceLocation::toString))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    /**
+     * Resolves the gameplay-active stage in every progression group without
+     * conflating the persisted unlock history with the current progression
+     * context. Ungrouped stages are independent and therefore remain active
+     * while unlocked. A missing saved group cursor is a legacy-state fallback
+     * only; it is resolved within that group, never across all stages.
+     */
+    public Set<ResourceLocation> activeStageIds(
+            Collection<ResourceLocation> unlockedStages,
+            Map<String, ResourceLocation> activeGroupStages) {
+        if (unlockedStages == null || unlockedStages.isEmpty()) {
+            return Set.of();
+        }
+        Set<ResourceLocation> unlocked = unlockedStages.stream()
+                .map(this::resolveCanonicalId)
+                .flatMap(Optional::stream)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, ResourceLocation> cursors = activeGroupStages == null
+                ? Map.of()
+                : activeGroupStages.entrySet().stream()
+                        .map(entry -> resolveCanonicalId(entry.getValue())
+                                .map(canonical -> Map.entry(entry.getKey(), canonical)))
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (left, right) -> left, LinkedHashMap::new));
+        LinkedHashSet<ResourceLocation> active = new LinkedHashSet<>();
+
+        for (ResourceLocation stageId : unlocked) {
+            StageDefinition stage = stagesById.get(stageId);
+            if (stage != null && stage.progressionGroup().isEmpty()) {
+                active.add(stageId);
+            }
+        }
+        for (Map.Entry<String, List<StageDefinition>> entry : stagesByGroup.entrySet()) {
+            ResourceLocation cursor = cursors.get(entry.getKey());
+            if (cursor != null && unlocked.contains(cursor) && stagesById.containsKey(cursor)) {
+                active.add(cursor);
+                continue;
+            }
+            entry.getValue().stream()
+                    .filter(stage -> unlocked.contains(stage.id()))
+                    .max(DISPLAY_ORDER)
+                    .map(StageDefinition::id)
+                    .ifPresent(active::add);
+        }
+        return Set.copyOf(active);
     }
 }
 

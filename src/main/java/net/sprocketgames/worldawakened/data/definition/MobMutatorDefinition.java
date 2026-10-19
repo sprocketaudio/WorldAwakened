@@ -24,7 +24,8 @@ public record MobMutatorDefinition(
         MutatorBehavior behavior) implements WorldAwakenedDataDefinition {
     private static final MapCodec<MutatorPresentation> PRESENTATION_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             WorldAwakenedJsonCodecs.JSON_ELEMENT.fieldOf("display_name").forGetter(MutatorPresentation::displayName),
-            Codec.STRING.optionalFieldOf("rarity").forGetter(MutatorPresentation::rarity))
+            Codec.STRING.optionalFieldOf("rarity").forGetter(MutatorPresentation::rarity),
+            Codec.INT.optionalFieldOf("power", 1).forGetter(MutatorPresentation::power))
             .apply(instance, MutatorPresentation::new));
 
     private static final MapCodec<MutatorStacking> STACKING_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
@@ -76,6 +77,7 @@ public record MobMutatorDefinition(
     public Optional<String> rarity() {
         return presentation.rarity();
     }
+    public int power() { return presentation.power(); }
 
     public Optional<String> stackingGroup() {
         return stacking.stackingGroup();
@@ -135,7 +137,11 @@ public record MobMutatorDefinition(
 
     public record MutatorPresentation(
             JsonElement displayName,
-            Optional<String> rarity) {
+            Optional<String> rarity,
+            int power) {
+        public MutatorPresentation(JsonElement displayName, Optional<String> rarity) {
+            this(displayName, rarity, 1);
+        }
     }
 
     public record MutatorStacking(

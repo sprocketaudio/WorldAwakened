@@ -17,7 +17,7 @@ import net.sprocketgames.worldawakened.data.definition.StageUnlockPolicy;
 
 class WorldAwakenedStageRegistryTest {
     @Test
-    void resolvesAliasToCanonicalStageId() {
+    void resolvesConfiguredAliasesToCanonicalIds() {
         StageDefinition stage = stage(
                 "testpack:baseline",
                 List.of("testpack:starter"),
@@ -31,6 +31,32 @@ class WorldAwakenedStageRegistryTest {
         ResourceLocation canonical = id("testpack:baseline");
         assertEquals(Optional.of(canonical), registry.resolveCanonicalId(alias));
         assertEquals(Optional.of(canonical), registry.resolveCanonicalId(canonical));
+    }
+
+    @Test
+    void resolvesSavedAliasesWhenCalculatingActiveStages() {
+        StageDefinition stage = stage(
+                "testpack:renamed",
+                List.of("testpack:legacy"),
+                0,
+                Optional.of("mainline"),
+                StageUnlockPolicy.CUMULATIVE);
+        WorldAwakenedStageRegistry registry = WorldAwakenedStageRegistry.from(
+                java.util.Map.of(stage.id(), stage));
+
+        assertEquals(Set.of(id("testpack:renamed")), registry.activeStageIds(
+                Set.of(id("testpack:legacy")),
+                java.util.Map.of("mainline", id("testpack:legacy"))));
+        assertEquals(Set.of(), registry.inactiveStageIds(Set.of(id("testpack:legacy"))));
+    }
+
+    @Test
+    void ambiguousAliasesFailClosedEvenIfInvalidDataBypassesLoaderValidation() {
+        StageDefinition first = stage("testpack:first", List.of("testpack:old"), 0, Optional.empty(), StageUnlockPolicy.CUMULATIVE);
+        StageDefinition second = stage("testpack:second", List.of("testpack:old"), 1, Optional.empty(), StageUnlockPolicy.CUMULATIVE);
+        WorldAwakenedStageRegistry registry = WorldAwakenedStageRegistry.from(java.util.Map.of(first.id(), first, second.id(), second));
+
+        assertEquals(Optional.empty(), registry.resolveCanonicalId(id("testpack:old")));
     }
 
     @Test

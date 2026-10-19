@@ -3,7 +3,7 @@
 Documentation index, read-order contract, and cross-update policy for all repository markdown docs.
 
 - Document status: Active governance index
-- Last updated: 2026-10-17
+- Last updated: 2026-10-19
 - Scope: Required documentation intake, cross-references, and currency rules
 
 ---
@@ -20,30 +20,34 @@ Use this as the primary index for the `docs/` folder.
 
 ---
 
-## 1. Required Read Order for Every Task
+## 1. Documentation Intake and Routing
 
-Minimum required docs before any code or doc changes:
+Use three levels of intake. Read the smallest set that can safely govern the requested change.
+
+### Always read
 1. [AGENTS.md](../AGENTS.md)
-2. [README.md](../README.md)
-3. [SPECIFICATION.md](SPECIFICATION.md)
-4. [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md)
-5. [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md)
-6. [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md)
-7. [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md)
-8. [ACTION_REFERENCE.md](ACTION_REFERENCE.md)
-9. [SCOPE_MATRIX.md](SCOPE_MATRIX.md)
-10. [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md)
-11. [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
-12. [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
-13. [PRESET_CATALOG.md](PRESET_CATALOG.md)
-14. [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
-15. [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md) when built-in gameplay content, balance, rewards, or pressure events are relevant
-16. [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) when historical web-tool context is relevant
+2. [README.md](../README.md) when public feature/status wording matters
+3. The relevant current-contract section of [SPECIFICATION.md](SPECIFICATION.md)
 
-Read when relevant to scope changes:
-1. [wiki/README.md](wiki/README.md) when changes affect user-facing workflows, operator flows, testing guidance, troubleshooting, or author mental models
-2. [FUTURE_IDEAS.md](FUTURE_IDEAS.md) for post-v1 backlog promotions/reclassifications
-3. [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) for the superseded admin-UI proposal
+### Task-specific references
+
+| Change area | Read before implementation |
+|---|---|
+| Datapack schema, codecs, authored definitions | [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md) plus the relevant definition/reference document |
+| Mutation or Ascension component behavior | [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md), [COMPOSITION_AND_STACKING.md](COMPOSITION_AND_STACKING.md), and the relevant specification section |
+| Conditions, actions, scopes | [CONDITION_REFERENCE.md](CONDITION_REFERENCE.md), [ACTION_REFERENCE.md](ACTION_REFERENCE.md), [SCOPE_MATRIX.md](SCOPE_MATRIX.md) |
+| Runtime performance or validation | [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md), [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md) |
+| Bundled Standard content or balance | [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md), [PRESET_CATALOG.md](PRESET_CATALOG.md), [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md) |
+| Rarity, configured effects, generated combinations | [RARITY_AND_GENERATION.md](RARITY_AND_GENERATION.md) and the relevant authoring/component contract |
+| Commands, debug output, or operator workflow | [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md) and affected [wiki](wiki/README.md) pages |
+| Native editor UI-only work | the editor section of [SPECIFICATION.md](SPECIFICATION.md), [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md), and affected wiki workflow pages |
+
+### Additional references only when affected
+
+- [FUTURE_IDEAS.md](FUTURE_IDEAS.md) only for backlog promotion/reclassification.
+- [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md) only for its historical context.
+- [WEB_AUTHORING_TOOL_SPEC.md](WEB_AUTHORING_TOOL_SPEC.md) only when retiring or preserving legacy web-authoring context.
+- Relevant `docs/wiki/` pages whenever a user workflow, test recipe, troubleshooting path, or author mental model changes.
 
 Task execution rule:
 - Each implementation task must explicitly reference the governing docs it used.
@@ -72,6 +76,7 @@ Shared reference docs:
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md): Hot-path performance budgets, scope indexing rules, and runtime guardrails.
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md): Stable diagnostics taxonomy.
 - [PRESET_CATALOG.md](PRESET_CATALOG.md): Canonical preset/template catalog and status tags.
+- [RARITY_AND_GENERATION.md](RARITY_AND_GENERATION.md): Rarity thresholds, configured effects, generation pools, persisted snapshots, and rarity-aware eligibility.
 
 Friendly companion docs:
 - [wiki/README.md](wiki/README.md): Human-readable wiki index and maintenance rules.
@@ -83,6 +88,9 @@ Friendly companion docs:
 - [wiki/FAQ.md](wiki/FAQ.md): Concise answers to common operator/author questions.
 
 Historical and deferred scope docs:
+- [HISTORICAL_DECISIONS.md](HISTORICAL_DECISIONS.md): Retired terminology, migration context, and pointers to retained implementation history.
+- [CLEANUP_CAPABILITY_AUDIT.md](CLEANUP_CAPABILITY_AUDIT.md): Capability-preservation audit for the retired Difficulty Track schema cleanup.
+- [TEST_SUITE_AUDIT.md](TEST_SUITE_AUDIT.md): Automated-test quality, coverage boundaries, and manual smoke-test record.
 - [FUTURE_IDEAS.md](FUTURE_IDEAS.md): Non-normative backlog.
 - [FUTURE_ADMIN_UI.md](FUTURE_ADMIN_UI.md): Superseded earlier in-game/admin UI proposal.
 
@@ -158,6 +166,7 @@ These files must stay aligned to a common structure and detail level:
 - [PERFORMANCE_BUDGETS.md](PERFORMANCE_BUDGETS.md)
 - [VALIDATION_AND_ERROR_CODES.md](VALIDATION_AND_ERROR_CODES.md)
 - [PRESET_CATALOG.md](PRESET_CATALOG.md)
+- [RARITY_AND_GENERATION.md](RARITY_AND_GENERATION.md)
 
 Required format elements:
 - title and one-line purpose summary

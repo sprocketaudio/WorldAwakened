@@ -8,6 +8,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 
 public final class WorldAwakenedConfigSavedData extends SavedData {
     private static final String DATA_NAME = "worldawakened_native_config";
@@ -48,7 +49,10 @@ public final class WorldAwakenedConfigSavedData extends SavedData {
                 readInt(tag, "maximum_mutations_per_mob", 2),
                 readBoolean(tag, "pressure_events_enabled", true),
                 readDouble(tag, "event_frequency_multiplier", 1.0D),
-                readBoolean(tag, "ascension_enabled", true));
+                readBoolean(tag, "ascension_enabled", true),
+                WorldAwakenedProgressionMode.parse(tag.contains("progression_mode")
+                        ? tag.getString("progression_mode") : null)
+                        .orElse(WorldAwakenedProgressionMode.PER_PLAYER));
         return data;
     }
 
@@ -65,6 +69,7 @@ public final class WorldAwakenedConfigSavedData extends SavedData {
         tag.putBoolean("pressure_events_enabled", settings.pressureEventsEnabled());
         tag.putDouble("event_frequency_multiplier", settings.eventFrequencyMultiplier());
         tag.putBoolean("ascension_enabled", settings.ascensionEnabled());
+        tag.putString("progression_mode", settings.progressionMode().serializedName());
         return tag;
     }
 

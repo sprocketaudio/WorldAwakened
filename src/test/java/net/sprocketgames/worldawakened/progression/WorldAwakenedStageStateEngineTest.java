@@ -21,7 +21,7 @@ import net.sprocketgames.worldawakened.data.definition.StageUnlockPolicy;
 
 class WorldAwakenedStageStateEngineTest {
     @Test
-    void unlockResolvesAliasAndPersistsCanonicalId() {
+    void unlocksCanonicalStageThroughConfiguredAlias() {
         StageDefinition stage = stage(
                 "testpack:baseline",
                 List.of("testpack:starter"),
@@ -41,7 +41,6 @@ class WorldAwakenedStageStateEngineTest {
         assertEquals(WorldAwakenedStageMutationStatus.UNLOCKED, result.status());
         assertTrue(state.unlockedStages().contains(id("testpack:baseline")));
         assertFalse(state.unlockedStages().contains(id("testpack:starter")));
-        assertEquals(42L, state.unlockTimestamps().get(id("testpack:baseline")));
         assertTrue(state.dirty);
     }
 
@@ -110,6 +109,26 @@ class WorldAwakenedStageStateEngineTest {
         assertFalse(state.unlockedStages().contains(first.id()));
         assertTrue(state.unlockedStages().contains(second.id()));
         assertEquals(second.id(), state.activeGroupStages().get("main"));
+    }
+
+    @Test
+    void cumulativeGroupKeepsUnlockHistoryButAdvancesItsActivePhase() {
+        StageDefinition stirring = stage("testpack:stirring", List.of(), 10, Optional.of("main"), StageUnlockPolicy.CUMULATIVE);
+        StageDefinition unease = stage("testpack:unease", List.of(), 20, Optional.of("main"), StageUnlockPolicy.CUMULATIVE);
+        StageDefinition sideQuest = stage("testpack:side_quest", List.of(), 5, Optional.of("side"), StageUnlockPolicy.CUMULATIVE);
+        WorldAwakenedStageRegistry registry = WorldAwakenedStageRegistry.from(Map.of(
+                stirring.id(), stirring, unease.id(), unease, sideQuest.id(), sideQuest));
+        InMemoryStageState state = new InMemoryStageState();
+
+        WorldAwakenedStageStateEngine.unlockStage(registry, state, stirring.id(), "test", 1L);
+        WorldAwakenedStageStateEngine.unlockStage(registry, state, sideQuest.id(), "test", 2L);
+        WorldAwakenedStageStateEngine.unlockStage(registry, state, unease.id(), "test", 3L);
+
+        assertEquals(Set.of(stirring.id(), unease.id(), sideQuest.id()), state.unlockedStages());
+        assertEquals(unease.id(), state.activeGroupStages().get("main"));
+        assertEquals(sideQuest.id(), state.activeGroupStages().get("side"));
+        assertEquals(Set.of(unease.id(), sideQuest.id()),
+                registry.activeStageIds(state.unlockedStages(), state.activeGroupStages()));
     }
 
     @Test

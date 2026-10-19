@@ -14,7 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 
 public final class WorldAwakenedWorldProgressionSavedData extends SavedData
-        implements WorldAwakenedMutableStageState, WorldAwakenedMutableTriggerState, WorldAwakenedMutableRuleState {
+        implements WorldAwakenedProgressionState {
     private static final String DATA_NAME = "worldawakened_world_progression";
     private static final SavedData.Factory<WorldAwakenedWorldProgressionSavedData> FACTORY = new SavedData.Factory<>(
             WorldAwakenedWorldProgressionSavedData::new,

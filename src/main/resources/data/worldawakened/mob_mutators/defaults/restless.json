@@ -4,6 +4,7 @@
   "display_name": { "translate": "mutator.worldawakened.defaults.restless" },
   "enabled": true,
   "rarity": "uncommon",
+  "power": 2,
   "weight": 10,
   "stacking_group": "worldawakened:default_mobility",
   "max_stack_count": 1,

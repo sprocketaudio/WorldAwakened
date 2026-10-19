@@ -267,6 +267,15 @@ Result:
 
 ## 10. Inspection and Trace Requirements
 
+### 10.1 Generated-result freezing
+
+Generated combinations are resolved once. The resulting component IDs, exact
+parameter objects, resolved power, and resolved rarity are saved with their runtime
+owner. Mob runtime handlers execute persistent spawn-time state; Ascension selection
+and reconciliation execute the saved reward snapshot. Reloading or editing an
+authoring definition changes only future rolls and must never rewrite an existing mob
+or a pending/chosen Ascension reward.
+
 Composition resolution must be inspectable through debug surfaces defined in [DEBUG_AND_INSPECTION.md](DEBUG_AND_INSPECTION.md).
 
 Minimum exposed fields:

@@ -3,7 +3,7 @@
 Shortest-path guides for the most common first-time workflows.
 
 - Document status: Active friendly quickstart guide
-- Last updated: 2026-10-18
+- Last updated: 2026-10-19
 - Scope: Setup, first datapack, first tests, and first recovery loop
 
 ---
@@ -78,27 +78,26 @@ What you should expect:
 - `errors=0`
 - loaded counts include your authored objects (for example stages, trigger rules, rules, rewards, and offers)
 
-## 4. First Global Stage Test
+## 4. First Per-Player Stage Test
 
-Use this when your config has `progression.mode = "global"`.
+New native configurations default to `progression.mode = "per_player"`.
 
 Goal:
-- prove stage state is shared globally
+- prove one player owns their own stage state
 - prove the authored trigger matches the event source you expect
 
 Steps:
 1. Reset cleanly:
 
 ```text
-/wa debug reset global all
 /wa debug reset player Dev all
 ```
 
 2. Inspect the starting state:
 
 ```text
-/wa stage list global
-/wa dump active_rules global
+/wa stage list player Dev
+/wa dump active_rules player Dev
 ```
 
 3. Fire a player-scoped manual trigger from a real player context:
@@ -110,38 +109,38 @@ Steps:
 4. Recheck state:
 
 ```text
-/wa stage list global
+/wa stage list player Dev
 /wa ascension pending Dev
 ```
 
 What you should expect:
 - the trigger matches because it is authored as `source_scope: "player"`
-- the stage still unlocks in the shared global stage bucket because progression mode is `global`
+- the stage unlocks in Dev's personal progression bucket
 - Dev receives the pending ascension offer because ascension is player-scoped
 
 If that feels surprising, read [CONCEPTS.md](CONCEPTS.md).
 
-## 5. First Per-Player Stage Test
+## 5. Optional Per-Server Stage Test
 
-Use this when your config has `progression.mode = "per_player"`.
+Use this only when your config has `progression.mode = "global"`.
 
 Goal:
-- prove each player owns their own stage progression
+- prove stage state is shared globally
 
 Suggested flow:
-1. Switch progression mode to `per_player` in config.
+1. Switch progression mode to `global` in config before progression history exists.
 2. Restart the game/server.
 3. Use explicit player-targeted commands:
 
 ```text
-/wa stage list player Dev
+/wa stage list global
 /wa trigger fire <trigger_id> player Dev
-/wa stage list player Dev
+/wa stage list global
 ```
 
 What you should expect:
-- Dev's stage state changes
-- other players would not automatically share the stage unlock
+- the shared stage state changes
+- other players share that unlock
 
 ## 5A. First Apotheosis Derived-Stage Test
 
@@ -285,7 +284,7 @@ These checks require a live client/server and are not replaced by unit tests:
 7. Test both GLOBAL and PER_PLAYER progression. In PER_PLAYER, verify two players advance independently and unattributed spawn context remains fail-closed. Complete an advancement before joining/rejoining and verify supported advancement reconciliation.
 8. Repeat the screens at small GUI scales/resolutions. Verify search focus, row scrolling, visible scrollbars, fixed footer controls, confirmation screens, Cancel, Revert, and validation errors remain usable.
 
-Global Settings still covers intensity, bundled gameplay, mutation enablement/frequency/caps, pressure events, and Ascension. Standard remains the only bundled profile; the full mutator-component, rewards, world-event, and generic rule editors remain unavailable. External datapacks keep normal priority semantics, and pool overrides never rewrite their files.
+Global Settings covers intensity, bundled gameplay, mutation enablement/frequency/caps, pressure events, Ascension, and Per Player / Per Server progression mode. Standard remains the only bundled profile; advanced generic rule authoring and unsupported component handlers remain datapack-only. External datapacks keep normal priority semantics, and editor overrides never rewrite their files.
 
 ## 9. Where To Go Next
 

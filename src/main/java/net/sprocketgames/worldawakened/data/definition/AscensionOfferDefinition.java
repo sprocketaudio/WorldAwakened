@@ -41,7 +41,9 @@ public record AscensionOfferDefinition(
                     .forGetter(OfferCandidates::candidateRewardTags),
             WorldAwakenedJsonCodecs.enumCodec(AscensionOfferMode.class).optionalFieldOf("offer_mode", AscensionOfferMode.EXPLICIT_LIST)
                     .forGetter(OfferCandidates::offerMode),
-            WorldAwakenedJsonCodecs.JSON_OBJECT.optionalFieldOf("weighting_rules", new JsonObject()).forGetter(OfferCandidates::weightingRules))
+            WorldAwakenedJsonCodecs.JSON_OBJECT.optionalFieldOf("weighting_rules", new JsonObject()).forGetter(OfferCandidates::weightingRules),
+            WorldAwakenedJsonCodecs.RESOURCE_LOCATION.optionalFieldOf("effect_generation_pool")
+                    .forGetter(OfferCandidates::effectGenerationPool))
             .apply(instance, OfferCandidates::new));
 
     private static final MapCodec<OfferPolicy> POLICY_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
@@ -131,6 +133,10 @@ public record AscensionOfferDefinition(
         return candidates.weightingRules();
     }
 
+    public Optional<ResourceLocation> effectGenerationPool() {
+        return candidates.effectGenerationPool();
+    }
+
     public record OfferPresentation(
             JsonElement displayName,
             Optional<JsonElement> description) {
@@ -147,7 +153,15 @@ public record AscensionOfferDefinition(
             List<ResourceLocation> candidateRewards,
             List<String> candidateRewardTags,
             AscensionOfferMode offerMode,
-            JsonObject weightingRules) {
+            JsonObject weightingRules,
+            Optional<ResourceLocation> effectGenerationPool) {
+        public OfferCandidates(
+                List<ResourceLocation> candidateRewards,
+                List<String> candidateRewardTags,
+                AscensionOfferMode offerMode,
+                JsonObject weightingRules) {
+            this(candidateRewards, candidateRewardTags, offerMode, weightingRules, Optional.empty());
+        }
     }
 
     public record OfferPolicy(

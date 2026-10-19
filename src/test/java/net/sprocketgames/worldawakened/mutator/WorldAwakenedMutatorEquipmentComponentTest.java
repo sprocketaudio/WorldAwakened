@@ -57,7 +57,7 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
-class WorldAwakenedMutatorEquipmentComponentTest {
+class WorldAwakenedMutatorEquipmentComponentTest extends WorldAwakenedMutatorTestSupport {
     @Test
     void appliesEquipItemComponentWithEnchantmentsAndDropChance() throws Exception {
         MobMutatorDefinition mutator = parseMutator("""

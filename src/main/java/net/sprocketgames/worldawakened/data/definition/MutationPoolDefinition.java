@@ -34,7 +34,9 @@ public record MutationPoolDefinition(
             CombinationMode.CODEC.optionalFieldOf("combination_mode", CombinationMode.ANY_COMPATIBLE)
                     .forGetter(MutationSelection::combinationMode),
             CuratedCombination.CODEC.listOf().optionalFieldOf("rare_combinations", List.of())
-                    .forGetter(MutationSelection::rareCombinations))
+                    .forGetter(MutationSelection::rareCombinations),
+            WorldAwakenedJsonCodecs.RESOURCE_LOCATION.optionalFieldOf("effect_generation_pool")
+                    .forGetter(MutationSelection::effectGenerationPool))
             .apply(instance, MutationSelection::new));
 
     public static final Codec<MutationPoolDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -63,6 +65,7 @@ public record MutationPoolDefinition(
     public int maxMutatorsPerEntity() { return selection.maxMutatorsPerEntity(); }
     public CombinationMode combinationMode() { return selection.combinationMode(); }
     public List<CuratedCombination> rareCombinations() { return selection.rareCombinations(); }
+    public Optional<ResourceLocation> effectGenerationPool() { return selection.effectGenerationPool(); }
 
     public record MutationSelection(
             int weight,
@@ -70,7 +73,14 @@ public record MutationPoolDefinition(
             double additionalMutationChance,
             int maxMutatorsPerEntity,
             CombinationMode combinationMode,
-            List<CuratedCombination> rareCombinations) {
+            List<CuratedCombination> rareCombinations,
+            Optional<ResourceLocation> effectGenerationPool) {
+        public MutationSelection(
+                int weight, double mutationChance, double additionalMutationChance, int maxMutatorsPerEntity,
+                CombinationMode combinationMode, List<CuratedCombination> rareCombinations) {
+            this(weight, mutationChance, additionalMutationChance, maxMutatorsPerEntity, combinationMode,
+                    rareCombinations, Optional.empty());
+        }
     }
 
     public record CuratedCombination(

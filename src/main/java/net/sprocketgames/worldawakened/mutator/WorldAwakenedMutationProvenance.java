@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -25,6 +28,11 @@ public final class WorldAwakenedMutationProvenance {
     public static final String WA_ORIGIN = "WA_ORIGIN";
     public static final String WA_PENDING_SPAWN_ORIGIN = "WA_PENDING_SPAWN_ORIGIN";
     public static final String WA_MUTATION_PIPELINE_PROCESSED = "WA_MUTATION_PIPELINE_PROCESSED";
+    public static final String WA_MUTATION_INSTANCE_ID = "WA_MUTATION_INSTANCE_ID";
+    public static final String WA_MUTATION_TOTAL_POWER = "WA_MUTATION_TOTAL_POWER";
+    public static final String WA_MUTATION_RARITY = "WA_MUTATION_RARITY";
+    public static final String WA_MUTATION_RESOLVED_COMPONENTS = "WA_MUTATION_RESOLVED_COMPONENTS";
+    public static final String WA_MUTATION_GENERATION_SOURCE = "WA_MUTATION_GENERATION_SOURCE";
     public static final String ORIGIN_MUTATOR_SPAWN = "worldawakened:mutator_spawn";
     public static final String ORIGIN_SPAWN_PIPELINE = "worldawakened:spawn_pipeline";
 
@@ -40,6 +48,7 @@ public final class WorldAwakenedMutationProvenance {
         tag.put(WA_MUTATION_SOURCE_RULES, writeResourceLocationList(payload.sourceRuleIds()));
         tag.put(WA_MUTATION_IDS, writeResourceLocationList(payload.mutationIds()));
         tag.put(WA_MUTATION_COMPONENTS, writeResourceLocationList(payload.componentIds()));
+        tag.put(WA_MUTATION_RESOLVED_COMPONENTS, writeResolvedComponents(payload.resolvedComponents()));
         tag.put(WA_MUTATION_STAGE_CONTEXT, writeResourceLocationList(payload.stageContext()));
         if (!payload.traceId().isBlank()) {
             tag.putString(WA_MUTATION_TRACE_ID, payload.traceId());
@@ -53,6 +62,13 @@ public final class WorldAwakenedMutationProvenance {
             tag.remove(WA_ORIGIN);
         }
         tag.put(WA_MUTATION_FAILED_COMPONENTS, writeComponentFailures(payload.failedComponents()));
+        if (!payload.instanceId().isBlank()) tag.putString(WA_MUTATION_INSTANCE_ID, payload.instanceId());
+        else tag.remove(WA_MUTATION_INSTANCE_ID);
+        tag.putInt(WA_MUTATION_TOTAL_POWER, Math.max(0, payload.totalPower()));
+        payload.rarityId().ifPresentOrElse(value -> tag.putString(WA_MUTATION_RARITY, value.toString()),
+                () -> tag.remove(WA_MUTATION_RARITY));
+        if (!payload.generationSource().isBlank()) tag.putString(WA_MUTATION_GENERATION_SOURCE, payload.generationSource());
+        else tag.remove(WA_MUTATION_GENERATION_SOURCE);
     }
 
     public static MutationProvenanceView read(CompoundTag tag) {
@@ -64,6 +80,7 @@ public final class WorldAwakenedMutationProvenance {
         List<ResourceLocation> sourceRules = readResourceLocationList(tag, WA_MUTATION_SOURCE_RULES);
         List<ResourceLocation> mutationIds = readResourceLocationList(tag, WA_MUTATION_IDS);
         List<ResourceLocation> componentIds = readResourceLocationList(tag, WA_MUTATION_COMPONENTS);
+        List<ResolvedMutationComponent> resolvedComponents = readResolvedComponents(tag, WA_MUTATION_RESOLVED_COMPONENTS);
         List<ResourceLocation> stageContext = readResourceLocationList(tag, WA_MUTATION_STAGE_CONTEXT);
         String traceId = tag.contains(WA_MUTATION_TRACE_ID, Tag.TAG_STRING)
                 ? tag.getString(WA_MUTATION_TRACE_ID)
@@ -75,9 +92,16 @@ public final class WorldAwakenedMutationProvenance {
                 ? tag.getString(WA_ORIGIN)
                 : "";
         List<ComponentFailureEntry> failedComponents = readComponentFailures(tag, WA_MUTATION_FAILED_COMPONENTS);
+        String instanceId = tag.contains(WA_MUTATION_INSTANCE_ID, Tag.TAG_STRING) ? tag.getString(WA_MUTATION_INSTANCE_ID) : "";
+        int totalPower = tag.contains(WA_MUTATION_TOTAL_POWER, Tag.TAG_INT) ? Math.max(0, tag.getInt(WA_MUTATION_TOTAL_POWER)) : 0;
+        Optional<ResourceLocation> rarityId = tag.contains(WA_MUTATION_RARITY, Tag.TAG_STRING)
+                ? Optional.ofNullable(ResourceLocation.tryParse(tag.getString(WA_MUTATION_RARITY))) : Optional.empty();
+        String generationSource = tag.contains(WA_MUTATION_GENERATION_SOURCE, Tag.TAG_STRING)
+                ? tag.getString(WA_MUTATION_GENERATION_SOURCE) : "curated";
         boolean hasProvenance = sourcePoolId.isPresent()
                 || !mutationIds.isEmpty()
                 || !componentIds.isEmpty()
+                || !resolvedComponents.isEmpty()
                 || !traceId.isBlank();
         return new MutationProvenanceView(
                 hasProvenance,
@@ -85,12 +109,17 @@ public final class WorldAwakenedMutationProvenance {
                 sourceRules,
                 mutationIds,
                 componentIds,
+                resolvedComponents,
                 stageContext,
                 traceId,
                 depth,
                 origin,
                 failedComponents,
-                isPipelineProcessed(tag));
+                isPipelineProcessed(tag),
+                instanceId,
+                totalPower,
+                rarityId,
+                generationSource);
     }
 
     public static void markPipelineProcessed(CompoundTag tag) {
@@ -212,16 +241,90 @@ public final class WorldAwakenedMutationProvenance {
         return List.copyOf(failures);
     }
 
+    private static ListTag writeResolvedComponents(List<ResolvedMutationComponent> components) {
+        ListTag list = new ListTag();
+        for (ResolvedMutationComponent component : components) {
+            CompoundTag entry = new CompoundTag();
+            entry.putString("source", component.sourceEffectId().toString());
+            entry.putString("type", component.componentType().toString());
+            entry.putString("parameters", component.parameters().toString());
+            entry.putInt("power", Math.max(0, component.power()));
+            list.add(entry);
+        }
+        return list;
+    }
+
+    private static List<ResolvedMutationComponent> readResolvedComponents(CompoundTag tag, String key) {
+        if (!tag.contains(key, Tag.TAG_LIST)) {
+            return List.of();
+        }
+        ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
+        List<ResolvedMutationComponent> components = new ArrayList<>(list.size());
+        for (int index = 0; index < list.size(); index++) {
+            CompoundTag entry = list.getCompound(index);
+            ResourceLocation source = ResourceLocation.tryParse(entry.getString("source"));
+            ResourceLocation type = ResourceLocation.tryParse(entry.getString("type"));
+            if (source == null || type == null || !entry.contains("parameters", Tag.TAG_STRING)) {
+                continue;
+            }
+            try {
+                if (!JsonParser.parseString(entry.getString("parameters")).isJsonObject()) {
+                    continue;
+                }
+                JsonObject parameters = JsonParser.parseString(entry.getString("parameters")).getAsJsonObject();
+                components.add(new ResolvedMutationComponent(
+                        source, type, parameters, Math.max(0, entry.getInt("power"))));
+            } catch (RuntimeException ignored) {
+                // Older or externally edited entity data must not prevent an entity from loading.
+            }
+        }
+        return List.copyOf(components);
+    }
+
     public record MutationProvenancePayload(
             Optional<ResourceLocation> sourcePoolId,
             List<ResourceLocation> sourceRuleIds,
             List<ResourceLocation> mutationIds,
             List<ResourceLocation> componentIds,
+            List<ResolvedMutationComponent> resolvedComponents,
             List<ResourceLocation> stageContext,
             String traceId,
             int mutationDepth,
             String originMarker,
-            List<ComponentFailureEntry> failedComponents) {
+            List<ComponentFailureEntry> failedComponents,
+            String instanceId,
+            int totalPower,
+            Optional<ResourceLocation> rarityId,
+            String generationSource) {
+        public MutationProvenancePayload(
+                Optional<ResourceLocation> sourcePoolId, List<ResourceLocation> sourceRuleIds,
+                List<ResourceLocation> mutationIds, List<ResourceLocation> componentIds,
+                List<ResourceLocation> stageContext, String traceId, int mutationDepth,
+                String originMarker, List<ComponentFailureEntry> failedComponents) {
+            this(sourcePoolId, sourceRuleIds, mutationIds, componentIds, List.of(), stageContext, traceId, mutationDepth,
+                    originMarker, failedComponents, "", 0, Optional.empty(), "curated");
+        }
+
+        /** Compatibility constructor for persisted-result callers that predate explicit source persistence. */
+        public MutationProvenancePayload(
+                Optional<ResourceLocation> sourcePoolId, List<ResourceLocation> sourceRuleIds,
+                List<ResourceLocation> mutationIds, List<ResourceLocation> componentIds,
+                List<ResolvedMutationComponent> resolvedComponents, List<ResourceLocation> stageContext,
+                String traceId, int mutationDepth, String originMarker, List<ComponentFailureEntry> failedComponents,
+                String instanceId, int totalPower, Optional<ResourceLocation> rarityId) {
+            this(sourcePoolId, sourceRuleIds, mutationIds, componentIds, resolvedComponents, stageContext, traceId,
+                    mutationDepth, originMarker, failedComponents, instanceId, totalPower, rarityId, "curated");
+        }
+    }
+
+    public record ResolvedMutationComponent(
+            ResourceLocation sourceEffectId,
+            ResourceLocation componentType,
+            JsonObject parameters,
+            int power) {
+        public ResolvedMutationComponent {
+            parameters = parameters == null ? new JsonObject() : parameters.deepCopy();
+        }
     }
 
     public record ComponentFailureEntry(
@@ -237,11 +340,16 @@ public final class WorldAwakenedMutationProvenance {
             List<ResourceLocation> sourceRuleIds,
             List<ResourceLocation> mutationIds,
             List<ResourceLocation> componentIds,
+            List<ResolvedMutationComponent> resolvedComponents,
             List<ResourceLocation> stageContext,
             String traceId,
             int mutationDepth,
             String originMarker,
             List<ComponentFailureEntry> failedComponents,
-            boolean pipelineProcessed) {
+            boolean pipelineProcessed,
+            String instanceId,
+            int totalPower,
+            Optional<ResourceLocation> rarityId,
+            String generationSource) {
     }
 }

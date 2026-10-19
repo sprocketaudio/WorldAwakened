@@ -2,6 +2,7 @@ package net.sprocketgames.worldawakened.debug;
 
 public final class WorldAwakenedDiagnosticCodes {
     public static final String STAGE_REF_MISSING = "WA_STAGE_REF_MISSING";
+    public static final String STAGE_ALIAS_CONFLICT = "WA_STAGE_ALIAS_CONFLICT";
     public static final String SCHEMA_UNSUPPORTED = "WA_SCHEMA_UNSUPPORTED";
     public static final String ASCENSION_REWARD_INVALID = "WA_ASCENSION_REWARD_INVALID";
     public static final String RULE_RECURSION_BLOCKED = "WA_RULE_RECURSION_BLOCKED";

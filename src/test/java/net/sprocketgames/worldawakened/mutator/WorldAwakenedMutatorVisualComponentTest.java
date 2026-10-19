@@ -52,7 +52,7 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
-class WorldAwakenedMutatorVisualComponentTest {
+class WorldAwakenedMutatorVisualComponentTest extends WorldAwakenedMutatorTestSupport {
     @Test
     void appliesMovementSpeedMultiplierComponent() {
         MobMutatorDefinition mutator = parseMutator("""

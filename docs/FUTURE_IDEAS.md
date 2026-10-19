@@ -39,7 +39,7 @@ Related deferred design docs:
 - `docs/FUTURE_ADMIN_UI.md` for the dedicated post-v1 in-game/admin runtime authoring and inspection UI concept
 
 Related active companion scope:
-- `docs/WEB_AUTHORING_TOOL_SPEC.md` defines the v1 browser datapack authoring/validation tool and is not a backlog item
+- The hosted web authoring tool is retired. Current in-game authoring scope is defined by [SPECIFICATION.md](SPECIFICATION.md) and [SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md).
 
 ---
 

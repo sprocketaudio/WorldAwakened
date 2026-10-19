@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import net.minecraft.nbt.CompoundTag;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 
 class WorldAwakenedConfigSavedDataTest {
     @Test
@@ -23,5 +24,13 @@ class WorldAwakenedConfigSavedDataTest {
         assertTrue(restored.initialized());
         assertEquals(2L, restored.revision());
         assertEquals(changed, restored.settings());
+    }
+
+    @Test
+    void legacySavedConfigKeepsGlobalModeUntilOperatorChangesIt() {
+        CompoundTag legacy = new CompoundTag();
+        legacy.putBoolean("initialized", true);
+        WorldAwakenedConfigSavedData restored = WorldAwakenedConfigSavedData.fromTag(legacy);
+        assertEquals(WorldAwakenedProgressionMode.PER_PLAYER, restored.settings().progressionMode());
     }
 }

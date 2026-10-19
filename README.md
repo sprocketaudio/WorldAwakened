@@ -1,30 +1,53 @@
 # World Awakened
 
-World Awakened is a NeoForge mod framework for Minecraft 1.21.1 focused on **server-authoritative progression-driven difficulty**.
+World Awakened is a NeoForge mod for Minecraft 1.21.1 where difficulty evolves with player progression.
 
-- Last updated: 2026-10-18
+- Last updated: 2026-10-19
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
-The core model is:
-- Java code defines execution systems and behavior types.
-- Datapacks define progression stages, rules, authored mutation/reward compositions, loot evolution, invasions, and integrations.
-- All subsystems share one canonical condition model, action model, scope model, component composition/conflict model, and status taxonomy.
-- Datapack object files use the standard layout `data/<namespace>/<object_type>/*.json` (no duplicate namespace folder layer).
-- TOML config provides operator-level overrides, safety gates, and the `/wa debug` command-tree kill switch.
-- The mod jar ships a conservative Standard gameplay profile through the same datapack schemas available to pack authors.
-- External datapacks remain supported and can add definitions or replace bundled resources by normal resource-pack precedence.
+It gives server owners and modpack authors a configurable difficulty campaign built around:
+
+- **World Phases** that unlock from milestones and control the current world context.
+- **Mob Mutations**, including authored and generated combinations with calculated rarity.
+- **Ascension** offers: permanent, player-specific reward choices.
+- **Evolving Loot** that follows the active progression context.
+- **Pressure Events** that temporarily make ordinary natural spawns more threatening—without scripted wave spawning.
+
+The bundled Standard profile is playable out of the box. It is conservative by default, fully server-authoritative, and uses the same datapack contracts available to custom packs.
 
 Repository/distribution note:
 - Optional example content currently lives under `example_datapacks/worldawakened_example_pack/` and must be installed like a normal datapack.
 
-## Status
-Phase 8 core complete.
+## Get Started
+
+1. Install the mod and create a test world.
+2. As the world owner or an operator, run `/wa config`.
+3. Keep **Standard**, or choose **Start Empty** / **Copy Standard** to author your own campaign.
+4. Use **World Phases** to decide when the world becomes more dangerous, **Mob Mutations** for threats, **Ascension** for permanent player choices, and **Loot** for rewards.
+
+Changes are drafted locally, validated by the server, and only take effect after **Apply**. The editor never rewrites external datapack files.
+
+## What Works Today
+
+- Standard progression, mutations, rarity-aware generated combinations, loot, Ascension, and pressure events.
+- Singleplayer and dedicated-server editor workflows with server permission and revision protection.
+- Per Player progression by default, with safe Per Server switching before progression history exists.
+- External datapacks that add or override the same data-driven definitions.
+
+For exact contracts, advanced datapack authoring, and current limits, use the technical documentation below.
+
+## Historical Implementation Detail
+
+<details>
+<summary>Detailed implementation history and architecture status</summary>
 Phase 0 foundation systems, Phase 1 stage progression, and Phase 2 trigger flow are implemented end-to-end. Phase 3 is implemented: compiled generic rule evaluation (`world | player | entity | spawn_event`), deterministic priority/cooldown/chance ordering, optional world-context condition evaluation (`world_day_gte`, `player_distance_from_spawn`) with fail-closed behavior, single-pass stage propagation (pre-action snapshots), runtime rule cooldown/consumed persistence, per-pass debug trace IDs, explicit `global`/`player` operator targeting for stage/trigger/rule inspection in `PER_PLAYER` mode, optional command-side dimension overrides for manual trigger/rule inspection, and `/wa dump active_rules`. Phase 4 is now implemented: player-scoped ascension runtime offer instances with idempotent grant keys and queued one-pending semantics, clickable chat notifications, minimal client GUI + packet selection flow, server-authoritative selection validation, login/respawn/reload reward reconciliation, WA-owned runtime carriers for refreshable passive reward behavior (including fire resistance and lightmap-backed client night vision), reward-level and component-level suppression controls for owned rewards, operator-friendly ascension selection/reversal/suppression controls (`choose`, `active`, `reopen`, `clear`, `suppress`, `unsuppress`, `reconcile`), copy/suggest chat actions for common operator paths, and explicit `/wa debug reset|clear` persistence-bucket commands for global/player testing and recovery. Phase 5 is now implemented: compiled selector-index mutator narrowing, required per-pool initial and conditional-additional chance gates, bounded any-compatible or curated multi-mutation selection, spawn-time mutator application budgets, deterministic provenance metadata (`WA_MUTATION_*` keys), recursion/re-entry guards, data-driven vanilla-slot mob equipment via `worldawakened:equip_item`, silhouette outline mutation visuals via `worldawakened:glow_style`, simple vanilla effect-style visual emitters via `worldawakened:effect_particles`, advanced raw particle emitters via `worldawakened:ambient_particles`, and command-driven mutator verification (`/wa mob inspect`, `/wa debug mutators evaluate|force_pool|force_mutator`, `/wa debug spawn test`) including explicit chance-pass/chance-fail debug output. Phase 6 is implemented: bounded spawn-pressure + difficulty scalar composition and command/debug evaluation surfaces. Phase 7 is implemented: live loot-profile resolution on WA reward-capable events, canonical loot-context evaluation, Apotheosis-sensitive safety behavior, concise operator loot commands (`/wa loot evaluate|force_profile`), and deep debug loot inspection (`/wa debug loot evaluate|force_profile`).
 Phase 8 is implemented: invasion pressure-event scheduler with persistent active-state tracking, warning/duration/cooldown handling, temporary invasion pressure modifier context, invasion-aware condition context (`invasion_active`, `invasion_tag`) across rules/mutators/loot, and command/debug verification surfaces (`/wa invasion start|stop|inspect`, `/wa debug invasion evaluate`).
 Phase 9 implementation is active in code: compatibility profile activation evaluation, Apotheosis world-tier provider integration, simple `derived_stage` threshold hooks (`stage_hooks -> tier_threshold_unlock`) for automatic WA stage unlocks, advanced tier-filter enforcement for ascension/mutator/loot paths, and compat/scalar inspect-debug command surfaces (`/wa compat list`, `/wa apotheosis tier inspect`, `/wa debug compat evaluate`, `/wa debug scalar provider`).
 The built-in Standard profile is implemented as normal datapack definitions. It supplies S0-S6 milestone progression, eleven live-safe mutation archetypes (including status-on-hit, lifesteal, and block-safe death-explosion threats), unified mutation pools with progressive additional rolls and mob-restricted curated combinations, composed visible mutation names, three player-owned phase-linked Ascension offers, bounded additive mutation loot, and three warning-backed pressure events without bypassing validation, composition, indexing, or runtime budgets. Custom player-advancement milestones still reconcile idempotently on login, and periodic invasion profiles evaluate only in an allowed dimension that currently has players. Rates and rewards remain provisional pending world play-testing.
 The native profile editor now opens on a WorldAwakened dashboard. World Phases presents one ordered timeline of stable shared milestones with supported world-day, dimension-entry, advancement, entity-kill, starting, and manual unlocks. Operators can combine up to three automatic milestones with a flat AND/OR choice; AND completion persists and works in either order for global or per-player progression. The phase browser shows On/Off and Unsaved state and keeps ordering arrows on the selected row, while the detail panel is limited to General, Mob Mutation Dimensions, and Unlock Conditions. Advanced datapack trigger logic and hidden progression groups are preserved when the compact editor cannot represent them safely. The editor shows authoring state only—not whether a world or player has already unlocked a phase—and shares the same Apply, Restore/Delete, Discard, Reset All Defaults, and transient feedback conventions as Mob Mutations. Mob Mutations uses one searchable browser with collapsible World Phases and Pressure Events sections; selecting an entry edits it in the same detail panel. Phase entries then let an operator choose a dimension and named Mob Config, while specialised mob selections take precedence over that dimension's Default Mobs configuration and the runtime still performs one ordinary weighted selection pass. Ascension uses the same native-editor conventions: each offer edits General, Ascension Choices, then When to Offer; availability can follow a World Phase or use up to three independent AND/OR conditions, and the reward selector owns selection, creation, editing, and confirmed deletion/restoration. A compact native choice may combine up to three distinct effects from the genuinely live reward handlers. New rewards and their referencing offer apply atomically. Configuration membership, removal, and gameplay enablement are distinct: disabled configurations remain visible and editable, the Mob Config picker owns Create, Rename, Enable/Disable, Remove, and source-backed Restore actions, and the main editor header remains a selector with boxed read-only status. Pressure-event mutation pools remain gameplay-independent even though they share the editor. Operators can use Standard, start an empty custom profile, create an independent world-persistent copy of Standard, or use the separately confirmed Reset All Defaults action to clear world-authored editor state and restore built-in global settings. External datapack files and earned progression are not reset. World-authored definitions and overrides are persistent, revision-protected, operator-checked, codec-backed, validated on the server, and atomically overlaid without modifying bundled or external datapack files. Existing track/tier metadata is preserved as a compatibility layer, but those implementation terms are not exposed in the normal editor workflow.
 The hosted web-authoring platform is retired. Later native-editor milestones may add the remaining definition editors and simplified rule authoring; advanced datapacks remain supported.
+
+</details>
 
 ## Primary Documentation
 - Documentation index and required read order: [docs/README.md](docs/README.md)
@@ -43,12 +66,13 @@ The hosted web-authoring platform is retired. Later native-editor milestones may
 - Performance budgets and runtime guardrails: [docs/PERFORMANCE_BUDGETS.md](docs/PERFORMANCE_BUDGETS.md)
 - Validation/error code taxonomy: [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md)
 - Preset/template catalog: [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md)
+- Rarity and generated-effect contract: [docs/RARITY_AND_GENERATION.md](docs/RARITY_AND_GENERATION.md)
 - Future backlog and long-term ideas: [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md)
 - Superseded in-game/admin UI proposal: [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md)
 - Agent operating guidance: [AGENTS.md](AGENTS.md)
 
 ## Documentation Sync Policy
-- `docs/README.md` defines required read order, cross-update matrix, and shared reference-doc format expectations.
+- `docs/README.md` defines documentation routing, cross-update matrix, and shared reference-doc format expectations.
 - `docs/wiki/README.md` defines the friendly wiki layer and when it must be updated.
 - `docs/SPECIFICATION.md` is the source-of-truth design contract.
 - `docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md` is the active product plan for built-in gameplay and the native editor.
@@ -65,7 +89,7 @@ The hosted web-authoring platform is retired. Later native-editor milestones may
 - `docs/FUTURE_ADMIN_UI.md` records that its older deferred proposal has been superseded.
 - The `docs/wiki/` layer is the human-readable companion set for operators, authors, testers, and server owners; keep it aligned with real workflows, commands, and recovery guidance.
 - Command output is intentionally layered: default gameplay/operator output should stay concise and human-readable, while dense raw IDs/reason paths belong in inspect/debug surfaces or behind `general.debug_logging`.
-- Every implementation task should reference the governing docs from `docs/README.md` + `AGENTS.md` before making changes.
+- Every implementation task should reference the governing docs selected by `docs/README.md` + `AGENTS.md` before making changes.
 - If the spec changes, update `README.md` summary sections in the same change.
 - If datapack format/shape rules change, update `docs/SPECIFICATION.md` and `docs/DATAPACK_AUTHORING.md` together.
 - If a change affects user mental models, command flows, testing patterns, troubleshooting, or authoring recipes, update the relevant files under `docs/wiki/` in the same change.

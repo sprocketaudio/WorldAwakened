@@ -63,7 +63,7 @@ public final class WorldAwakenedStageStateEngine {
         }
 
         Optional<ResourceLocation> replacedStageId = Optional.empty();
-        if (definition.progressionGroup().isPresent() && definition.unlockPolicy() != StageUnlockPolicy.CUMULATIVE) {
+        if (definition.progressionGroup().isPresent()) {
             String groupId = definition.progressionGroup().get();
             ResourceLocation activeStage = stageState.activeGroupStages().get(groupId);
             if (activeStage != null && !activeStage.equals(resolvedStageId) && stageState.unlockedStages().contains(activeStage)) {
@@ -73,8 +73,10 @@ public final class WorldAwakenedStageStateEngine {
                             Optional.of(resolvedStageId),
                             "Group '" + groupId + "' already has active stage " + activeStage + " and policy is exclusive_group");
                 }
-                replacedStageId = Optional.of(activeStage);
-                clearStage(stageState, activeStage);
+                if (definition.unlockPolicy() == StageUnlockPolicy.REPLACE_GROUP) {
+                    replacedStageId = Optional.of(activeStage);
+                    clearStage(stageState, activeStage);
+                }
             }
             stageState.activeGroupStages().put(groupId, resolvedStageId);
         }

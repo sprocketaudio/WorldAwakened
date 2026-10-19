@@ -284,6 +284,7 @@ Publication labels used below:
 | Code | Publication | Domain | Severity | Lifecycle | Blocking? | Typical causes | Fallback behavior | Fix guidance | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `WA_STAGE_REF_MISSING` | implemented | stage/progression | error | cross-object | yes | Object references unknown stage ID. | Disable dependent object only. | Add missing stage or fix reference ID. | Canonical missing-stage reference code. |
+| `WA_STAGE_ALIAS_CONFLICT` | implemented | stage/progression | error | static data load | yes | A stage alias is duplicated, shadows a canonical stage ID, or repeats within its owner. | Disable the invalid stage definition; never choose an arbitrary alias owner. | Make every alias unique and retain the canonical ID only once. | Advanced aliases resolve persisted state and authored stage references, but are not exposed in the simplified GUI. |
 | `WA_ASCENSION_REWARD_INVALID` | implemented | ascension | error | validation | yes | Invalid reward definition fields, icon, or constraints. | Disable reward object (and dependents if unresolved). | Fix reward schema/content. | Used by loader validation paths. |
 | `WA_PRESSURE_TIER_PROVIDER_INVALID` | published | pressure tier compat | error | config/validation | branch-level | Invalid/unsupported tier provider configuration. | Disable provider branch; preserve unrelated systems. | Correct provider ID/config and compat toggles. | Listed as canonical in spec naming guidance. |
 | `WA_DIFFICULTY_GLOBAL_INVALID` | published | difficulty config | error | config | subsystem-level | Invalid global modifier defaults/bounds. | Disable or clamp affected difficulty branch per policy. | Fix bounds/defaults in config/datapack policy. | Recommended in spec Section 5B. |
@@ -508,6 +509,7 @@ When introducing or changing published diagnostics:
 | `WA_CODEC_PARSE_FAILED` | error | schema/load | yes |
 | `WA_MISSING_REQUIRED_FIELD` | error | schema/load | yes |
 | `WA_STAGE_REF_MISSING` | error | stage/reference | yes |
+| `WA_STAGE_ALIAS_CONFLICT` | error | stage/reference | yes |
 | `WA_INVALID_REFERENCE` | warning or error | references | depends |
 | `WA_COMPONENT_TYPE_UNKNOWN` | error | components | yes |
 | `WA_COMPONENT_PARAMETERS_INVALID` | error | components | yes |

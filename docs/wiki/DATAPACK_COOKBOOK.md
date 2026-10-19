@@ -3,7 +3,7 @@
 Copyable authoring patterns with plain-language explanation.
 
 - Document status: Active friendly authoring cookbook
-- Last updated: 2026-10-17
+- Last updated: 2026-10-19
 - Scope: Common trigger, rule, mutator, and ascension patterns
 
 ---
@@ -17,6 +17,20 @@ Each recipe answers three questions:
 
 Use the technical docs for the full contract.
 Use this file when you need a working pattern.
+
+## Keep A Renamed Stage Working In Existing Saves
+
+Use this when a released datapack renames a stage ID. Keep the new ID canonical and list the old ID in `aliases`:
+
+```json
+{
+  "id": "my_pack:nether_expedition",
+  "aliases": ["my_pack:nether_opened"],
+  "display_name": "Nether Expedition"
+}
+```
+
+Saved progression and authored references using `my_pack:nether_opened` then resolve to `my_pack:nether_expedition`. An alias must be unique, cannot be another stage's canonical ID, and is deliberately an advanced datapack feature rather than a World Phases GUI field.
 
 ## Recipe 1: Unlock A Shared Stage When Any Player Enters The Nether
 
@@ -260,7 +274,60 @@ After authoring a new trigger/rule pattern:
 
 This catches scope mistakes early.
 
-## Recipe 8: Give A Mutated Mob Gear Without Breaking The Whole Mutation
+## Recipe 8: Create Your First Randomly Generated Mutant
+
+Use this when you want a mutation to roll from reusable effects instead of selecting only a named authored mutator.
+
+1. Define two compatible effects. Each has a gameplay value, a selection weight, and a power score. The power score classifies the completed roll; it does not change the effect's gameplay value.
+
+```json
+{
+  "id": "my_pack:swift",
+  "scope": "mob_mutation",
+  "effect_type": "worldawakened:movement_speed_multiplier",
+  "parameters": { "multiplier": 1.12 },
+  "power": 6,
+  "selection_weight": 18,
+  "allow_repeat": false
+}
+```
+
+```json
+{
+  "id": "my_pack:watchful",
+  "scope": "mob_mutation",
+  "effect_type": "worldawakened:follow_range_bonus",
+  "parameters": { "bonus": 8.0 },
+  "power": 4,
+  "selection_weight": 12,
+  "allow_repeat": false
+}
+```
+
+2. Put them in a generated pool. This pool mostly rolls one effect, but can roll both because it contains two non-repeating compatible candidates.
+
+```json
+{
+  "id": "my_pack:early_generated_mutations",
+  "scope": "mob_mutation",
+  "mode": "generated",
+  "configured_effects": ["my_pack:swift", "my_pack:watchful"],
+  "combination_sizes": [
+    { "size": 1, "weight": 80 },
+    { "size": 2, "weight": 20 }
+  ]
+}
+```
+
+3. Reference that generation pool from your ordinary mutation-pool authoring flow.
+
+If a mob rolls both effects, its resolved power is `10`. The rarity resolver assigns the highest configured rarity threshold at or below `10`. World Awakened persists the complete rolled effect values with that mob, so changing `swift` later does not alter a mob that already spawned.
+
+For a pool that sometimes uses named curated mutations and sometimes generates effects, use `"mode": "mixed"`. The final mutation still records whether that particular result was **curated** or **generated**; “mixed” is the pool's generation policy, not a runtime result type.
+
+See [RARITY_AND_GENERATION.md](../RARITY_AND_GENERATION.md) for the complete schema and safety rules.
+
+## Recipe 9: Give A Mutated Mob Gear Without Breaking The Whole Mutation
 
 Use this when:
 - you want a mutator to hand a mob one or more authored items
@@ -306,7 +373,7 @@ Testing loop:
 3. run `/wa mob inspect`
 4. if the gear did not apply, check failed-closed component entries for `WA_MUTATOR_COMPONENT_SKIPPED_UNAVAILABLE_SURFACE`
 
-## Recipe 9: Add Mutation Visuals (Outline + Vanilla Particles) Without Gameplay Potions
+## Recipe 10: Add Mutation Visuals (Outline + Vanilla Particles) Without Gameplay Potions
 
 Use this when:
 - you want a clear mutation outline tell that works on awkward mob shapes
@@ -380,7 +447,7 @@ Notes:
 - use `ambient_particles` for direct simple particle emission
 - use `/wa mob inspect` to confirm active `glow_style` and particle visual state on the mutated mob
 
-## Recipe: Add A Live Combat Ability To A Mutator
+## Recipe 11: Add A Live Combat Ability To A Mutator
 
 Use `on_hit_effect` for a bounded debuff after a successful hit:
 

@@ -81,7 +81,7 @@ class WorldAwakenedPhaseOrderingTest {
         definitions.forEach((stageId, stage) -> authored.put(stageId,
                 withSort(stage, moved.sortIndexes().get(stageId.toString()))));
         WorldAwakenedProfileOverrideSavedData saved = new WorldAwakenedProfileOverrideSavedData();
-        saved.replaceAll(authored, Map.of(), Map.of(), Map.of());
+        saved.replaceAll(authored, Map.of(), Map.of());
         CompoundTag persisted = saved.save(new CompoundTag(), null);
 
         Map<ResourceLocation, StageDefinition> restarted = decodePersistedStages(persisted);

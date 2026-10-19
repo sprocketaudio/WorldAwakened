@@ -14,7 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.neoforge.common.NeoForge;
-import net.sprocketgames.worldawakened.config.WorldAwakenedCommonConfig;
+import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackService;
 import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
@@ -41,7 +41,6 @@ public final class WorldAwakenedStageService {
 
         WorldAwakenedStageRegistry rebuilt = WorldAwakenedStageRegistry.from(snapshot.data().stages());
         registryCache.set(new CachedStageRegistry(snapshot.loadedAt(), rebuilt));
-        logAliasConflicts(rebuilt);
         return rebuilt;
     }
 
@@ -104,6 +103,29 @@ public final class WorldAwakenedStageService {
         return Set.copyOf(selectedState.stageState().unlockedStages());
     }
 
+    /** The phase/trigger/rule state for this player in the configured ownership mode. */
+    public WorldAwakenedProgressionState progressionState(ServerLevel level, ServerPlayer player) {
+        return selectStageState(level, player).state();
+    }
+
+    public WorldAwakenedProgressionOwner progressionOwner(ServerPlayer player) {
+        return WorldAwakenedProgressionOwner.resolve(
+                configuredMode(), player == null ? null : player.getUUID(),
+                WorldAwakenedFtbTeamsIntegration.teamId(player));
+    }
+
+    /** Returns the current effective phase for each progression group. */
+    public Set<ResourceLocation> getActiveStages(ServerLevel level, ServerPlayer player) {
+        SelectedStageState selectedState = selectStageState(level, player);
+        return stageRegistry().activeStageIds(
+                selectedState.stageState().unlockedStages(),
+                selectedState.stageState().activeGroupStages());
+    }
+
+    public Set<ResourceLocation> getActiveStages(ServerLevel level) {
+        return getActiveStages(level, null);
+    }
+
     public Optional<ResourceLocation> getHighestStageInGroup(ServerLevel level, String groupId) {
         return getHighestStageInGroup(level, null, groupId);
     }
@@ -120,6 +142,9 @@ public final class WorldAwakenedStageService {
         SelectedStageState selectedState = selectStageState(level, player);
         WorldAwakenedStageRegistry registry = stageRegistry();
         Set<ResourceLocation> unlockedStages = Set.copyOf(selectedState.stageState().unlockedStages());
+        Set<ResourceLocation> activeStages = registry.activeStageIds(
+                unlockedStages,
+                selectedState.stageState().activeGroupStages());
         Set<ResourceLocation> inactiveStages = registry.inactiveStageIds(unlockedStages);
 
         return new WorldAwakenedEffectiveStageContext(
@@ -127,29 +152,39 @@ public final class WorldAwakenedStageService {
                 selectedState.effectiveMode(),
                 selectedState.usedWorldFallback(),
                 unlockedStages,
+                activeStages,
                 inactiveStages,
                 selectedState.stageState().activeGroupStages());
     }
 
     private SelectedStageState selectStageState(ServerLevel level, ServerPlayer player) {
-        WorldAwakenedProgressionMode configuredMode = WorldAwakenedProgressionMode.fromConfig(WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
+        WorldAwakenedProgressionMode configuredMode = configuredMode();
 
         if (configuredMode == WorldAwakenedProgressionMode.PER_PLAYER && player != null) {
-            WorldAwakenedPlayerProgressionSavedData playerData = WorldAwakenedPlayerProgressionSavedData.get(level);
+            WorldAwakenedProgressionOwner owner = progressionOwner(player);
+            WorldAwakenedProgressionState state = switch (owner.kind()) {
+                case FTB_TEAM -> WorldAwakenedTeamProgressionSavedData.get(level).getOrCreate(owner.key());
+                case PLAYER -> WorldAwakenedPlayerProgressionSavedData.get(level).getOrCreate(player.getUUID());
+                case SERVER -> WorldAwakenedWorldProgressionSavedData.get(level);
+            };
             return withDefaultStages(new SelectedStageState(
-                    playerData.getOrCreate(player.getUUID()),
+                    state,
                     configuredMode,
                     WorldAwakenedProgressionMode.PER_PLAYER,
                     false));
         }
 
         WorldAwakenedWorldProgressionSavedData worldData = WorldAwakenedWorldProgressionSavedData.get(level);
-        boolean useFallback = configuredMode != WorldAwakenedProgressionMode.GLOBAL;
+        boolean useFallback = configuredMode != WorldAwakenedProgressionMode.PER_SERVER;
         return withDefaultStages(new SelectedStageState(
                 worldData,
                 configuredMode,
-                WorldAwakenedProgressionMode.GLOBAL,
+                WorldAwakenedProgressionMode.PER_SERVER,
                 useFallback));
+    }
+
+    private static WorldAwakenedProgressionMode configuredMode() {
+        return WorldAwakenedConfigService.settings().progressionMode();
     }
 
     private SelectedStageState withDefaultStages(SelectedStageState selectedState) {
@@ -160,27 +195,15 @@ public final class WorldAwakenedStageService {
         return selectedState;
     }
 
-    private static void logAliasConflicts(WorldAwakenedStageRegistry registry) {
-        if (registry.aliasConflicts().isEmpty()) {
-            return;
-        }
-        registry.aliasConflicts().forEach((alias, ids) -> WorldAwakenedLog.warn(
-                LOGGER,
-                WorldAwakenedLogCategory.CORE,
-                "Stage alias conflict for {} resolved deterministically to {} (candidates={})",
-                alias,
-                registry.aliasMappings().get(alias),
-                ids));
-    }
-
     private record CachedStageRegistry(Instant loadedAt, WorldAwakenedStageRegistry registry) {
     }
 
     private record SelectedStageState(
-            WorldAwakenedMutableStageState stageState,
+            WorldAwakenedProgressionState state,
             WorldAwakenedProgressionMode configuredMode,
             WorldAwakenedProgressionMode effectiveMode,
             boolean usedWorldFallback) {
+        WorldAwakenedMutableStageState stageState() { return state; }
     }
 }
 

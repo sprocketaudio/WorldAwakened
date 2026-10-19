@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.gson.JsonObject;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 
 public record WorldAwakenedEditorSettings(
         boolean defaultGameplayEnabled,
@@ -14,7 +15,8 @@ public record WorldAwakenedEditorSettings(
         int maximumMutationsPerMob,
         boolean pressureEventsEnabled,
         double eventFrequencyMultiplier,
-        boolean ascensionEnabled) {
+        boolean ascensionEnabled,
+        WorldAwakenedProgressionMode progressionMode) {
     public static final double MIN_DIFFICULTY_INTENSITY = 0.01D;
     public static final double MAX_DIFFICULTY_INTENSITY = 10.0D;
     public static final double MIN_MUTATION_FREQUENCY = 0.0D;
@@ -23,6 +25,10 @@ public record WorldAwakenedEditorSettings(
     public static final int MAX_MUTATIONS_PER_MOB = 8;
     public static final double MIN_EVENT_FREQUENCY = 0.25D;
     public static final double MAX_EVENT_FREQUENCY = 4.0D;
+
+    public WorldAwakenedEditorSettings {
+        progressionMode = progressionMode == null ? WorldAwakenedProgressionMode.PER_PLAYER : progressionMode;
+    }
 
     public static WorldAwakenedEditorSettings builtInDefaults() {
         return new WorldAwakenedEditorSettings(
@@ -34,7 +40,16 @@ public record WorldAwakenedEditorSettings(
                 2,
                 true,
                 1.0D,
-                true);
+                true,
+                WorldAwakenedProgressionMode.PER_PLAYER);
+    }
+
+    public WorldAwakenedEditorSettings(boolean defaultGameplayEnabled, double difficultyIntensity, boolean mutationsEnabled,
+            double mutationFrequencyMultiplier, boolean allowMultipleMutations, int maximumMutationsPerMob,
+            boolean pressureEventsEnabled, double eventFrequencyMultiplier, boolean ascensionEnabled) {
+        this(defaultGameplayEnabled, difficultyIntensity, mutationsEnabled, mutationFrequencyMultiplier,
+                allowMultipleMutations, maximumMutationsPerMob, pressureEventsEnabled, eventFrequencyMultiplier,
+                ascensionEnabled, WorldAwakenedProgressionMode.PER_PLAYER);
     }
 
     public static WorldAwakenedEditorSettings fromCommonConfig(double persistedDifficultyIntensity) {
@@ -47,7 +62,9 @@ public record WorldAwakenedEditorSettings(
                 Math.max(MIN_MUTATIONS_PER_MOB, WorldAwakenedCommonConfig.MAX_MUTATORS_PER_MOB.get()),
                 WorldAwakenedCommonConfig.ENABLE_INVASIONS.get(),
                 1.0D,
-                WorldAwakenedCommonConfig.ENABLE_ASCENSION.get());
+                WorldAwakenedCommonConfig.ENABLE_ASCENSION.get(),
+                WorldAwakenedProgressionMode.parse(WorldAwakenedCommonConfig.PROGRESSION_MODE.get())
+                        .orElse(WorldAwakenedProgressionMode.PER_PLAYER));
     }
 
     public List<String> validationErrors(double difficultyMinimum, double difficultyMaximum) {
@@ -91,6 +108,7 @@ public record WorldAwakenedEditorSettings(
         root.addProperty("pressure_events_enabled", pressureEventsEnabled);
         root.addProperty("event_frequency_multiplier", eventFrequencyMultiplier);
         root.addProperty("ascension_enabled", ascensionEnabled);
+        root.addProperty("progression_mode", progressionMode.serializedName());
         return root;
     }
 
@@ -104,6 +122,10 @@ public record WorldAwakenedEditorSettings(
                 root.get("maximum_mutations_per_mob").getAsInt(),
                 root.get("pressure_events_enabled").getAsBoolean(),
                 root.get("event_frequency_multiplier").getAsDouble(),
-                root.get("ascension_enabled").getAsBoolean());
+                root.get("ascension_enabled").getAsBoolean(),
+                root.has("progression_mode")
+                        ? WorldAwakenedProgressionMode.parse(root.get("progression_mode").getAsString())
+                                .orElseThrow(() -> new IllegalArgumentException("Unsupported progression_mode; use per_server or per_player."))
+                        : WorldAwakenedProgressionMode.PER_PLAYER);
     }
 }

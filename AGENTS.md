@@ -5,29 +5,26 @@ This repository is building **World Awakened**, a Minecraft 1.21.1 + NeoForge fr
 
 This file defines how coding agents should operate in this repo.
 
-- Last updated: 2026-10-17
+- Last updated: 2026-10-19
 - Documentation index/read order: [docs/README.md](docs/README.md)
 
-## Read Order Before Any Task
-1. [docs/README.md](docs/README.md) (documentation map and cross-update contract)
-2. [README.md](README.md)
-3. [docs/SPECIFICATION.md](docs/SPECIFICATION.md)
-4. [docs/DATAPACK_AUTHORING.md](docs/DATAPACK_AUTHORING.md)
-5. [docs/COMPONENT_REFERENCE.md](docs/COMPONENT_REFERENCE.md)
-6. [docs/COMPOSITION_AND_STACKING.md](docs/COMPOSITION_AND_STACKING.md)
-7. [docs/CONDITION_REFERENCE.md](docs/CONDITION_REFERENCE.md)
-8. [docs/ACTION_REFERENCE.md](docs/ACTION_REFERENCE.md)
-9. [docs/SCOPE_MATRIX.md](docs/SCOPE_MATRIX.md)
-10. [docs/DEBUG_AND_INSPECTION.md](docs/DEBUG_AND_INSPECTION.md)
-11. [docs/PERFORMANCE_BUDGETS.md](docs/PERFORMANCE_BUDGETS.md)
-12. [docs/VALIDATION_AND_ERROR_CODES.md](docs/VALIDATION_AND_ERROR_CODES.md)
-13. [docs/PRESET_CATALOG.md](docs/PRESET_CATALOG.md)
-14. [docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md](docs/SIMPLIFICATION_AND_DEFAULT_GAMEPLAY.md)
-15. [docs/DEFAULT_GAMEPLAY_SPEC.md](docs/DEFAULT_GAMEPLAY_SPEC.md) when built-in gameplay content, balance, rewards, or pressure events are relevant
-16. [docs/WEB_AUTHORING_TOOL_SPEC.md](docs/WEB_AUTHORING_TOOL_SPEC.md) only when historical web-tool context is relevant
-17. [docs/wiki/README.md](docs/wiki/README.md) when changes affect user-facing workflows, operator flows, testing guidance, troubleshooting, or author mental models
-18. [docs/FUTURE_IDEAS.md](docs/FUTURE_IDEAS.md) only when discussing post-v1 backlog or promoting deferred ideas
-19. [docs/FUTURE_ADMIN_UI.md](docs/FUTURE_ADMIN_UI.md) only when historical admin-UI context is relevant
+## Documentation Intake Before Any Task
+
+Use the smallest reliable documentation set. `docs/README.md` routes every task to its relevant contract; it is not a reason to read every reference document.
+
+### 1. Always read
+1. [AGENTS.md](AGENTS.md)
+2. [docs/README.md](docs/README.md)
+3. [README.md](README.md) when a public-facing feature, scope, or status is relevant
+4. The relevant current-contract section of [docs/SPECIFICATION.md](docs/SPECIFICATION.md)
+
+### 2. Read for the task's subsystem
+
+Read only the references named by the route table in `docs/README.md`. For example, a Loot-editor layout fix does not require the complete action, condition, or mutation-component catalogues. Read shared contracts when the task changes them, and read the relevant wiki page when a user workflow changes.
+
+### 3. Read when affected
+
+Read additional references only when the requested change affects their contract: bundled balance uses `DEFAULT_GAMEPLAY_SPEC.md`; datapack shape uses `DATAPACK_AUTHORING.md`; deferred/historical scope uses the applicable future or historical document. Use `rg` to locate the current contract section rather than relying on unrelated historical prose.
 
 Task citation rule:
 - In every task response, list the docs consulted before implementation.
@@ -39,6 +36,10 @@ If there is a conflict, follow this priority:
 4. Existing code style and project conventions
 
 ## Core Product Rules
+- WorldAwakened is unreleased greenfield software. Do not preserve abandoned internal schemas, aliases,
+  migration paths, or replacement representations unless the user explicitly requires a public migration.
+- Refactor onto the current authoritative model and remove the obsolete implementation; current-format save
+  persistence, datapack loading, NeoForge compatibility, and optional integrations are not legacy paths.
 - Keep gameplay authority on the server.
 - Keep content and balance data-driven via datapacks and config.
 - Keep one shared datapack/data contract across raw datapacks, bundled defaults, runtime state, and native-editor overrides.
@@ -214,5 +215,5 @@ Phase 5 is complete (mutators + mutation pools + spawn-time application + inspec
 Phase 6 is complete (spawn pressure controls + rule-event guardrails + shared effective-scalar provider).  
 Phase 7 is complete (loot evolution integration + Apotheosis-sensitive loot safety behavior + loot debug evaluate/force surfaces).  
 Phase 8 is complete (invasion pressure-event scheduler + active-state + warning/duration/cooldown + temporary pressure modifier + invasion command/debug surfaces).  
-The native `/wa config` dashboard, Global Settings, World Phases timeline, profile creation (Standard/Start Empty/Copy Standard), phase/dimension/named mob configurations, mutation editor, server-derived selectors, and revisioned world-authoring bridge are implemented. Legacy Difficulty Track/tier records remain an internal compatibility representation and must not reappear as the normal operator-facing workflow. Current work is in-game singleplayer/dedicated-server GUI validation and hardening before full mutator-component, reward, event, or generic rule-editor expansion; preserve and validate the Phase 9 compatibility work already present.
+The native `/wa config` dashboard, Global Settings, World Phases timeline, profile creation (Standard/Start Empty/Copy Standard), phase/dimension/named mob configurations, mutation editor, server-derived selectors, and revisioned world-authoring bridge are implemented. World Phases and their direct mutation-pool relationships are the only WorldAwakened progression-authoring model. Current work is in-game singleplayer/dedicated-server GUI validation and hardening before full mutator-component, reward, event, or generic rule-editor expansion; preserve and validate the Phase 9 optional-integration work already present.
 

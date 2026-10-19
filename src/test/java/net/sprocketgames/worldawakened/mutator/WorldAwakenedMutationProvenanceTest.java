@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Optional;
 
+import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import net.minecraft.nbt.CompoundTag;
@@ -49,6 +50,33 @@ class WorldAwakenedMutationProvenanceTest {
         WorldAwakenedMutationProvenance.markMutatorSpawnOrigin(tag, 0);
         assertEquals(1, WorldAwakenedMutationProvenance.mutationDepth(tag));
         assertTrue(WorldAwakenedMutationProvenance.isRecursionBlocked(tag));
+    }
+
+    @Test
+    void persistsResolvedComponentParametersRatherThanOnlyDefinitionIds() {
+        CompoundTag tag = new CompoundTag();
+        JsonObject parameters = new JsonObject();
+        parameters.addProperty("damage", 8);
+        parameters.addProperty("cooldown_ticks", 300);
+        WorldAwakenedMutationProvenance.ResolvedMutationComponent component =
+                new WorldAwakenedMutationProvenance.ResolvedMutationComponent(
+                        ResourceLocation.parse("testpack:lightning_strike"),
+                        ResourceLocation.parse("worldawakened:lightning_package"), parameters, 11);
+        parameters.addProperty("damage", 99);
+
+        WorldAwakenedMutationProvenance.writeProvenance(tag,
+                new WorldAwakenedMutationProvenance.MutationProvenancePayload(
+                        Optional.empty(), List.of(), List.of(component.sourceEffectId()), List.of(component.componentType()),
+                        List.of(component), List.of(), "WA-T124", 0,
+                        WorldAwakenedMutationProvenance.ORIGIN_SPAWN_PIPELINE, List.of(), "instance", 11,
+                        Optional.of(ResourceLocation.parse("worldawakened:rare")), "generated"));
+
+        WorldAwakenedMutationProvenance.MutationProvenanceView read = WorldAwakenedMutationProvenance.read(tag);
+        assertEquals(1, read.resolvedComponents().size());
+        assertEquals("8", read.resolvedComponents().getFirst().parameters().get("damage").getAsString());
+        assertEquals("300", read.resolvedComponents().getFirst().parameters().get("cooldown_ticks").getAsString());
+        assertEquals(11, read.resolvedComponents().getFirst().power());
+        assertEquals("generated", read.generationSource());
     }
 
     @Test

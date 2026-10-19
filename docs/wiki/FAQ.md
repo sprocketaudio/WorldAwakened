@@ -3,7 +3,7 @@
 Short answers to the questions people actually ask.
 
 - Document status: Active friendly FAQ
-- Last updated: 2026-10-17
+- Last updated: 2026-10-19
 - Scope: Common operator and author questions
 
 ---
@@ -282,11 +282,11 @@ Custom datapacks remain supported. Reuse the exact bundled namespace/path to rep
 
 ## Where Is The Configuration Screen?
 
-Run `/wa config` in game as an operator or singleplayer owner. The server-authoritative dashboard exposes Global Settings and a functional Mob Mutations editor. You can search actual pools and server living mobs, edit supported pool fields, validate/apply a world override, or revert one pool to its datapack source.
+Run `/wa config` in game as an operator or singleplayer owner. The server-authoritative dashboard exposes Global Settings, World Phases, Mob Mutations, Loot, and Ascension. You can search actual pools and server living mobs, author supported mutators and permanent Ascension choices, validate/apply a world override, or restore a definition to its datapack source.
 
-The Progression editor can also create shared stages with supported milestones, while Difficulty Tracks connect those stages to ordinary mutation pools. Choose Start Empty for a profile without bundled gameplay or Copy Standard for an independent editable copy. These operations retain saved stage history and do not rewrite external datapacks.
+World Phases is the normal progression editor. It creates and orders phases with supported milestones, dimensions, and phase-linked mob configurations. Choose Start Empty for a profile without bundled gameplay or Copy Standard for an independent editable copy. These operations retain saved stage history and do not rewrite external datapacks.
 
-The screen does not pretend unfinished presets or editors are ready: those tiles are marked unavailable. Standard is the only bundled profile, and full progression, mutator-component, rewards, event, and rule authoring still belongs in datapacks. The former hosted web editor remains retired.
+The editor deliberately keeps advanced rule authoring and unsupported component handlers in datapacks. Standard is the only bundled profile; World Phases, supported mutators, Ascension rewards/offers, and Loot profiles are available in the native editor. The former hosted web editor remains retired.
 
 ## Where Should I Look First When Something Feels Wrong?
 

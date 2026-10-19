@@ -49,7 +49,7 @@ import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageService;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
-class WorldAwakenedMutatorCombatPackRegressionTest {
+class WorldAwakenedMutatorCombatPackRegressionTest extends WorldAwakenedMutatorTestSupport {
     private static final Path PACK_ROOT = resolvePackRoot();
 
     @Test

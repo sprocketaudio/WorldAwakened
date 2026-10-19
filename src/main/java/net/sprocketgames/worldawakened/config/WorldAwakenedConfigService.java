@@ -11,14 +11,21 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.resources.ResourceLocation;
+import net.sprocketgames.worldawakened.WorldAwakenedMod;
+import net.sprocketgames.worldawakened.data.definition.StageDefinition;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedWorldProgressionSavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedTeamProgressionSavedData;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionHistory;
 
 public final class WorldAwakenedConfigService {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final AtomicReference<ConfigSnapshot> ACTIVE = new AtomicReference<>(
-            new ConfigSnapshot(0L, WorldAwakenedEditorSettings.fromCommonConfig(1.0D)));
+            new ConfigSnapshot(0L, bootstrapSettings()));
     private static final ThreadLocal<WorldAwakenedEditorSettings> PREVIEW = new ThreadLocal<>();
     private static MinecraftServer boundServer;
 
@@ -73,7 +80,7 @@ public final class WorldAwakenedConfigService {
             return;
         }
         boundServer = null;
-        ACTIVE.set(new ConfigSnapshot(0L, WorldAwakenedEditorSettings.fromCommonConfig(1.0D)));
+        ACTIVE.set(new ConfigSnapshot(0L, bootstrapSettings()));
     }
 
     public static ConfigSnapshot snapshot() {
@@ -88,15 +95,35 @@ public final class WorldAwakenedConfigService {
     static synchronized void resetForTests() {
         boundServer = null;
         PREVIEW.remove();
-        ACTIVE.set(new ConfigSnapshot(0L, WorldAwakenedEditorSettings.builtInDefaults()));
+        ACTIVE.set(new ConfigSnapshot(0L, bootstrapSettings()));
     }
 
     public static <T> T withPreviewSettings(WorldAwakenedEditorSettings settings, Supplier<T> operation) {
+        WorldAwakenedEditorSettings previous = PREVIEW.get();
         PREVIEW.set(settings);
         try {
             return operation.get();
         } finally {
+            restorePreview(previous);
+        }
+    }
+
+    /**
+     * Temporarily overrides the thread-local settings view. This keeps isolated
+     * evaluation and preview callers from mutating the server-authoritative
+     * configuration snapshot, and supports correctly nested overrides.
+     */
+    public static PreviewSettingsScope pushPreviewSettings(WorldAwakenedEditorSettings settings) {
+        WorldAwakenedEditorSettings previous = PREVIEW.get();
+        PREVIEW.set(settings);
+        return new PreviewSettingsScope(previous);
+    }
+
+    private static void restorePreview(WorldAwakenedEditorSettings previous) {
+        if (previous == null) {
             PREVIEW.remove();
+        } else {
+            PREVIEW.set(previous);
         }
     }
 
@@ -134,6 +161,11 @@ public final class WorldAwakenedConfigService {
                     current,
                     current);
         }
+        if (candidate.progressionMode() != current.settings().progressionMode() && hasProgressionHistory(level)) {
+            return ApplyResult.rejected(ApplyStatus.UNSAFE_PROGRESSION_MODE_CHANGE,
+                    "Progression mode cannot change after meaningful phase progress exists. Reset progression first.",
+                    current, current);
+        }
 
         data.apply(candidate);
         ConfigSnapshot accepted = new ConfigSnapshot(data.revision(), data.settings());
@@ -167,7 +199,7 @@ public final class WorldAwakenedConfigService {
                 settings.maximumMutationsPerMob(),
                 settings.pressureEventsEnabled(),
                 settings.eventFrequencyMultiplier(),
-                settings.ascensionEnabled());
+                settings.ascensionEnabled(), settings.progressionMode());
         return apply(level, current.revision(), candidate, actor);
     }
 
@@ -228,11 +260,33 @@ public final class WorldAwakenedConfigService {
                 maximumMutations,
                 settings.pressureEventsEnabled(),
                 eventFrequency,
-                settings.ascensionEnabled());
+                settings.ascensionEnabled(), settings.progressionMode());
     }
 
     private static double finiteOr(double value, double fallback) {
         return Double.isFinite(value) ? value : fallback;
+    }
+
+    /** Before a level binds, use the same default ownership mode as a new world. */
+    private static WorldAwakenedEditorSettings bootstrapSettings() {
+        WorldAwakenedEditorSettings defaults = WorldAwakenedEditorSettings.builtInDefaults();
+        return new WorldAwakenedEditorSettings(defaults.defaultGameplayEnabled(), defaults.difficultyIntensity(),
+                defaults.mutationsEnabled(), defaults.mutationFrequencyMultiplier(), defaults.allowMultipleMutations(),
+                defaults.maximumMutationsPerMob(), defaults.pressureEventsEnabled(), defaults.eventFrequencyMultiplier(),
+                defaults.ascensionEnabled(), WorldAwakenedProgressionMode.PER_PLAYER);
+    }
+
+    private static boolean hasProgressionHistory(ServerLevel level) {
+        java.util.Set<ResourceLocation> defaultStageIds = WorldAwakenedMod.STAGE_SERVICE.stageRegistry().orderedStages().stream()
+                .filter(StageDefinition::enabled)
+                .filter(StageDefinition::defaultUnlocked)
+                .map(StageDefinition::id)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        return WorldAwakenedProgressionHistory.hasMeaningfulHistory(
+                        WorldAwakenedWorldProgressionSavedData.get(level), defaultStageIds)
+                || WorldAwakenedPlayerProgressionSavedData.get(level).playerStates().values().stream()
+                        .anyMatch(state -> WorldAwakenedProgressionHistory.hasMeaningfulHistory(state, defaultStageIds))
+                || WorldAwakenedTeamProgressionSavedData.get(level).hasMeaningfulHistory(defaultStageIds);
     }
 
     private static double clamp(double value, double minimum, double maximum) {
@@ -242,13 +296,31 @@ public final class WorldAwakenedConfigService {
     public record ConfigSnapshot(long revision, WorldAwakenedEditorSettings settings) {
     }
 
+    public static final class PreviewSettingsScope implements AutoCloseable {
+        private final WorldAwakenedEditorSettings previous;
+        private boolean closed;
+
+        private PreviewSettingsScope(WorldAwakenedEditorSettings previous) {
+            this.previous = previous;
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                restorePreview(previous);
+                closed = true;
+            }
+        }
+    }
+
     public record BindResult(ConfigSnapshot snapshot, boolean requiresDatapackReload) {
     }
 
     public enum ApplyStatus {
         ACCEPTED,
         STALE_REVISION,
-        VALIDATION_FAILED
+        VALIDATION_FAILED,
+        UNSAFE_PROGRESSION_MODE_CHANGE
     }
 
     public record ApplyResult(

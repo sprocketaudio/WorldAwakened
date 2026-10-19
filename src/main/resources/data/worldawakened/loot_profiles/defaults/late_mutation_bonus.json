@@ -2,6 +2,19 @@
   "schema_version": 1,
   "id": "worldawakened:defaults/late_mutation_bonus",
   "enabled": true,
+  "profile_type": "mob",
+  "authoring": {
+    "display_name": "Late Mutation Bonus",
+    "description": "Valuable bonus drops from late-game mutated hostiles.",
+    "target_entities": [
+      "minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:skeleton",
+      "minecraft:stray", "minecraft:spider", "minecraft:cave_spider", "minecraft:pillager",
+      "minecraft:vindicator", "minecraft:wither_skeleton", "minecraft:piglin_brute",
+      "minecraft:hoglin", "minecraft:blaze", "minecraft:magma_cube", "minecraft:endermite",
+      "minecraft:shulker"
+    ],
+    "item_chance": 0.20
+  },
   "target_loot_tables": [
     "minecraft:entities/zombie", "minecraft:entities/husk", "minecraft:entities/drowned",
     "minecraft:entities/skeleton", "minecraft:entities/stray", "minecraft:entities/spider",
@@ -11,10 +24,14 @@
     "minecraft:entities/shulker"
   ],
   "conditions": [
-    { "type": "worldawakened:entity_is_mutated", "parameters": {} },
-    { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/end_reached" } },
-    { "type": "worldawakened:random_chance", "parameters": { "chance": 0.20 } }
+    { "type": "worldawakened:entity_is_mutated", "parameters": {} }
   ],
+  "stage_filters": {
+    "required_any": [
+      "worldawakened:defaults/end_reached",
+      "worldawakened:defaults/world_awakened"
+    ]
+  },
   "replace_mode": "inject",
   "entries": [
     { "type": "item", "item": "minecraft:iron_ingot", "weight": 2, "min": 1, "max": 1 },

@@ -4,6 +4,7 @@
   "display_name": { "translate": "mutator.worldawakened.defaults.sharp_eyed" },
   "enabled": true,
   "rarity": "uncommon",
+  "power": 2,
   "weight": 8,
   "stacking_group": "worldawakened:default_perception",
   "max_stack_count": 1,

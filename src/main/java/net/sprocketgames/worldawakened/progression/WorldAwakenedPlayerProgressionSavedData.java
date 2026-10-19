@@ -110,7 +110,7 @@ public final class WorldAwakenedPlayerProgressionSavedData extends SavedData {
         return Collections.unmodifiableMap(playerStates);
     }
 
-    public static final class PlayerStageState implements WorldAwakenedMutableStageState, WorldAwakenedMutableTriggerState, WorldAwakenedMutableRuleState {
+    public static final class PlayerStageState implements WorldAwakenedProgressionState {
         private static final String KEY_UNLOCKED_STAGES = "unlocked_stages";
         private static final String KEY_UNLOCK_TIMESTAMPS = "unlock_timestamps";
         private static final String KEY_UNLOCK_SOURCES = "unlock_sources";

@@ -57,11 +57,15 @@ Examples:
 - stage-driven rewards should depend on individual progress
 - a co-op server wants personal progression rather than a shared campaign
 
+If FTB Teams is installed, teammates automatically use the same World Phase state. This does not share Ascension choices or permanent rewards: those are still personal. Leaving a team returns the player to their preserved solo progression; joining a team uses that team's preserved progression. WorldAwakened never tries to merge those histories automatically.
+
 Important: progression mode does not decide what kind of event happened. It decides where stage state is persisted.
 
 Spawn-time mutator note:
 - in `per_player` mode, spawn-time mutator evaluation uses the nearest nearby non-spectator player as the progression source
 - if no player can be attributed to that spawn, the mutator pass fails closed instead of borrowing world progression or another player's stages
+
+The native editor offers only **Per Server** and **Per Player**. It still lets a newly created world switch when it contains only automatically unlocked starting phases. Once a later phase unlocks, or a trigger/rule has recorded meaningful progress, switching is blocked because automatically merging server, player and team histories would be unsafe.
 
 ## Trigger `source_scope`: World vs Player
 
@@ -162,6 +166,8 @@ Why the commands use `instance_id` for selection:
 - choosing by runtime instance ID is precise and operator-safe
 
 Ordinary authored offers use **Once per player**. That means either a pending or resolved instance prevents another copy of the same template for that player. **Once per source** is an explicit advanced mode for intentionally repeatable offers; it still blocks the same source from granting twice. A pending choice survives closing the screen, logout, and restart.
+
+If an offer or mob result is generated from an effect pool, its rolled values are frozen when it is created. For example, a mob that rolled a particular damage value and cooldown keeps those values even if an operator edits the original effect later. The same is true for a generated Ascension choice: the player chooses from the saved choices they were actually offered, not a new version silently rebuilt after a reload. Loot rarity filters are simpler: they only decide whether a configured loot profile may run for a mutation rarity; they never change the profile's normal chance, quantity, or weight values.
 
 ## Owned Carriers vs Shared Vanilla Effects
 

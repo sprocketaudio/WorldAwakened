@@ -7,11 +7,15 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 
+import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
+
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
+import net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition;
 
 public record WorldAwakenedAscensionOfferRuntime(
         String instanceId,
@@ -19,6 +23,7 @@ public record WorldAwakenedAscensionOfferRuntime(
         String sourceKey,
         long grantedAtMillis,
         List<ResourceLocation> candidateRewards,
+        List<ResolvedChoice> resolvedChoices,
         Optional<ResourceLocation> chosenRewardId,
         OptionalLong resolvedAtMillis) {
     private static final String INSTANCE_PREFIX = "wao_";
@@ -33,6 +38,14 @@ public record WorldAwakenedAscensionOfferRuntime(
 
     public WorldAwakenedAscensionOfferRuntime {
         candidateRewards = List.copyOf(candidateRewards);
+        resolvedChoices = List.copyOf(resolvedChoices);
+    }
+
+    public WorldAwakenedAscensionOfferRuntime(
+            String instanceId, ResourceLocation offerId, String sourceKey, long grantedAtMillis,
+            List<ResourceLocation> candidateRewards, Optional<ResourceLocation> chosenRewardId,
+            OptionalLong resolvedAtMillis) {
+        this(instanceId, offerId, sourceKey, grantedAtMillis, candidateRewards, List.of(), chosenRewardId, resolvedAtMillis);
     }
 
     public WorldAwakenedAscensionOfferRuntime withInstanceId(String newInstanceId) {
@@ -42,6 +55,7 @@ public record WorldAwakenedAscensionOfferRuntime(
                 sourceKey,
                 grantedAtMillis,
                 candidateRewards,
+                resolvedChoices,
                 chosenRewardId,
                 resolvedAtMillis);
     }
@@ -51,15 +65,23 @@ public record WorldAwakenedAscensionOfferRuntime(
             ResourceLocation offerId,
             String sourceKey,
             long grantedAtMillis,
-            List<ResourceLocation> candidateRewards) {
+            List<ResourceLocation> candidateRewards,
+            List<ResolvedChoice> resolvedChoices) {
         return new WorldAwakenedAscensionOfferRuntime(
                 instanceId,
                 offerId,
                 sourceKey,
                 grantedAtMillis,
                 candidateRewards,
+                resolvedChoices,
                 Optional.empty(),
                 OptionalLong.empty());
+    }
+
+    public static WorldAwakenedAscensionOfferRuntime pending(
+            String instanceId, ResourceLocation offerId, String sourceKey, long grantedAtMillis,
+            List<ResourceLocation> candidateRewards) {
+        return pending(instanceId, offerId, sourceKey, grantedAtMillis, candidateRewards, List.of());
     }
 
     public WorldAwakenedAscensionOfferRuntime resolve(ResourceLocation chosenRewardId, long resolvedAtMillis) {
@@ -69,6 +91,7 @@ public record WorldAwakenedAscensionOfferRuntime(
                 sourceKey,
                 grantedAtMillis,
                 candidateRewards,
+                resolvedChoices,
                 Optional.of(chosenRewardId),
                 OptionalLong.of(resolvedAtMillis));
     }
@@ -117,6 +140,15 @@ public record WorldAwakenedAscensionOfferRuntime(
                 .sorted()
                 .forEach(value -> candidates.add(StringTag.valueOf(value)));
         tag.put(KEY_CANDIDATE_REWARDS, candidates);
+        ListTag resolved = new ListTag();
+        for (ResolvedChoice choice : resolvedChoices) {
+            CompoundTag entry = new CompoundTag();
+            entry.putString("reward_id", choice.rewardId().toString());
+            AscensionRewardDefinition.CODEC.encodeStart(JsonOps.INSTANCE, choice.definition()).result()
+                    .ifPresent(json -> entry.putString("definition", json.toString()));
+            resolved.add(entry);
+        }
+        tag.put("resolved_choices", resolved);
         chosenRewardId.ifPresent(rewardId -> tag.putString(KEY_CHOSEN_REWARD, rewardId.toString()));
         resolvedAtMillis.ifPresent(value -> tag.putLong(KEY_RESOLVED_AT, value));
         return tag;
@@ -161,14 +193,38 @@ public record WorldAwakenedAscensionOfferRuntime(
             resolvedAt = OptionalLong.of(tag.getLong(KEY_RESOLVED_AT));
         }
 
+        List<ResolvedChoice> resolvedChoices = new ArrayList<>();
+        ListTag resolved = tag.getList("resolved_choices", Tag.TAG_COMPOUND);
+        for (int index = 0; index < resolved.size(); index++) {
+            CompoundTag entry = resolved.getCompound(index);
+            ResourceLocation rewardId = ResourceLocation.tryParse(entry.getString("reward_id"));
+            if (rewardId == null || !entry.contains("definition", Tag.TAG_STRING)) continue;
+            try {
+                AscensionRewardDefinition.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(entry.getString("definition")))
+                        .result().filter(definition -> definition.id().equals(rewardId))
+                        .ifPresent(definition -> resolvedChoices.add(new ResolvedChoice(rewardId, definition)));
+            } catch (RuntimeException ignored) {
+                // Broken saved generated data must not prevent player progression data from loading.
+            }
+        }
+
         return Optional.of(new WorldAwakenedAscensionOfferRuntime(
                 instanceId,
                 offerId,
                 sourceKey,
                 grantedAt,
                 candidateRewards,
+                resolvedChoices,
                 chosenRewardId,
                 resolvedAt));
+    }
+
+    public Optional<AscensionRewardDefinition> resolvedChoice(ResourceLocation rewardId) {
+        return resolvedChoices.stream().filter(choice -> choice.rewardId().equals(rewardId))
+                .map(ResolvedChoice::definition).findFirst();
+    }
+
+    public record ResolvedChoice(ResourceLocation rewardId, AscensionRewardDefinition definition) {
     }
 
     private static long fnv1a64(String value) {

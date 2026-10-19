@@ -1,11 +1,11 @@
 package net.sprocketgames.worldawakened.progression;
 
 import java.util.Locale;
+import java.util.Optional;
 
 public enum WorldAwakenedProgressionMode {
-    GLOBAL("global"),
-    PER_PLAYER("per_player"),
-    HYBRID("hybrid");
+    PER_SERVER("per_server"),
+    PER_PLAYER("per_player");
 
     private final String serializedName;
 
@@ -17,17 +17,13 @@ public enum WorldAwakenedProgressionMode {
         return serializedName;
     }
 
-    public static WorldAwakenedProgressionMode fromConfig(String rawMode) {
-        if (rawMode == null) {
-            return GLOBAL;
-        }
-
-        String normalized = rawMode.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case "global" -> GLOBAL;
-            case "per_player", "per-player", "perplayer", "player" -> PER_PLAYER;
-            case "hybrid" -> HYBRID;
-            default -> GLOBAL;
+    /** Parses only the current public configuration identifiers. */
+    public static Optional<WorldAwakenedProgressionMode> parse(String rawMode) {
+        if (rawMode == null) return Optional.empty();
+        return switch (rawMode.trim().toLowerCase(Locale.ROOT)) {
+            case "per_server" -> Optional.of(PER_SERVER);
+            case "per_player" -> Optional.of(PER_PLAYER);
+            default -> Optional.empty();
         };
     }
 }

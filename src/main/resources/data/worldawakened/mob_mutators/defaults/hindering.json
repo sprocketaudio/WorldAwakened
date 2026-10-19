@@ -4,6 +4,7 @@
   "display_name": { "translate": "mutator.worldawakened.defaults.hindering" },
   "enabled": true,
   "rarity": "rare",
+  "power": 4,
   "weight": 5,
   "stacking_group": "worldawakened:default_control",
   "max_stack_count": 1,

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/early_mutations",
+  "enabled": true,
+  "scope": "mob_mutation",
+  "mode": "mixed",
+  "configured_effects": [
+    "worldawakened:defaults/early_hardy",
+    "worldawakened:defaults/early_quick",
+    "worldawakened:defaults/early_warded"
+  ],
+  "curated_source_weight": 3,
+  "generated_source_weight": 1,
+  "combination_sizes": [
+    { "size": 1, "weight": 8 },
+    { "size": 2, "weight": 2 }
+  ]
+}

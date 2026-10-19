@@ -4,6 +4,7 @@
   "display_name": { "translate": "mutator.worldawakened.defaults.nether_hardened" },
   "enabled": true,
   "rarity": "rare",
+  "power": 4,
   "weight": 4,
   "stacking_group": "worldawakened:default_elite",
   "max_stack_count": 1,

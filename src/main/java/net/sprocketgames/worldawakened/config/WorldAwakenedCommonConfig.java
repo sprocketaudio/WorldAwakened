@@ -96,7 +96,8 @@ public final class WorldAwakenedCommonConfig {
         builder.pop();
 
         builder.push("progression");
-        PROGRESSION_MODE = builder.define("mode", "global");
+        PROGRESSION_MODE = builder.comment("Progression ownership mode: per_player (default) or per_server.")
+                .define("mode", "per_player");
         ANNOUNCE_STAGE_UNLOCKS = builder.define("announce_stage_unlocks", true);
         ALLOW_HIDDEN_STAGES_IN_DEBUG = builder.define("allow_hidden_stages_in_debug", true);
         builder.pop();

@@ -4092,7 +4092,6 @@ public final class WorldAwakenedCommands {
     private static SuggestionProvider<CommandSourceStack> suggestStageIds(WorldAwakenedStageService stageService) {
         return (context, builder) -> {
             List<ResourceLocation> ids = new ArrayList<>(stageService.stageRegistry().canonicalStageIds());
-            ids.addAll(stageService.stageRegistry().aliasMappings().keySet());
             return SharedSuggestionProvider.suggestResource(ids, builder);
         };
     }

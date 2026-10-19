@@ -34,6 +34,8 @@ import net.sprocketgames.worldawakened.data.load.WorldAwakenedDatapackSnapshot;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLog;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedLogCategory;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedMutableTriggerState;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionOwner;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionState;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedPlayerProgressionSavedData;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode;
 import net.sprocketgames.worldawakened.progression.WorldAwakenedStageMutationResult;
@@ -413,7 +415,7 @@ public final class WorldAwakenedTriggerService {
                         }
                         WorldAwakenedStageMutationResult result = stageService.unlockStage(
                                 eventContext.level(),
-                                scopedPlayer,
+                                eventContext.player(),
                                 stageIdOpt.get(),
                                 "trigger:" + rule.id());
                         if (result.status() == WorldAwakenedStageMutationStatus.UNLOCKED) {
@@ -427,7 +429,7 @@ public final class WorldAwakenedTriggerService {
                         }
                         WorldAwakenedStageMutationResult result = stageService.lockStage(
                                 eventContext.level(),
-                                scopedPlayer,
+                                eventContext.player(),
                                 stageIdOpt.get());
                         if (result.status() == WorldAwakenedStageMutationStatus.LOCKED) {
                             stageLocks++;
@@ -546,8 +548,7 @@ public final class WorldAwakenedTriggerService {
             return new TriggerStateSnapshots(worldSnapshot, WorldAwakenedTriggerStateSnapshot.empty());
         }
 
-        WorldAwakenedPlayerProgressionSavedData playerData = WorldAwakenedPlayerProgressionSavedData.get(level);
-        WorldAwakenedPlayerProgressionSavedData.PlayerStageState playerState = playerData.getOrCreate(player.getUUID());
+        WorldAwakenedProgressionState playerState = stageService.progressionState(level, player);
         WorldAwakenedTriggerStateSnapshot playerSnapshot = new WorldAwakenedTriggerStateSnapshot(
                 Map.copyOf(playerState.triggerCooldowns()),
                 Set.copyOf(playerState.consumedOneShotTriggers()));
@@ -558,6 +559,12 @@ public final class WorldAwakenedTriggerService {
             ServerLevel level,
             ServerPlayer player,
             SourceScope scope) {
+        // Phase-progress trigger state follows the configured progression owner. This is what
+        // lets an FTB team satisfy a multi-condition phase together without sharing Ascension.
+        if (player != null && stageService.progressionOwner(player).kind()
+                != WorldAwakenedProgressionOwner.Kind.SERVER) {
+            return stageService.progressionState(level, player);
+        }
         if (scope == SourceScope.PLAYER) {
             if (player == null) {
                 return null;
@@ -569,15 +576,11 @@ public final class WorldAwakenedTriggerService {
     }
 
     private WorldAwakenedMutableTriggerState selectProgressTriggerState(ServerLevel level, ServerPlayer player) {
-        WorldAwakenedProgressionMode mode = WorldAwakenedProgressionMode.fromConfig(
-                WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
-        if (mode == WorldAwakenedProgressionMode.PER_PLAYER) {
-            if (player == null) {
-                return null;
-            }
-            return WorldAwakenedPlayerProgressionSavedData.get(level).getOrCreate(player.getUUID());
+        if (player == null && stageService.progressionOwner(null).kind()
+                == WorldAwakenedProgressionOwner.Kind.SERVER) {
+            return WorldAwakenedWorldProgressionSavedData.get(level);
         }
-        return WorldAwakenedWorldProgressionSavedData.get(level);
+        return player == null ? null : stageService.progressionState(level, player);
     }
 
     private static Set<ResourceLocation> collectEntityTags(Entity entity) {

@@ -12,6 +12,7 @@ import com.mojang.serialization.JsonOps;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -25,7 +26,6 @@ import net.sprocketgames.worldawakened.config.WorldAwakenedConfigService;
 import net.sprocketgames.worldawakened.config.WorldAwakenedEditorSettings;
 import net.sprocketgames.worldawakened.config.WorldAwakenedFeatureGates;
 import net.sprocketgames.worldawakened.config.WorldAwakenedProfileOverrideService;
-import net.sprocketgames.worldawakened.config.WorldAwakenedDifficultyTrackDefinition;
 import net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationPoolDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageDefinition;
@@ -287,8 +287,9 @@ public final class WorldAwakenedNetwork {
                 var stages = decodeDefinitions(root, "stages", StageDefinition.CODEC, StageDefinition::id);
                 var triggers = decodeDefinitions(root, "trigger_rules", TriggerRuleDefinition.CODEC, TriggerRuleDefinition::id);
                 var pools = decodeDefinitions(root, "mutation_pools", MutationPoolDefinition.CODEC, MutationPoolDefinition::id);
-                var tracks = decodeDefinitions(root, "difficulty_tracks", WorldAwakenedDifficultyTrackDefinition.CODEC,
-                        WorldAwakenedDifficultyTrackDefinition::id);
+                var phaseMutationConfigurations = decodeDefinitions(root, "phase_mutation_configurations",
+                        net.sprocketgames.worldawakened.config.WorldAwakenedPhaseMutationConfigurationDefinition.CODEC,
+                        net.sprocketgames.worldawakened.config.WorldAwakenedPhaseMutationConfigurationDefinition::id);
                 var offers = decodeDefinitions(root, "ascension_offers",
                         net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC,
                         net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition::id);
@@ -298,9 +299,12 @@ public final class WorldAwakenedNetwork {
                 var mutators = decodeDefinitions(root, "mob_mutators",
                         net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition.CODEC,
                         net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition::id);
+                var lootProfiles = decodeDefinitions(root, "loot_profiles",
+                        net.sprocketgames.worldawakened.data.definition.LootProfileDefinition.CODEC,
+                        net.sprocketgames.worldawakened.data.definition.LootProfileDefinition::id);
                 WorldAwakenedDatapackSnapshot source = WorldAwakenedMod.DATAPACK_SERVICE.sourceSnapshot();
                 var result = WorldAwakenedProfileOverrideService.applyAuthoring(player.serverLevel(),
-                        payload.baseRevision(), stages, triggers, pools, tracks, rewards, offers, mutators, source);
+                        payload.baseRevision(), stages, triggers, pools, phaseMutationConfigurations, rewards, offers, mutators, lootProfiles, source);
                 if (result.accepted()) {
                     WorldAwakenedMod.DATAPACK_SERVICE.publish(source, "native_profile_authoring_apply");
                     sendConfigSnapshot(player, "applied", result.message());
@@ -336,7 +340,7 @@ public final class WorldAwakenedNetwork {
             if ("copy_standard".equals(payload.operation()) || "start_empty".equals(payload.operation())) copiedSource = WorldAwakenedConfigService.withPreviewSettings(
                     new WorldAwakenedEditorSettings(true, old.difficultyIntensity(), old.mutationsEnabled(), old.mutationFrequencyMultiplier(),
                             old.allowMultipleMutations(), old.maximumMutationsPerMob(), old.pressureEventsEnabled(),
-                            old.eventFrequencyMultiplier(), old.ascensionEnabled()),
+                            old.eventFrequencyMultiplier(), old.ascensionEnabled(), old.progressionMode()),
                     () -> WorldAwakenedMod.DATAPACK_SERVICE.compile(player.getServer().getResourceManager()));
             WorldAwakenedDatapackSnapshot nextSource = WorldAwakenedConfigService.withPreviewSettings(next,
                     () -> WorldAwakenedMod.DATAPACK_SERVICE.compile(player.getServer().getResourceManager()));
@@ -364,7 +368,7 @@ public final class WorldAwakenedNetwork {
         return new WorldAwakenedEditorSettings(bundled, current.difficultyIntensity(),
                 current.mutationsEnabled(), current.mutationFrequencyMultiplier(), current.allowMultipleMutations(),
                 current.maximumMutationsPerMob(), current.pressureEventsEnabled(), current.eventFrequencyMultiplier(),
-                current.ascensionEnabled());
+                current.ascensionEnabled(), current.progressionMode());
     }
 
     private static net.sprocketgames.worldawakened.data.load.WorldAwakenedCompiledData bundledDefaults(
@@ -476,8 +480,7 @@ public final class WorldAwakenedNetwork {
                 + " mutators • " + datapack.data().ascensionRewards().size() + " Ascension rewards • "
                 + datapack.data().invasionProfiles().size() + " pressure events");
 
-        WorldAwakenedProgressionMode mode = WorldAwakenedProgressionMode.fromConfig(
-                WorldAwakenedCommonConfig.PROGRESSION_MODE.get());
+        WorldAwakenedProgressionMode mode = settings.progressionMode();
         int unlocked = WorldAwakenedMod.STAGE_SERVICE.getUnlockedStages(player.serverLevel(), player).size();
         int total = WorldAwakenedMod.STAGE_SERVICE.stageRegistry().orderedStages().size();
         root.addProperty("progression_mode", mode.serializedName());
@@ -485,7 +488,9 @@ public final class WorldAwakenedNetwork {
         root.addProperty("progression_editable", true);
         root.addProperty(
                 "progression_note",
-                "Progression mode changes require a saved-history migration and are not available in this milestone.");
+                mode == WorldAwakenedProgressionMode.PER_PLAYER
+                        ? "Each player progresses independently. FTB Teams members share phases automatically when FTB Teams is installed."
+                        : "Every player shares one server progression state. Changing mode is blocked after phase progress exists.");
         root.add("settings", settings.toJson());
         root.addProperty(
                 "difficulty_intensity_available",
@@ -540,7 +545,8 @@ public final class WorldAwakenedNetwork {
         root.add("world_authored_triggers", encodeDefinitions(overrides.triggerRules().values(), TriggerRuleDefinition.CODEC));
         root.add("trigger_rules", encodeDefinitions(datapack.data().triggerRules().values(), TriggerRuleDefinition.CODEC));
         root.add("world_authored_pools", encodeDefinitions(overrides.mutationPools().values(), MutationPoolDefinition.CODEC));
-        root.add("difficulty_tracks", encodeDefinitions(overrides.difficultyTracks().values(), WorldAwakenedDifficultyTrackDefinition.CODEC));
+        root.add("phase_mutation_configurations", encodeDefinitions(overrides.phaseMutationConfigurations().values(),
+                net.sprocketgames.worldawakened.config.WorldAwakenedPhaseMutationConfigurationDefinition.CODEC));
         root.add("ascension_offers", encodeDefinitions(datapack.data().ascensionOffers().values(),
                 net.sprocketgames.worldawakened.data.definition.AscensionOfferDefinition.CODEC));
         root.add("world_authored_ascension_offers", encodeDefinitions(overrides.ascensionOffers().values(),
@@ -551,6 +557,10 @@ public final class WorldAwakenedNetwork {
                 net.sprocketgames.worldawakened.data.definition.AscensionRewardDefinition.CODEC));
         root.add("world_authored_mutators", encodeDefinitions(overrides.mobMutators().values(),
                 MobMutatorDefinition.CODEC));
+        root.add("loot_profiles", encodeDefinitions(datapack.data().lootProfiles().values(),
+                net.sprocketgames.worldawakened.data.definition.LootProfileDefinition.CODEC));
+        root.add("world_authored_loot_profiles", encodeDefinitions(overrides.lootProfiles().values(),
+                net.sprocketgames.worldawakened.data.definition.LootProfileDefinition.CODEC));
 
         JsonArray mutators = new JsonArray();
         datapack.data().mobMutators().values().stream()
@@ -576,6 +586,23 @@ public final class WorldAwakenedNetwork {
                     entities.add(node);
                 });
         root.add("living_entities", entities);
+        JsonArray items = new JsonArray();
+        BuiltInRegistries.ITEM.entrySet().stream()
+                .sorted(java.util.Comparator.comparing(entry -> entry.getKey().location().toString()))
+                .forEach(entry -> {
+                    JsonObject node = new JsonObject();
+                    node.addProperty("id", entry.getKey().location().toString());
+                    node.addProperty("name", entry.getValue().getDescription().getString());
+                    node.addProperty("namespace", entry.getKey().location().getNamespace());
+                    items.add(node);
+                });
+        root.add("items", items);
+        JsonArray lootTables = new JsonArray();
+        player.getServer().reloadableRegistries().getKeys(Registries.LOOT_TABLE).stream()
+                .filter(id -> id.getPath().startsWith("chests/"))
+                .sorted(java.util.Comparator.comparing(ResourceLocation::toString))
+                .forEach(id -> lootTables.add(id.toString()));
+        root.add("chest_loot_tables", lootTables);
         JsonArray dimensions = new JsonArray();
         player.getServer().levelKeys().stream().map(key -> key.location().toString()).sorted().forEach(dimensions::add);
         root.add("dimensions", dimensions);
@@ -631,8 +658,6 @@ public final class WorldAwakenedNetwork {
                 net.sprocketgames.worldawakened.data.definition.LootProfileDefinition.CODEC, value, needle));
         snapshot.data().invasionProfiles().forEach((id, value) -> addUse(uses, "World event", id,
                 net.sprocketgames.worldawakened.data.definition.InvasionProfileDefinition.CODEC, value, needle));
-        authored.difficultyTracks().forEach((id, track) -> { if (track.tiers().stream().anyMatch(tier -> tier.stageId().equals(stageId)))
-            uses.add("Difficulty track: " + track.displayName()); });
         return java.util.List.copyOf(uses);
     }
 

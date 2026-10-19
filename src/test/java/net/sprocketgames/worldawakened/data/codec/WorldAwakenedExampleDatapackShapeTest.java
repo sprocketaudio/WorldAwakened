@@ -30,6 +30,9 @@ import net.sprocketgames.worldawakened.data.definition.InvasionProfileDefinition
 import net.sprocketgames.worldawakened.data.definition.LootProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageDefinition;
 import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
+import net.sprocketgames.worldawakened.rarity.RarityDefinition;
+import net.sprocketgames.worldawakened.generation.ConfiguredEffectDefinition;
+import net.sprocketgames.worldawakened.generation.EffectGenerationPoolDefinition;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentValidation;
 import net.sprocketgames.worldawakened.rules.runtime.WorldAwakenedRuleEngine;
 
@@ -96,7 +99,7 @@ class WorldAwakenedExampleDatapackShapeTest {
     void modJarEmbedsAConservativeStandardGameplayProfile() throws IOException {
         LinkedHashSet<Path> embeddedFiles = new LinkedHashSet<>();
         collectJsonFiles(EMBEDDED_ROOT, embeddedFiles);
-        assertEquals(57, embeddedFiles.size(), "The bundled Standard profile object count must remain intentional");
+        assertEquals(66, embeddedFiles.size(), "The bundled Standard profile object count must remain intentional");
         assertEquals(7, countFilesUnder(embeddedFiles, "/stages/"));
         assertEquals(6, countFilesUnder(embeddedFiles, "/trigger_rules/"));
         assertEquals(11, countFilesUnder(embeddedFiles, "/mob_mutators/"));
@@ -105,6 +108,9 @@ class WorldAwakenedExampleDatapackShapeTest {
         assertEquals(3, countFilesUnder(embeddedFiles, "/ascension_offers/"));
         assertEquals(3, countFilesUnder(embeddedFiles, "/loot_profiles/"));
         assertEquals(3, countFilesUnder(embeddedFiles, "/invasion_profiles/"));
+        assertEquals(5, countFilesUnder(embeddedFiles, "/rarities/"));
+        assertEquals(3, countFilesUnder(embeddedFiles, "/configured_effects/"));
+        assertEquals(1, countFilesUnder(embeddedFiles, "/effect_generation_pools/"));
 
         for (Path file : embeddedFiles) {
             JsonObject root = parseRoot(file);
@@ -189,6 +195,16 @@ class WorldAwakenedExampleDatapackShapeTest {
                 "worldawakened:defaults/hunter", "worldawakened:defaults/vampiric");
         assertCuratedCombination("s6_end.json", 0.09D,
                 "worldawakened:defaults/volatile", "worldawakened:defaults/void_hardened");
+    }
+
+    @Test
+    void standardLootProfilesUseTheirIntendedActivePhaseBands() throws IOException {
+        assertLootPhaseBand("early_mutation_bonus.json", 0.10D,
+                "worldawakened:defaults/stirring", "worldawakened:defaults/unease");
+        assertLootPhaseBand("midgame_mutation_bonus.json", 0.15D,
+                "worldawakened:defaults/nether_reached", "worldawakened:defaults/gathering_storm");
+        assertLootPhaseBand("late_mutation_bonus.json", 0.20D,
+                "worldawakened:defaults/end_reached", "worldawakened:defaults/world_awakened");
     }
 
     @Test
@@ -422,6 +438,15 @@ class WorldAwakenedExampleDatapackShapeTest {
         return parseRoot(EMBEDDED_ROOT.resolve(Path.of("mutation_pools", "defaults", fileName)));
     }
 
+    private static void assertLootPhaseBand(String fileName, double chance, String... phaseIds) throws IOException {
+        JsonObject profile = parseRoot(EMBEDDED_ROOT.resolve(Path.of("loot_profiles", "defaults", fileName)));
+        assertEquals(chance, profile.getAsJsonObject("authoring").get("item_chance").getAsDouble(), 0.0000001D);
+        assertEquals(List.of(phaseIds), profile.getAsJsonObject("stage_filters").getAsJsonArray("required_any")
+                .asList().stream().map(JsonElement::getAsString).toList());
+        assertEquals(0, countTypedNodes(profile.getAsJsonArray("conditions"), "stage_unlocked"));
+        assertEquals(0, countTypedNodes(profile.getAsJsonArray("conditions"), "stage_locked"));
+    }
+
     private static boolean hasMutator(JsonObject pool, String id) {
         return mutatorWeight(pool, id) > 0;
     }
@@ -477,6 +502,12 @@ class WorldAwakenedExampleDatapackShapeTest {
             codec = LootProfileDefinition.CODEC;
         } else if (normalized.contains("/invasion_profiles/")) {
             codec = InvasionProfileDefinition.CODEC;
+        } else if (normalized.contains("/rarities/")) {
+            codec = RarityDefinition.CODEC;
+        } else if (normalized.contains("/configured_effects/")) {
+            codec = ConfiguredEffectDefinition.CODEC;
+        } else if (normalized.contains("/effect_generation_pools/")) {
+            codec = EffectGenerationPoolDefinition.CODEC;
         } else {
             throw new AssertionError("Unexpected bundled object path: " + file);
         }
@@ -499,6 +530,7 @@ class WorldAwakenedExampleDatapackShapeTest {
         try (Stream<Path> stream = Files.walk(root)) {
             stream.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".json"))
+                    .filter(path -> !path.toString().contains("loot_modifiers"))
                     .forEach(out::add);
         }
     }

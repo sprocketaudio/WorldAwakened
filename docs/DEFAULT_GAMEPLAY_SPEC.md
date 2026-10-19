@@ -1,7 +1,7 @@
 # The Awakening (Standard) Gameplay Contract
 
 - Document status: Active gameplay contract; balance values remain provisional until play-tested
-- Last updated: 2026-10-17
+- Last updated: 2026-10-19
 - Scope: Bundled install-and-play Standard profile
 
 This document incorporates the approved default-gameplay brief into the repository. World Awakened defaults are ordinary datapack definitions under `worldawakened:defaults/...`; they use the same codecs, validators, compiler, indexes, and runtime services as custom content.
@@ -37,6 +37,8 @@ S1 uses the generic `worldawakened:world_day_milestone` trigger event. The serve
 ## 3. Mutation Rates and Rare Combinations
 
 Each stage/dimension has one unified mutation pool. Pre-S6 pools require their current stage and require the next stage to remain locked. Each pool rolls `mutation_chance` once; from S4 onward, a successful first mutation has a small conditional chance to resolve an eligible curated combination.
+
+At S1, the Overworld pool also uses a conservative `mixed` generated-effect source: three quarters of successful rolls remain the existing curated Weathered/Restless choices, while one quarter resolves one or two of the bundled live-safe hardy, quick, and warded effect instances. This changes neither the 2% initial mutation chance nor any later-stage pool weight.
 
 | Stage | Overworld initial / additional | Nether initial / additional | End initial / additional | Maximum |
 |---|---:|---:|---:|---:|
@@ -108,13 +110,16 @@ Each offer presents three explicit candidates, accepts one permanent choice, and
 
 ## 7. Loot Rewards
 
-Mutation rewards use three mutually exclusive stage bands and `inject` mode only:
+Mutation rewards use three mutually exclusive active-phase bands and `inject` mode only:
 
-- S1-S2: 10% chance of a small iron-nugget or arrow addition.
-- S3-S4: 15% chance of a small gold-nugget, redstone, or glowstone addition.
-- S5-S6: 20% chance of a bounded iron-ingot, gold-ingot, amethyst, or glowstone addition.
+- Stirring and Unease: 10% chance of a small iron-nugget or arrow addition.
+- Ignition and Gathering Storm: 15% chance of a small gold-nugget, redstone, or glowstone addition.
+- Fracture and World Awakened: 20% chance of a bounded iron-ingot, gold-ingot, amethyst, or glowstone addition.
 
-Profiles require mutation provenance and target only the tested vanilla roster. Spawner and trial-spawner enemies cannot enter the default mutation pools, so they cannot qualify through this path. No XP multiplier is claimed because the current loot pipeline does not apply one. Apotheosis-sensitive behavior remains additive and authoritative.
+The profiles use `stage_filters.required_any` and evaluate the current active Standard phase. Earlier
+cumulative milestones remain in progression history but do not keep their earlier loot profile eligible.
+
+Profiles require mutation provenance and target only the tested vanilla roster. Spawner and trial-spawner enemies cannot enter the default mutation pools, so they cannot qualify through this path. The bundled profiles remain item-only; the native Mob Loot editor can additionally author independent extra-XP or XP-multiplier rewards. Apotheosis-sensitive behavior remains additive and authoritative.
 
 ## 8. Pressure Events
 

@@ -3,7 +3,7 @@
 World Awakened Framework for Minecraft 1.21.1 + NeoForge
 
 - Document status: Active implementation spec (Phase 9 work preserved; default gameplay rollout active)
-- Last updated: 2026-10-18
+- Last updated: 2026-10-19
 - Mod ID: `worldawakened`
 - Base package: `net.sprocketgames.worldawakened`
 
@@ -12,6 +12,8 @@ World Awakened Framework for Minecraft 1.21.1 + NeoForge
 ## 0. Document Governance
 
 - This file is the primary design and behavior contract for the mod.
+- Sections 1 through 20B and 22 through 24 describe the **current contract**. They govern implementation.
+- Section 21 and Section 25 are retained implementation history. They explain how the system arrived here, but never override a current-contract section. Deferred ideas belong in [FUTURE_IDEAS.md](FUTURE_IDEAS.md), not alongside active requirements.
 - Whenever this spec is expanded or changed, update these files in the same change:
   - [DATAPACK_AUTHORING.md](DATAPACK_AUTHORING.md) for concrete user datapack format/schema updates
   - [COMPONENT_REFERENCE.md](COMPONENT_REFERENCE.md) for canonical mutation/ascension component IDs, statuses, and parameter schema details
@@ -163,8 +165,8 @@ Datapack content, whether bundled or external, owns:
 - example invasion profiles where practical
 - example pools/rules/stages where appropriate
 
-Default progression mode in v1:
-- `GLOBAL`
+Default progression mode for newly created native configurations:
+- `PER_PLAYER`
 
 Bundled Standard gameplay:
 - uses the `worldawakened:defaults/...` ID family
@@ -175,10 +177,10 @@ Bundled Standard gameplay:
 - can be removed as a family with `general.enable_builtin_gameplay=false`
 - is specified in [DEFAULT_GAMEPLAY_SPEC.md](DEFAULT_GAMEPLAY_SPEC.md); its numerical balance remains provisional until play-tested
 
-Supported modes:
-- `GLOBAL` (implemented in v1)
-- `PER_PLAYER` (implemented in v1 for stage state, trigger context, and ascension scope; unsupported interactions must be explicitly documented or disabled)
-- `HYBRID` (reserved design, deferred implementation)
+Supported operator-facing modes:
+- `GLOBAL` / **Per Server**: one shared phase state.
+- `PER_PLAYER` / **Per Player**: individual phase state, automatically shared by FTB Teams members when that optional integration is present.
+- Progression has exactly two modes: `per_server` and `per_player`.
 
 ### 3B. Shared Scope Model (Canonical)
 
@@ -551,7 +553,7 @@ Docs/tooling rule:
 
 Each stage is a datapack object with fields:
 - `id: ResourceLocation` (required)
-- `aliases: ResourceLocation[]` (optional legacy IDs for migration)
+- `aliases: ResourceLocation[]` (optional advanced datapack-only compatibility IDs)
 - `display_name: ComponentLike` (required)
 - `short_name: ComponentLike` (optional)
 - `description: ComponentLike` (optional)
@@ -592,10 +594,11 @@ Design goal:
 ### 4.2 Identity and Naming Rules
 
 - Stage IDs must be unique across all loaded data packs.
+- A stage alias resolves to exactly one canonical stage ID. Canonical IDs always win direct lookup; an alias may not duplicate a canonical ID, repeat within one stage, or be shared by multiple stages. Such conflicts disable the invalid stage definitions during reload, and ambiguous aliases fail closed if malformed data reaches the runtime.
+- Aliases are preserved for advanced datapack and save compatibility, but are intentionally not exposed by the simplified World Phases editor.
 - Display names may change without code changes.
 - Any user-facing text is presentation only.
 - Rules and APIs must resolve stage IDs at validation/load time.
-- Stage aliases, when present, must resolve legacy saved references to the canonical current stage ID.
 
 ### 4.3 Stage State Persistence
 
@@ -656,34 +659,34 @@ Player-level state owns:
 - forfeited ascension rewards
 - player-scoped challenge modifier value and associated cooldown/usage state when enabled
 
+FTB-team-level state owns only phase, trigger and rule progress. Ascension offers, chosen rewards and reward effects always remain in player UUID-owned state.
+
 Mode transitions must not corrupt existing save data.
 
 Fallback rules:
-- switching progression mode must preserve stored data unless a field has no equivalent in the target mode; if no equivalent exists, preserve the raw stored value and use world state as the authoritative runtime fallback
-- if resolution is ambiguous, world state becomes the authoritative fallback
+- the native editor permits a mode change while state contains only automatically default-unlocked phases; it refuses changes once meaningful phase, trigger, or rule progress exists, and never merges, overwrites, or silently migrates progress
+- joining/leaving an FTB Team changes the progression owner for future evaluation without merging state: solo state and each team state are retained independently
+- without an attributed player, Per Player spawn-time mutation evaluation fails closed rather than borrowing another player's state
 - removed stages remain recorded in save data but marked inactive
-- renamed stages should resolve through stage aliases where provided
+- renamed stages should resolve through a valid stage alias where provided; runtime state and stage filters are canonicalized before active-stage evaluation
 
 ---
 
 ## 5. Progression Modes
 
-### 5.1 GLOBAL (v1 default)
+### 5.1 GLOBAL / Per Server
 - One world progression state shared by all players.
 - Unlock from any valid source affects all players.
 
-### 5.2 PER_PLAYER (v1 partial)
+### 5.2 PER_PLAYER / Per Player
 - Player-specific stage state and trigger context.
 - World-level events can still read aggregate context if configured.
 - Operator/admin commands that inspect or mutate progression state must support explicit `player` targeting in this mode; no-target command variants may still resolve to the executing player or global fallback for convenience, but they are not sufficient as the only operator path.
 
-### 5.3 HYBRID (design only for v1)
-- Combined world + player stage spaces.
-- Resolution strategy documented but implementation deferred.
+### 5.3 Greenfield progression identifiers
 
-Reserved hybrid design concept:
-- Rules specify source scope preference (`world`, `player`, `merged`)
-- `merged` resolves by explicit policy order
+Only `per_server` and `per_player` are accepted. WorldAwakened is greenfield and does not migrate
+abandoned development-era progression identifiers.
 
 ### 5.4 Ascension Scope Across Progression Modes
 
@@ -2800,6 +2803,7 @@ Required metadata fields:
 - `WA_MUTATION_SOURCE_POOL`
 - `WA_MUTATION_IDS`
 - `WA_MUTATION_COMPONENTS`
+- `WA_MUTATION_RESOLVED_COMPONENTS` (full resolved component type, source ID, parameters, and power)
 - `WA_MUTATION_STAGE_CONTEXT`
 - `WA_MUTATION_TRACE_ID`
 
@@ -2811,6 +2815,9 @@ Hard rules:
 
 Design rule:
 - mutation provenance is part of entity runtime state and must remain inspectable
+- persisted runtime component values, including combat values, are authoritative for
+  an already-mutated entity; pack reloads or editor changes must not rewrite its
+  attributes, attack behaviour, death behaviour, or visual state
 
 ### 9.7G Mutation Recursion Guard
 
@@ -2866,6 +2873,7 @@ Fields:
 - `rare_combinations[]` (optional weighted whole-combination definitions)
 - `conditions[]`
 - `stage_filters`
+- `mutation_rarity_filters` (exact and minimum-threshold mutation-rarity eligibility only; no loot chance/weight/quantity modification)
 - `apotheosis_tier_filters`
 - `eligible_dimensions[]`
 - `eligible_biomes[]`
@@ -3000,6 +3008,26 @@ Progress exploration and combat rewards alongside stage context.
 - `config_gate`
 - `mod_conditions`
 
+Native authored extensions:
+- `profile_type: mob | chest`
+- `authoring.display_name`, `authoring.description`, and `authoring.item_chance`
+- `authoring.target_entities[]` for exact Mob Loot eligibility
+- `authoring.eligible_dimensions[]` for an any-of dimension restriction (empty means unrestricted)
+- `authoring.bonus_xp` for Mob Loot only (`extra` or `multiplier`, independent chance)
+
+Live integration rules:
+- Mob Loot is evaluated from the death-drop and experience-drop paths with separate deterministic
+  rolls for items and XP. XP is additive/scaled only after vanilla XP calculation and respects
+  suppression/cancellation of the vanilla experience event.
+- Chest Loot is evaluated from the NeoForge global loot modifier only when a supported server-side
+  container generation context and queried loot-table ID are available. It injects into the
+  generated list once; reopening an already generated container does not generate another bonus.
+- Normal native-editor authoring is additive `inject` only. Destructive legacy modes remain data
+  supported but are not exposed as ordinary editor controls.
+- A mutation-rarity filter only decides whether a profile is eligible for the current
+  mutated entity. It never changes that profile's authored item chance, quantities,
+  weights, or reward entries.
+
 ### 12.3 Design Rule
 
 Prefer loot table injection/modifier hooks over building an isolated loot engine.
@@ -3035,6 +3063,11 @@ Loot profile activation model:
 - loot profiles activate only when their conditions match the canonical loot evaluation context
 - canonical Phase 7 loot context minimum keys: `loot_context_type`, `target_type`, `target_id`, `loot_table_id` (when relevant), `entity_type` (when relevant), `entity_is_mutated`, `mutation_tags`, `player` (nullable when no player is attributable), `dimension`, stage snapshot, invasion context (active or inactive), compat state, and scalar input policy context
 - all loot-profile condition evaluation must run exclusively against the canonical loot context snapshot
+- Loot `stage_filters` evaluate against the effective active-stage context, not the complete
+  unlocked-stage history. Each progression group contributes its currently active stage; cumulative
+  history remains available for progression inspection but does not keep earlier loot bands live.
+  Independent groups remain independent, and legacy saved group cursors fall back only within their
+  own group, never to a globally highest stage.
 - missing required context in a profile branch must fail closed (`false`) and must not trigger partial branch evaluation
 - useful Phase 7 condition patterns include `worldawakened:loot_table`, `worldawakened:entity_is_mutated`, `worldawakened:invasion_active` (optionally with `profile_id`), and `worldawakened:invasion_tag`
 
@@ -4264,7 +4297,7 @@ Implemented native editor scope:
 - the dashboard reports real loaded-definition counts and routes to World Phases, Mob Mutations, Ascension, profile management, and Global Settings; full Mutator, advanced multi-component Reward, and World Events editors remain visibly unavailable
 - active profile choices are bundled Standard, Start Empty, and an independent Copy Standard; Start Empty excludes bundled gameplay definitions while retaining external datapacks and available mutator templates, and Copy Standard disables the bundled source after materializing its definitions in world storage
 - overall intensity, bundled-gameplay enablement, mutation enablement/frequency/multiple-mutation cap, pressure-event enablement/frequency, and Ascension enablement are editable
-- progression mode remains informational/read-only, while stages and supported unlock milestones are authorable; existing unlocked-stage history is not erased by definition edits
+- progression mode is editable before progression history exists; the server blocks a mode switch once saved progression history would make migration unsafe. Stages and supported unlock milestones are authorable, and definition edits do not erase existing unlocked-stage history
 - Cancel sends nothing; Reset restores the built-in Standard values in the local draft and still requires Apply
 - every apply packet repeats the server permission check, validates bounded values, and carries a base revision so stale clients cannot overwrite newer state
 - accepted settings persist in world `SavedData`; disabling active pressure events ends the active event, while existing mutated mobs, stage history, and Ascension ownership are preserved
@@ -4305,7 +4338,9 @@ The concise architecture, migration risks, and delivery order are defined in `do
 
 ---
 
-## 21. MVP Implementation Order
+## 21. Historical Implementation Timeline (Non-Normative)
+
+This retained timeline records completed delivery milestones and earlier exit criteria. It is not a current implementation plan and must not be used to infer missing scope; current behavior is defined in the preceding contract sections and the subsystem references.
 
 ### Phase 0 (Complete) - Contracts and Loading Foundation
 - finalize JSON schema contracts and codecs for all World Awakened object sets
@@ -4581,7 +4616,7 @@ Exit criteria:
 - add Relaxed and Challenging presets through the same datapack/runtime engine
 - implement `/wa config` with permission-gated, revisioned server snapshots and apply results **(implemented for the initial settings slice)**
 - persist world-specific operator overrides and compile bundled-profile changes through the normal validation pipeline **(implemented)**
-- expose Standard profile status, intensity, read-only progression information, mutation, invasion, and ascension controls first **(implemented)**
+- expose Standard profile status, intensity, switchable pre-history progression mode, mutation, invasion, and ascension controls first **(implemented)**
 - add a cached server-derived registry catalogue, beginning with living entity types
 - grow into visual mutation editing and `WHEN -> IF -> THEN` rule editing only after the basic flow is proven
 
@@ -4652,7 +4687,7 @@ Must-have:
 - playable bundled defaults using the same canonical datapack/data contract as custom content
 - a focused native, server-authoritative configuration interface
 
-Deferred:
+Deferred work is non-normative and tracked in [FUTURE_IDEAS.md](FUTURE_IDEAS.md):
 - full hybrid conflict resolver
 - exhaustive GUI coverage for every advanced datapack-only option
 - large integration catalog
@@ -4705,7 +4740,7 @@ This boundary keeps the framework extensible without becoming unstable.
 
 ---
 
-## 25. Implementation Status Note
+## 25. Historical Completion Notes (Non-Normative)
 
 Current status:
 - Phase 0 is complete.

@@ -3,7 +3,7 @@
 Datapack format and content contract for user-created progression/content packs.
 
 - Document status: Draft for implementation
-- Last updated: 2026-10-18
+- Last updated: 2026-10-19
 - Applies to: Minecraft 1.21.1 + NeoForge + World Awakened (`worldawakened`)
 
 ---
@@ -97,6 +97,9 @@ data/<namespace>/
   rules/
   mob_mutators/
   mutation_pools/
+  rarities/
+  configured_effects/
+  effect_generation_pools/
   ascension_rewards/
   ascension_offers/
   loot_profiles/
@@ -134,6 +137,12 @@ Recommended folder structure:
       mob_mutators/
         *.json
       mutation_pools/
+        *.json
+      rarities/
+        *.json
+      configured_effects/
+        *.json
+      effect_generation_pools/
         *.json
       loot_profiles/
         *.json
@@ -608,7 +617,7 @@ Recommended full shape:
 {
   "schema_version": 1,
   "id": "my_pack:baseline",
-  "aliases": ["my_pack:starter"],
+  "aliases": ["my_pack:old_baseline"],
   "display_name": { "translate": "stage.my_pack.baseline" },
   "short_name": "Base",
   "description": { "translate": "stage.my_pack.baseline.desc" },
@@ -625,15 +634,14 @@ Recommended full shape:
 ```
 
 Field notes:
+- `aliases`: optional advanced compatibility IDs for renamed stages. Each alias must be unique across all stages, must not duplicate a canonical stage ID, and must not repeat within the same stage. Aliases resolve to this stage's canonical `id` in saved progression and datapack stage references; they are not edited through the simplified World Phases UI.
 - `display_name`: string or text component object
 - `unlock_policy`: `cumulative | exclusive_group | replace_group`
 - `default_unlocked`: enabled default stages are idempotently inserted into each selected progression bucket on access, with unlock source `default_unlocked`; use this for true baselines rather than expecting a separate trigger
-- `aliases`: optional legacy stage IDs used for save migration after renames
 
 Field defaults:
 - `schema_version`: `1`
 - `id`: required
-- `aliases`: `[]`
 - `display_name`: required
 - `short_name`: absent
 - `description`: absent
@@ -1111,6 +1119,7 @@ Field defaults:
 - `allow_from_spawner`: `false`
 - `allow_from_trial_spawner`: `false`
 - `mutators`: required
+- `effect_generation_pool`: absent
 
 Runtime notes:
 - spawner and trial spawner mobs are excluded by default; opt in per pool with `allow_from_spawner` and `allow_from_trial_spawner`
@@ -1127,6 +1136,66 @@ Runtime notes:
 - `apotheosis_tier_filters` are evaluated against the active compat tier provider when enabled; missing provider/context fails closed for the affected pool
   - `0.0 < x < 1.0`: one deterministic roll per selected-pool spawn evaluation
 - in `per_player` progression mode, spawn-time mutator evaluation attributes the spawn to the nearest nearby non-spectator player; if no player can be attributed, the mutator pass fails closed for that spawn
+
+### Shared rarity and generated effects
+
+`rarities` define the labels assigned to a completed combination, rather than to an
+individual component. A rarity has a stable ID, display name, and inclusive
+`minimum_power`. The enabled tier with the highest threshold at or below the
+combination's total power wins. Duplicate thresholds are rejected deterministically.
+
+```json
+{
+  "id": "my_pack:rare",
+  "enabled": true,
+  "display_name": "Rare",
+  "minimum_power": 5
+}
+```
+
+`configured_effects` are reusable instances of a registered, live component type.
+`power`, `selection_weight`, and `parameters` intentionally mean different things:
+power classifies the completed result, selection weight controls only how frequently
+the instance is chosen, and parameters control the component's actual runtime value.
+
+```json
+{
+  "id": "my_pack:quick_stride",
+  "scope": "mob_mutation",
+  "effect_type": "worldawakened:movement_speed_multiplier",
+  "parameters": { "multiplier": 1.08 },
+  "power": 3,
+  "selection_weight": 8,
+  "allow_repeat": false
+}
+```
+
+`effect_generation_pools` choose configured effects for `generated` or `mixed`
+sources. A `mixed` pool first chooses its curated/generated source with the explicit
+source weights; those weights do not affect selection between individual effects.
+Reference the pool from a mutation pool's `effect_generation_pool` field, or from
+an Ascension offer whose pool has `scope: "ascension"`.
+
+```json
+{
+  "id": "my_pack:early_generated_mutations",
+  "scope": "mob_mutation",
+  "mode": "mixed",
+  "configured_effects": ["my_pack:quick_stride"],
+  "curated_source_weight": 3,
+  "generated_source_weight": 1,
+  "combination_sizes": [{ "size": 1, "weight": 8 }, { "size": 2, "weight": 2 }]
+}
+```
+
+Only component types with a safe server-side runtime handler can enter a generated
+pool. Unsupported registered schemas are rejected during reload instead of being
+silently offered. Generated mob results retain the full resolved component type,
+parameters, source effect ID, total power, and resolved rarity in entity provenance.
+The live mob executes its persistent spawn-time component state, never a later
+re-lookup of an edited datapack definition. Generated Ascension choices likewise
+save their full resolved reward components in the per-player offer instance before a
+player sees them; a later reload or edit cannot change a pending or chosen reward.
 
 ---
 
@@ -1161,6 +1230,10 @@ Example:
   ],
   "stage_filters": {
     "any_of": ["my_pack:nether_opened", "my_pack:end_reached"]
+  },
+  "mutation_rarity_filters": {
+    "minimum_rarity": "my_pack:rare",
+    "none_of": ["my_pack:cursed"]
   },
   "apotheosis_tier_filters": {
     "min": 1
@@ -1328,6 +1401,8 @@ Useful condition patterns:
 }
 ```
 
+`mutation_rarity_filters` is eligibility-only. It never changes the profile's own item chance, item weights, or quantities. Exact keys are `rarity`, `rarities`, `any_of`, and `one_of`; `none_of`/`excluded` reject exact tiers. `minimum_rarity` (also accepted as `min_rarity`) compares configured rarity thresholds, so it accepts the named rarity and every enabled tier with an equal or higher threshold. See [RARITY_AND_GENERATION.md](RARITY_AND_GENERATION.md) for the full contract.
+
 ```json
 {
   "type": "worldawakened:entity_is_mutated",
@@ -1371,6 +1446,50 @@ Reward entry model guidance:
 - `weight`
 - optional count range (`min`, `max`)
 - optional rarity tags (`rarity_tags` or equivalent profile-entry metadata path when exposed)
+
+### Native Mob and Chest Loot profiles
+
+Native authored profiles must declare `profile_type` as `mob` or `chest`.
+
+- A `mob` profile uses `authoring.target_entities` for precise entity eligibility. This is
+  checked in addition to any loot-table context so entities sharing a vanilla loot table do not
+  accidentally share a profile. It may also define `authoring.item_chance` and an optional
+  `authoring.bonus_xp` object.
+- A `chest` profile uses `target_loot_tables`; it is evaluated only through a supported
+  container-loot generation context. It injects additively and does not replay when a container
+  is reopened.
+- `item_chance` is independent of weighted entry selection. `0.25` means a 25% chance that one
+  weighted entry is selected; an entry's weight is its relative share only after that roll passes.
+- `bonus_xp` is mob-only and is independent of item drops. It supports `mode: extra | multiplier`,
+  `min`, `max`, `multiplier`, and `chance`. Extra XP is added after vanilla XP is calculated;
+  multiplier scales the vanilla result. Values are bounded and zero chance means no bonus.
+- `authoring.eligible_dimensions` is an optional any-of dimension list. An empty list means all
+  dimensions. Native editor World Phase selection writes `stage_filters.required_any`, so it also
+  means any selected **currently active** phase rather than an ordering range or historical
+  unlock. Cumulative groups retain their unlock history, but Loot sees only that group's current
+  phase; independent progression groups can each contribute one active phase. An empty
+  `stage_filters` field (or no field) is genuinely unrestricted.
+- The compact selector only edits its native `required_any` form. More advanced/legacy stage
+  filters remain preserved and visibly marked as custom instead of being displayed as `Any` or
+  overwritten on an unrelated profile save.
+
+Example:
+
+```json
+{
+  "schema_version": 1,
+  "id": "example:mutated_zombie_bonus",
+  "profile_type": "mob",
+  "authoring": {
+    "display_name": "Mutated Zombie Bonus",
+    "target_entities": ["minecraft:zombie"],
+    "item_chance": 0.25,
+    "bonus_xp": {"mode": "extra", "min": 2, "max": 5, "chance": 0.25}
+  },
+  "conditions": [{"type": "worldawakened:entity_is_mutated", "parameters": {}}],
+  "entries": [{"type": "item", "item": "minecraft:iron_nugget", "weight": 3, "min": 1, "max": 2}]
+}
+```
 
 Resolver behavior (author-facing):
 1. gameplay event triggers loot evaluation
@@ -1476,11 +1595,13 @@ Deferred from Phase 8 v1:
 Field defaults:
 - `schema_version`: `1`
 - `id`: required
+- `aliases`: `[]`
 - `display_name`: required
 - `enabled`: `true`
 - `trigger_mode`: required
 - `conditions`: `[]`
 - `stage_filters`: absent
+- `mutation_rarity_filters`: absent
 - `dimensions`: `[]`
 - `biome_filters`: `[]`
 - `min_players`: `1`
@@ -1800,6 +1921,10 @@ Offer rules:
 - resolved offers do not reopen for a different choice
 - every enabled offer needs an explicit availability source: use `stage_filters` for automatic phase-linked availability, or grant it from an explicit trigger/rule action
 - an offer with empty conditions and no stage filter is not granted automatically
+- `effect_generation_pool` may replace or supplement curated candidate rewards. It
+  must name an enabled `scope: "ascension"` generation pool. Generated result
+  components and parameter values are persisted in the player offer instance at
+  grant time, including the eventual chosen reward.
 - `offer_repeat_policy = "once_per_player"` blocks another grant when the player has either a pending or resolved instance of that offer
 - `offer_repeat_policy = "once_per_source"` is the advanced repeatable mode and permits another instance only for a distinct canonical source key
 - `apotheosis_tier_filters` fail closed when Apotheosis tier context is unavailable or compat/config gates disable the tier provider path
@@ -1830,6 +1955,7 @@ Field defaults:
 - `selection_count`: `1`
 - `candidate_rewards`: `[]`
 - `candidate_reward_tags`: `[]`
+- `effect_generation_pool`: absent
 - `offer_mode`: `explicit_list`
 - `weighting_rules`: `{}`
 - `ui_priority`: `0`
@@ -1998,9 +2124,9 @@ Recommended log format:
 - Selectors, conditions, and other hot-path filters should compile during reload, not during live event evaluation
 - `/wa config` never rewrites external datapack JSON. Its runtime scalars remain bounded layers over every compiled pool, including external pools.
 - Start Empty candidate-compiles the same `worldawakened:defaults/...` filter used by `general.enable_builtin_gameplay`; other namespaces and non-default World Awakened IDs remain loaded. The bundled named-mutator library remains available as inactive authoring material and has no effect until a pool selects it.
-- source-backed stage/pool edits are world overrides; Revert reveals the current datapack source. Newly created stages, trigger rules, mutation pools, and Difficulty Tracks are explicitly world-owned and may be deleted only when dependency checks pass.
+- source-backed stage/pool edits are world overrides; Revert reveals the current datapack source. Newly created stages, trigger rules, mutation pools, and Phase Mutation Configurations are explicitly world-owned and may be deleted only when dependency checks pass.
 - Ascension authoring uses the same canonical `ascension_offers` and `ascension_rewards` codecs. The native screen orders General, Ascension Choices, then When to Offer. Its reward selector can create or edit a compact choice containing one to three distinct live implemented components, and saves reward changes atomically with the referencing offer. Phase-linked availability writes `stage_filters`, while custom conditions compile to ordinary player-scoped triggers with `grant_ascension_offer`. Copy from World Phase copies conditions rather than retaining a live link.
-- The native editor presents this metadata as World Phase -> dimension -> named mob configuration. It is not a new datapack gameplay type or runtime engine: every configuration remains a canonical mutation pool. Specialised configurations require explicit eligible mobs; during publication those mobs are subtracted from Default Mobs so the specialised definition wins without another selection pass. If Default Mobs uses an empty eligible-entity list as a wildcard, the compiled runtime pool materializes the current living-entity registry minus enabled specialised selections while retaining the authored wildcard. The editor adds stage gates, while ungrouped external pools keep their authored behavior and are never automatically grouped by matching dimensions. Existing track/tier JSON remains accepted and preserved as the compatibility representation.
+- The native editor presents this metadata as World Phase -> dimension -> named mob configuration. It is not a new datapack gameplay type or runtime engine: every configuration remains a canonical mutation pool. Specialised configurations require explicit eligible mobs; during publication those mobs are subtracted from Default Mobs so the specialised definition wins without another selection pass. If Default Mobs uses an empty eligible-entity list as a wildcard, the compiled runtime pool materializes the current living-entity registry minus enabled specialised selections while retaining the authored wildcard. The editor adds stage gates, while ungrouped external pools keep their authored behavior and are never automatically grouped by matching dimensions. World-authored `phase_mutation_configurations` preserve the old advanced assignment capability without accepting the retired track/tier schema.
 - Copy Standard materializes the bundled `worldawakened:defaults/...` authored graph into world storage and disables the bundled source. External datapacks remain additive by normal compiled-ID precedence.
 - a local pool override follows its source across reloads while that source ID exists; Revert reveals the currently loaded bundled/external definition, and an absent source disables the orphaned override rather than creating a new pool
 

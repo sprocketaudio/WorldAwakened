@@ -5,6 +5,7 @@
   "weight": 10,
   "mutation_chance": 0.02,
   "additional_mutation_chance": 0.0,
+  "effect_generation_pool": "worldawakened:defaults/early_mutations",
   "conditions": [
     { "type": "worldawakened:stage_unlocked", "parameters": { "stage": "worldawakened:defaults/stirring" } },
     { "type": "worldawakened:stage_locked", "parameters": { "stage": "worldawakened:defaults/unease" } },

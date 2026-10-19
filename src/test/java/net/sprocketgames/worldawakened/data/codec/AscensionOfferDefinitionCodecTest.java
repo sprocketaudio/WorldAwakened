@@ -36,5 +36,21 @@ class AscensionOfferDefinitionCodecTest {
         assertEquals(AscensionRewardRepeatPolicy.BLOCK_ALL, offer.rewardRepeatPolicy());
         assertTrue(offer.candidateRewardTags().isEmpty());
     }
+
+    @Test
+    void decodesAscensionEffectGenerationPool() {
+        var result = AscensionOfferDefinition.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("""
+                {
+                  "id": "testpack:generated_offer",
+                  "display_name": "Generated Adaptation",
+                  "choice_count": 3,
+                  "effect_generation_pool": "testpack:ascension_effects"
+                }
+                """));
+
+        assertTrue(result.result().isPresent());
+        assertEquals("testpack:ascension_effects", result.result().orElseThrow()
+                .effectGenerationPool().orElseThrow().toString());
+    }
 }
 

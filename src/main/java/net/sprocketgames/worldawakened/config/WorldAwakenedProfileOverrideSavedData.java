@@ -41,7 +41,7 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
     private final Map<ResourceLocation, StageDefinition> stages = new LinkedHashMap<>();
     private final Map<ResourceLocation, TriggerRuleDefinition> triggerRules = new LinkedHashMap<>();
     private final Map<ResourceLocation, MutationPoolDefinition> mutationPools = new LinkedHashMap<>();
-    private final Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> difficultyTracks = new LinkedHashMap<>();
+    private final Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> phaseMutationConfigurations = new LinkedHashMap<>();
     private final Map<ResourceLocation, RuleDefinition> rules = new LinkedHashMap<>();
     private final Map<ResourceLocation, AscensionRewardDefinition> ascensionRewards = new LinkedHashMap<>();
     private final Map<ResourceLocation, AscensionOfferDefinition> ascensionOffers = new LinkedHashMap<>();
@@ -71,8 +71,8 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
         data.readDefinitions(tag, "stages_json", StageDefinition.CODEC, data.stages, "stage");
         data.readDefinitions(tag, "trigger_rules_json", TriggerRuleDefinition.CODEC, data.triggerRules, "trigger rule");
         data.readDefinitions(tag, "mutation_pools_json", MutationPoolDefinition.CODEC, data.mutationPools, "mutation pool");
-        data.readDefinitions(tag, "difficulty_tracks_json", WorldAwakenedDifficultyTrackDefinition.CODEC,
-                data.difficultyTracks, "difficulty track");
+        data.readDefinitions(tag, "phase_mutation_configurations_json", WorldAwakenedPhaseMutationConfigurationDefinition.CODEC,
+                data.phaseMutationConfigurations, "phase mutation configuration");
         data.readDefinitions(tag, "rules_json", RuleDefinition.CODEC, data.rules, "rule");
         data.readDefinitions(tag, "ascension_rewards_json", AscensionRewardDefinition.CODEC, data.ascensionRewards, "ascension reward");
         data.readDefinitions(tag, "ascension_offers_json", AscensionOfferDefinition.CODEC, data.ascensionOffers, "ascension offer");
@@ -109,7 +109,7 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
         if (definition instanceof StageDefinition value) return value.id();
         if (definition instanceof TriggerRuleDefinition value) return value.id();
         if (definition instanceof MutationPoolDefinition value) return value.id();
-        if (definition instanceof WorldAwakenedDifficultyTrackDefinition value) return value.id();
+        if (definition instanceof WorldAwakenedPhaseMutationConfigurationDefinition value) return value.id();
         if (definition instanceof RuleDefinition value) return value.id();
         if (definition instanceof AscensionRewardDefinition value) return value.id();
         if (definition instanceof AscensionOfferDefinition value) return value.id();
@@ -128,7 +128,8 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
         writeDefinitions(tag, "stages_json", StageDefinition.CODEC, stages);
         writeDefinitions(tag, "trigger_rules_json", TriggerRuleDefinition.CODEC, triggerRules);
         writeDefinitions(tag, "mutation_pools_json", MutationPoolDefinition.CODEC, mutationPools);
-        writeDefinitions(tag, "difficulty_tracks_json", WorldAwakenedDifficultyTrackDefinition.CODEC, difficultyTracks);
+        writeDefinitions(tag, "phase_mutation_configurations_json", WorldAwakenedPhaseMutationConfigurationDefinition.CODEC,
+                phaseMutationConfigurations);
         writeDefinitions(tag, "rules_json", RuleDefinition.CODEC, rules);
         writeDefinitions(tag, "ascension_rewards_json", AscensionRewardDefinition.CODEC, ascensionRewards);
         writeDefinitions(tag, "ascension_offers_json", AscensionOfferDefinition.CODEC, ascensionOffers);
@@ -154,7 +155,7 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
     public Map<ResourceLocation, StageDefinition> stages() { return Map.copyOf(stages); }
     public Map<ResourceLocation, TriggerRuleDefinition> triggerRules() { return Map.copyOf(triggerRules); }
     public Map<ResourceLocation, MutationPoolDefinition> mutationPools() { return Map.copyOf(mutationPools); }
-    public Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> difficultyTracks() { return Map.copyOf(difficultyTracks); }
+    public Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> phaseMutationConfigurations() { return Map.copyOf(phaseMutationConfigurations); }
     public Map<ResourceLocation, RuleDefinition> rules() { return Map.copyOf(rules); }
     public Map<ResourceLocation, AscensionRewardDefinition> ascensionRewards() { return Map.copyOf(ascensionRewards); }
     public Map<ResourceLocation, AscensionOfferDefinition> ascensionOffers() { return Map.copyOf(ascensionOffers); }
@@ -179,12 +180,10 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
 
     public void replaceAll(Map<ResourceLocation, StageDefinition> nextStages,
             Map<ResourceLocation, TriggerRuleDefinition> nextTriggers,
-            Map<ResourceLocation, MutationPoolDefinition> nextPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> nextTracks) {
+            Map<ResourceLocation, MutationPoolDefinition> nextPools) {
         stages.clear(); stages.putAll(nextStages);
         triggerRules.clear(); triggerRules.putAll(nextTriggers);
         mutationPools.clear(); mutationPools.putAll(nextPools);
-        difficultyTracks.clear(); difficultyTracks.putAll(nextTracks);
         revision++;
         setDirty();
     }
@@ -192,27 +191,28 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
     public void replaceAuthoring(Map<ResourceLocation, StageDefinition> nextStages,
             Map<ResourceLocation, TriggerRuleDefinition> nextTriggers,
             Map<ResourceLocation, MutationPoolDefinition> nextPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> nextTracks,
+            Map<ResourceLocation, WorldAwakenedPhaseMutationConfigurationDefinition> nextPhaseMutationConfigurations,
             Map<ResourceLocation, AscensionRewardDefinition> nextRewards,
             Map<ResourceLocation, AscensionOfferDefinition> nextOffers,
-            Map<ResourceLocation, MobMutatorDefinition> nextMutators) {
+            Map<ResourceLocation, MobMutatorDefinition> nextMutators,
+            Map<ResourceLocation, LootProfileDefinition> nextLootProfiles) {
         stages.clear(); stages.putAll(nextStages);
         triggerRules.clear(); triggerRules.putAll(nextTriggers);
         mutationPools.clear(); mutationPools.putAll(nextPools);
-        difficultyTracks.clear(); difficultyTracks.putAll(nextTracks);
+        phaseMutationConfigurations.clear(); phaseMutationConfigurations.putAll(nextPhaseMutationConfigurations);
         ascensionRewards.clear(); ascensionRewards.putAll(nextRewards);
         ascensionOffers.clear(); ascensionOffers.putAll(nextOffers);
         mobMutators.clear(); mobMutators.putAll(nextMutators);
+        lootProfiles.clear(); lootProfiles.putAll(nextLootProfiles);
         revision++;
         setDirty();
     }
 
     public void replaceProfile(String kind, Map<ResourceLocation, StageDefinition> nextStages,
             Map<ResourceLocation, TriggerRuleDefinition> nextTriggers,
-            Map<ResourceLocation, MutationPoolDefinition> nextPools,
-            Map<ResourceLocation, WorldAwakenedDifficultyTrackDefinition> nextTracks) {
+            Map<ResourceLocation, MutationPoolDefinition> nextPools) {
         profileKind = kind;
-        replaceAll(nextStages, nextTriggers, nextPools, nextTracks);
+        replaceAll(nextStages, nextTriggers, nextPools);
     }
 
     public void replaceCopiedProfile(String kind, net.sprocketgames.worldawakened.data.load.WorldAwakenedCompiledData copied) {
@@ -224,12 +224,12 @@ public final class WorldAwakenedProfileOverrideSavedData extends SavedData {
         invasionProfiles.clear(); invasionProfiles.putAll(copied.invasionProfiles());
         integrationProfiles.clear(); integrationProfiles.putAll(copied.integrationProfiles());
         entityBossFlags.clear(); entityBossFlags.putAll(copied.entityBossFlags());
-        replaceProfile(kind, copied.stages(), copied.triggerRules(), copied.mutationPools(), Map.of());
+        replaceProfile(kind, copied.stages(), copied.triggerRules(), copied.mutationPools());
     }
 
     public void replaceEmptyProfile(Map<ResourceLocation, MobMutatorDefinition> availableMutators) {
         clearCopiedDefinitions(); mobMutators.putAll(availableMutators);
-        replaceProfile("empty", Map.of(), Map.of(), Map.of(), Map.of());
+        replaceProfile("empty", Map.of(), Map.of(), Map.of());
     }
 
     public void clearCopiedDefinitions() {

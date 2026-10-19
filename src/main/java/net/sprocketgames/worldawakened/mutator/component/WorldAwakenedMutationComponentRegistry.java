@@ -82,6 +82,25 @@ public final class WorldAwakenedMutationComponentRegistry {
         }
     }
 
+    /**
+     * Registry membership describes schema support; generated gameplay also requires a real live
+     * application path. Keep this server-side answer shared by reload validation and generators.
+     */
+    public static boolean hasLiveRuntimeHandler(ResourceLocation componentType) {
+        if (componentType == null) {
+            return false;
+        }
+        return switch (componentType.getPath()) {
+            case "max_health_bonus", "max_health_multiplier", "attack_damage_bonus", "attack_damage_multiplier",
+                    "armor_bonus", "armor_multiplier", "armor_toughness_bonus", "movement_speed_bonus",
+                    "movement_speed_multiplier", "follow_range_bonus", "target_range_bonus",
+                    "knockback_resistance_bonus", "pursuit_speed_boost", "temporary_shield", "equip_item",
+                    "on_hit_effect", "life_steal", "death_explosion", "glow_style", "effect_particles",
+                    "ambient_particles" -> true;
+            default -> false;
+        };
+    }
+
     public static RegistrationResult register(WorldAwakenedMutationComponentType componentType) {
         Objects.requireNonNull(componentType, "componentType");
         Objects.requireNonNull(componentType.id(), "componentType.id");

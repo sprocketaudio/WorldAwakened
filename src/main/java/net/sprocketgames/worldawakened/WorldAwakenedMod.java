@@ -34,6 +34,7 @@ import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionEventHandle
 import net.sprocketgames.worldawakened.invasion.WorldAwakenedInvasionService;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootEventHandlers;
 import net.sprocketgames.worldawakened.loot.WorldAwakenedLootService;
+import net.sprocketgames.worldawakened.loot.WorldAwakenedLootModifiers;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorEventHandlers;
 import net.sprocketgames.worldawakened.mutator.WorldAwakenedMutatorService;
 import net.sprocketgames.worldawakened.network.WorldAwakenedNetwork;
@@ -70,6 +71,7 @@ public final class WorldAwakenedMod {
         modContainer.registerConfig(ModConfig.Type.COMMON, WorldAwakenedCommonConfig.SPEC);
         modContainer.registerConfig(ModConfig.Type.CLIENT, WorldAwakenedClientConfig.SPEC);
         WorldAwakenedOwnedCarrierAttachments.ATTACHMENT_TYPES.register(modEventBus);
+        WorldAwakenedLootModifiers.SERIALIZERS.register(modEventBus);
 
         WorldAwakenedTriggerEventHandlers triggerHandlers = new WorldAwakenedTriggerEventHandlers(TRIGGER_SERVICE);
         WorldAwakenedAscensionEventHandlers ascensionHandlers = new WorldAwakenedAscensionEventHandlers(ASCENSION_SERVICE);
@@ -93,6 +95,7 @@ public final class WorldAwakenedMod {
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onBlockBroken);
         NeoForge.EVENT_BUS.addListener(triggerHandlers::onLevelTickPost);
         NeoForge.EVENT_BUS.addListener(lootHandlers::onLivingDrops);
+        NeoForge.EVENT_BUS.addListener(lootHandlers::onLivingExperienceDrop);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onStageUnlocked);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerLoggedIn);
         NeoForge.EVENT_BUS.addListener(ascensionHandlers::onPlayerRespawn);

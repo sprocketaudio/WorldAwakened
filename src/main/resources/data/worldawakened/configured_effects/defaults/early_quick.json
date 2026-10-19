@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "worldawakened:defaults/early_quick",
+  "enabled": true,
+  "scope": "mob_mutation",
+  "effect_type": "worldawakened:movement_speed_multiplier",
+  "parameters": { "multiplier": 1.06 },
+  "power": 2,
+  "selection_weight": 3
+}

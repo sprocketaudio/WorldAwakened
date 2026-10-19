@@ -39,6 +39,7 @@ import net.sprocketgames.worldawakened.data.definition.EntityBossFlagMapDefiniti
 import net.sprocketgames.worldawakened.data.definition.IntegrationProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.InvasionProfileDefinition;
 import net.sprocketgames.worldawakened.data.definition.LootProfileDefinition;
+import net.sprocketgames.worldawakened.data.definition.LootProfileType;
 import net.sprocketgames.worldawakened.data.definition.MobMutatorDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationComponentDefinition;
 import net.sprocketgames.worldawakened.data.definition.MutationPoolDefinition;
@@ -47,6 +48,10 @@ import net.sprocketgames.worldawakened.data.definition.RuleDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageDefinition;
 import net.sprocketgames.worldawakened.data.definition.StageUnlockPolicy;
 import net.sprocketgames.worldawakened.data.definition.TriggerRuleDefinition;
+import net.sprocketgames.worldawakened.generation.ConfiguredEffectDefinition;
+import net.sprocketgames.worldawakened.generation.EffectGenerationPoolDefinition;
+import net.sprocketgames.worldawakened.generation.WorldAwakenedEffectScope;
+import net.sprocketgames.worldawakened.rarity.RarityDefinition;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnostic;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticCodes;
 import net.sprocketgames.worldawakened.debug.WorldAwakenedDiagnosticSeverity;
@@ -57,6 +62,10 @@ import net.sprocketgames.worldawakened.rules.runtime.WorldAwakenedRejectionReaso
 import net.sprocketgames.worldawakened.rules.runtime.WorldAwakenedRuntimeLayer;
 import net.sprocketgames.worldawakened.rules.runtime.WorldAwakenedRuleEngine;
 import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentValidation;
+import net.sprocketgames.worldawakened.mutator.component.WorldAwakenedMutationComponentRegistry;
+import net.sprocketgames.worldawakened.ascension.WorldAwakenedAscensionRewardEffects;
+import net.sprocketgames.worldawakened.ascension.component.WorldAwakenedAscensionComponentRegistry;
+import net.sprocketgames.worldawakened.progression.WorldAwakenedStageRegistry;
 import net.sprocketgames.worldawakened.spawning.selector.WorldAwakenedDataDrivenBossClassifier;
 
 public final class WorldAwakenedDatapackLoader {
@@ -110,6 +119,77 @@ public final class WorldAwakenedDatapackLoader {
                             "Missing required field: id",
                             "disabled_object"));
                 }
+            });
+
+    private static final WorldAwakenedObjectType<RarityDefinition> RARITIES = new WorldAwakenedObjectType<>(
+            "rarities", "rarities", RarityDefinition.CODEC, (sourcePath, definition, collector) -> {
+                if (definition.minimumPower() < 0) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
+                            "rarities", definition.id(), sourcePath,
+                            "minimum_power must be >= 0", "disabled_object"));
+                }
+            });
+
+    private static final WorldAwakenedObjectType<ConfiguredEffectDefinition> CONFIGURED_EFFECTS = new WorldAwakenedObjectType<>(
+            "configured_effects", "configured_effects", ConfiguredEffectDefinition.CODEC, (sourcePath, definition, collector) -> {
+                if (definition.power() < 0 || definition.selectionWeight() <= 0) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
+                            "configured_effects", definition.id(), sourcePath,
+                            "power must be >= 0 and selection_weight must be > 0", "disabled_object"));
+                    return;
+                }
+                Optional<String> parameterError;
+                boolean live;
+                if (definition.scope() == WorldAwakenedEffectScope.MOB_MUTATION) {
+                    parameterError = WorldAwakenedMutationComponentRegistry.lookup(definition.effectType())
+                            .map(type -> type.parameterValidator().validate(definition.parameters()))
+                            .orElse(Optional.of("unknown mutation component type: " + definition.effectType()));
+                    live = WorldAwakenedMutationComponentRegistry.hasLiveRuntimeHandler(definition.effectType());
+                } else {
+                    parameterError = WorldAwakenedAscensionComponentRegistry.lookup(definition.effectType())
+                            .map(type -> type.parameterValidator().validate(definition.parameters()))
+                            .orElse(Optional.of("unknown ascension component type: " + definition.effectType()));
+                    live = WorldAwakenedAscensionRewardEffects.hasLiveRuntimeHandler(definition.effectType());
+                }
+                parameterError.ifPresent(error -> collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.COMPONENT_PARAMETERS_INVALID,
+                        "configured_effects", definition.id(), sourcePath, error, "disabled_object")));
+                if (!live) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.COMPONENT_NO_RUNTIME_RESULT,
+                            "configured_effects", definition.id(), sourcePath,
+                            "effect_type has no safe live runtime handler: " + definition.effectType(), "disabled_object"));
+                }
+            });
+
+    private static final WorldAwakenedObjectType<EffectGenerationPoolDefinition> EFFECT_GENERATION_POOLS = new WorldAwakenedObjectType<>(
+            "effect_generation_pools", "effect_generation_pools", EffectGenerationPoolDefinition.CODEC, (sourcePath, definition, collector) -> {
+                if (definition.configuredEffects().isEmpty()) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                            "effect_generation_pools", definition.id(), sourcePath,
+                            "configured_effects must include at least one effect instance", "disabled_object"));
+                }
+                if (definition.combinationSizes().isEmpty() || definition.combinationSizes().stream()
+                        .anyMatch(size -> size.size() < 1 || size.weight() <= 0)) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.POOL_SELECTION_IMPOSSIBLE,
+                            "effect_generation_pools", definition.id(), sourcePath,
+                            "combination_sizes must contain positive size and weight values", "disabled_object"));
+                }
+                if (definition.curatedSourceWeight() < 0 || definition.generatedSourceWeight() < 0
+                        || (definition.mode().name().equals("MIXED")
+                        && definition.curatedSourceWeight() + definition.generatedSourceWeight() <= 0)) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.POOL_SELECTION_IMPOSSIBLE,
+                            "effect_generation_pools", definition.id(), sourcePath,
+                            "source weights must be non-negative and Mixed needs a positive total", "disabled_object"));
+                }
+                validateTypedNodes("effect_generation_pools", definition.id(), sourcePath, "stage_filters",
+                        definition.stageFilters().map(List::of).orElse(List.of()), true, collector);
             });
 
     private static final WorldAwakenedObjectType<TriggerRuleDefinition> TRIGGER_RULES = new WorldAwakenedObjectType<>(
@@ -267,14 +347,15 @@ public final class WorldAwakenedDatapackLoader {
                             "selection_count must equal 1 in v1",
                             "disabled_object"));
                 }
-                if (definition.candidateRewards().isEmpty() && definition.candidateRewardTags().isEmpty()) {
+                if (definition.candidateRewards().isEmpty() && definition.candidateRewardTags().isEmpty()
+                        && definition.effectGenerationPool().isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.ASCENSION_REWARD_INVALID,
                             "ascension_offers",
                             definition.id(),
                             sourcePath,
-                            "Offer must include candidate_rewards or candidate_reward_tags",
+                            "Offer must include candidate_rewards, candidate_reward_tags, or effect_generation_pool",
                             "disabled_object"));
                 }
                 validateTypedNodes("ascension_offers", definition.id(), sourcePath, "trigger_conditions", definition.triggerConditions(), true, collector);
@@ -408,26 +489,66 @@ public final class WorldAwakenedDatapackLoader {
             "loot_profiles",
             LootProfileDefinition.CODEC,
             (sourcePath, definition, collector) -> {
-                if (definition.targetLootTables().isEmpty()) {
+                if (definition.profileType() == LootProfileType.CHEST && definition.targetLootTables().isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
                             "loot_profiles",
                             definition.id(),
                             sourcePath,
-                            "Loot profile must include target_loot_tables",
+                            "Chest loot profile must include target_loot_tables",
                             "disabled_object"));
                 }
-                if (definition.entries().isEmpty()) {
+                if (definition.profileType() == LootProfileType.MOB
+                        && definition.targetLootTables().isEmpty()
+                        && definition.authoring().targetEntities().isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
                             "loot_profiles",
                             definition.id(),
                             sourcePath,
-                            "Loot profile must include entries",
+                            "Mob loot profile must include authoring.target_entities or target_loot_tables",
                             "disabled_object"));
                 }
+                boolean hasBonusXp = definition.authoring().bonusXp().map(value -> value.enabled()).orElse(false);
+                if (definition.entries().isEmpty() && !hasBonusXp) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.MISSING_REQUIRED_FIELD,
+                            "loot_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "Loot profile must include entries or an enabled mob bonus_xp reward",
+                            "disabled_object"));
+                }
+                if (definition.authoring().itemChance() < 0.0D || definition.authoring().itemChance() > 1.0D) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR,
+                            WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                            "loot_profiles",
+                            definition.id(),
+                            sourcePath,
+                            "authoring.item_chance must be between 0 and 1",
+                            "disabled_object"));
+                }
+                definition.authoring().bonusXp().ifPresent(xp -> {
+                    if (definition.profileType() == LootProfileType.CHEST) {
+                        collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                                WorldAwakenedDiagnosticSeverity.ERROR,
+                                WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                                "loot_profiles", definition.id(), sourcePath,
+                                "bonus_xp is supported only by mob loot profiles", "disabled_object"));
+                    }
+                    if (xp.minimum() < 0 || xp.maximum() < xp.minimum()
+                            || xp.chance() < 0.0D || xp.chance() > 1.0D || xp.multiplier() < 0.0D) {
+                        collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                                WorldAwakenedDiagnosticSeverity.ERROR,
+                                WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                                "loot_profiles", definition.id(), sourcePath,
+                                "bonus_xp values are invalid", "disabled_object"));
+                    }
+                });
                 definition.configGate().ifPresent(configGate -> validateConfigGate("loot_profiles", definition.id(), sourcePath, configGate, collector));
                 validateTypedNodes("loot_profiles", definition.id(), sourcePath, "conditions", definition.conditions(), true, collector);
                 validateTypedNodes("loot_profiles", definition.id(), sourcePath, "mod_conditions", definition.modConditions(), true, collector);
@@ -550,6 +671,9 @@ public final class WorldAwakenedDatapackLoader {
         Map<ResourceLocation, InvasionProfileDefinition> invasionProfiles = loadType(resourceManager, INVASION_PROFILES, collector, logger);
         Map<ResourceLocation, IntegrationProfileDefinition> integrationProfiles = loadType(resourceManager, INTEGRATION_PROFILES, collector, logger);
         Map<ResourceLocation, EntityBossFlagMapDefinition> entityBossFlags = loadType(resourceManager, ENTITY_BOSS_FLAGS, collector, logger);
+        Map<ResourceLocation, RarityDefinition> rarities = loadType(resourceManager, RARITIES, collector, logger);
+        Map<ResourceLocation, ConfiguredEffectDefinition> configuredEffects = loadType(resourceManager, CONFIGURED_EFFECTS, collector, logger);
+        Map<ResourceLocation, EffectGenerationPoolDefinition> effectGenerationPools = loadType(resourceManager, EFFECT_GENERATION_POOLS, collector, logger);
 
         if (!WorldAwakenedConfigService.settings().defaultGameplayEnabled()) {
             stages = filterBundledDefaults(stages, false);
@@ -563,6 +687,9 @@ public final class WorldAwakenedDatapackLoader {
             invasionProfiles = filterBundledDefaults(invasionProfiles, false);
             integrationProfiles = filterBundledDefaults(integrationProfiles, false);
             entityBossFlags = filterBundledDefaults(entityBossFlags, false);
+            rarities = filterBundledDefaults(rarities, false);
+            configuredEffects = filterBundledDefaults(configuredEffects, false);
+            effectGenerationPools = filterBundledDefaults(effectGenerationPools, false);
             WorldAwakenedLog.info(
                     logger,
                     WorldAwakenedLogCategory.DATA_LOAD,
@@ -582,11 +709,16 @@ public final class WorldAwakenedDatapackLoader {
                 mergeStageRefs(extractStageReferences(profile.conditions()), extractStageReferences(profile.stageFilters())), collector);
         invasionProfiles = dropObjectsMissingStageRefs("invasion_profiles", invasionProfiles, stages, InvasionProfileDefinition::id, profile ->
                 mergeStageRefs(extractStageReferences(profile.conditions()), extractStageReferences(profile.stageFilters())), collector);
-        validateIntegrationStageHooks(integrationProfiles, stages.keySet(), collector);
+        validateIntegrationStageHooks(integrationProfiles, WorldAwakenedStageRegistry.from(stages), collector);
 
         mutationPools = dropInvalidMutationPools(mutationPools, mobMutators, collector);
         ascensionOffers = dropInvalidAscensionOffers(ascensionOffers, ascensionRewards, collector);
         invasionProfiles = dropInvalidInvasionProfiles(invasionProfiles, lootProfiles, collector);
+        rarities = dropConflictingRarityThresholds(rarities, collector);
+        lootProfiles = dropLootProfilesMissingRarityReferences(lootProfiles, rarities, collector);
+        effectGenerationPools = dropInvalidEffectGenerationPools(effectGenerationPools, configuredEffects, collector);
+        ascensionOffers = dropAscensionOffersMissingEffectGenerationPools(ascensionOffers, effectGenerationPools, collector);
+        mutationPools = dropMutationPoolsMissingEffectGenerationPools(mutationPools, effectGenerationPools, collector);
 
         WorldAwakenedValidationSummary summary = collector.build();
         if (WorldAwakenedFeatureGates.validationLoggingEnabled()) {
@@ -611,6 +743,9 @@ public final class WorldAwakenedDatapackLoader {
                         Map.copyOf(invasionProfiles),
                         Map.copyOf(integrationProfiles),
                         Map.copyOf(entityBossFlags),
+                        Map.copyOf(rarities),
+                        Map.copyOf(configuredEffects),
+                        Map.copyOf(effectGenerationPools),
                         WorldAwakenedDataDrivenBossClassifier.fromMaps(entityBossFlags.values().stream().toList())),
                 summary);
     }
@@ -634,6 +769,31 @@ public final class WorldAwakenedDatapackLoader {
         return id != null
                 && "worldawakened".equals(id.getNamespace())
                 && id.getPath().startsWith("defaults/");
+    }
+
+    private static Map<ResourceLocation, RarityDefinition> dropConflictingRarityThresholds(
+            Map<ResourceLocation, RarityDefinition> definitions,
+            WorldAwakenedValidationSummary.Builder collector) {
+        Map<Integer, List<RarityDefinition>> byThreshold = new LinkedHashMap<>();
+        definitions.values().forEach(definition -> byThreshold
+                .computeIfAbsent(definition.minimumPower(), ignored -> new ArrayList<>()).add(definition));
+        LinkedHashMap<ResourceLocation, RarityDefinition> retained = new LinkedHashMap<>(definitions);
+        for (Map.Entry<Integer, List<RarityDefinition>> entry : byThreshold.entrySet()) {
+            if (entry.getValue().size() < 2) continue;
+            List<RarityDefinition> ordered = entry.getValue().stream()
+                    .sorted(java.util.Comparator.comparing(value -> value.id().toString())).toList();
+            RarityDefinition winner = ordered.getFirst();
+            for (int index = 1; index < ordered.size(); index++) {
+                RarityDefinition duplicate = ordered.get(index);
+                retained.remove(duplicate.id());
+                collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                        WorldAwakenedDiagnosticSeverity.ERROR,
+                        WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                        "rarities", duplicate.id(), "rarities/" + duplicate.id().getPath() + ".json",
+                        "minimum_power " + entry.getKey() + " duplicates " + winner.id(), "disabled_object"));
+            }
+        }
+        return Map.copyOf(retained);
     }
 
     private static <T extends WorldAwakenedDataDefinition> Map<ResourceLocation, T> loadType(
@@ -855,7 +1015,7 @@ public final class WorldAwakenedDatapackLoader {
 
     static void validateIntegrationStageHooks(
             Map<ResourceLocation, IntegrationProfileDefinition> integrationProfiles,
-            Set<ResourceLocation> knownStageIds,
+            WorldAwakenedStageRegistry stageRegistry,
             WorldAwakenedValidationSummary.Builder collector) {
         for (IntegrationProfileDefinition definition : integrationProfiles.values()) {
             String sourcePath = definition.id().toString();
@@ -935,7 +1095,7 @@ public final class WorldAwakenedDatapackLoader {
                             "disabled_branch"));
                     continue;
                 }
-                if (!knownStageIds.contains(unlockStage)) {
+                if (stageRegistry.resolveCanonicalId(unlockStage).isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.STAGE_REF_MISSING,
@@ -1329,7 +1489,7 @@ public final class WorldAwakenedDatapackLoader {
         }
     }
 
-    private static Map<ResourceLocation, StageDefinition> dropConflictingStages(
+    static Map<ResourceLocation, StageDefinition> dropConflictingStages(
             Map<ResourceLocation, StageDefinition> stages,
             WorldAwakenedValidationSummary.Builder collector) {
         Map<String, List<StageDefinition>> byGroup = new LinkedHashMap<>();
@@ -1338,6 +1498,24 @@ public final class WorldAwakenedDatapackLoader {
         }
 
         Set<ResourceLocation> blocked = new LinkedHashSet<>();
+        Map<ResourceLocation, List<StageDefinition>> aliasOwners = new LinkedHashMap<>();
+        for (StageDefinition stage : stages.values()) {
+            Set<ResourceLocation> declared = new LinkedHashSet<>();
+            for (ResourceLocation alias : stage.aliases()) {
+                if (alias == null || !declared.add(alias) || alias.equals(stage.id()) || stages.containsKey(alias)) {
+                    blockStageForAliasConflict(stage, alias, collector, blocked);
+                    continue;
+                }
+                aliasOwners.computeIfAbsent(alias, ignored -> new ArrayList<>()).add(stage);
+            }
+        }
+        for (Map.Entry<ResourceLocation, List<StageDefinition>> entry : aliasOwners.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                for (StageDefinition stage : entry.getValue()) {
+                    blockStageForAliasConflict(stage, entry.getKey(), collector, blocked);
+                }
+            }
+        }
         for (Map.Entry<String, List<StageDefinition>> entry : byGroup.entrySet()) {
             List<StageDefinition> group = entry.getValue().stream()
                     .filter(stage -> stage.unlockPolicy() == StageUnlockPolicy.EXCLUSIVE_GROUP || stage.unlockPolicy() == StageUnlockPolicy.REPLACE_GROUP)
@@ -1378,19 +1556,46 @@ public final class WorldAwakenedDatapackLoader {
         return filtered;
     }
 
-    private static <T extends WorldAwakenedDataDefinition> Map<ResourceLocation, T> dropObjectsMissingStageRefs(
+    private static void blockStageForAliasConflict(
+            StageDefinition stage,
+            ResourceLocation alias,
+            WorldAwakenedValidationSummary.Builder collector,
+            Set<ResourceLocation> blocked) {
+        if (!blocked.add(stage.id())) {
+            return;
+        }
+        collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                WorldAwakenedDiagnosticSeverity.ERROR,
+                WorldAwakenedDiagnosticCodes.STAGE_ALIAS_CONFLICT,
+                "stages",
+                stage.id(),
+                null,
+                "Stage alias must be unique and must not match a canonical stage ID: " + alias,
+                "disabled_object"));
+        collector.addRejectedTrace(
+                WorldAwakenedRuntimeLayer.STATIC_DATA_LOAD,
+                "stages",
+                stage.id(),
+                null,
+                WorldAwakenedRejectionReason.INVALID_REFERENCED_OBJECT,
+                "stage_alias_conflict");
+        collector.incrementDisabled("stages");
+    }
+
+    static <T extends WorldAwakenedDataDefinition> Map<ResourceLocation, T> dropObjectsMissingStageRefs(
             String objectType,
             Map<ResourceLocation, T> objects,
             Map<ResourceLocation, StageDefinition> stages,
             Function<T, ResourceLocation> idGetter,
             Function<T, List<ResourceLocation>> stageRefExtractor,
             WorldAwakenedValidationSummary.Builder collector) {
+        WorldAwakenedStageRegistry stageRegistry = WorldAwakenedStageRegistry.from(stages);
         Map<ResourceLocation, T> filtered = new LinkedHashMap<>();
         for (T definition : objects.values()) {
             boolean invalid = false;
             ResourceLocation objectId = idGetter.apply(definition);
             for (ResourceLocation stageRef : stageRefExtractor.apply(definition)) {
-                if (!stages.containsKey(stageRef)) {
+                if (stageRegistry.resolveCanonicalId(stageRef).isEmpty()) {
                     collector.addDiagnostic(new WorldAwakenedDiagnostic(
                             WorldAwakenedDiagnosticSeverity.ERROR,
                             WorldAwakenedDiagnosticCodes.STAGE_REF_MISSING,
@@ -1474,6 +1679,118 @@ public final class WorldAwakenedDatapackLoader {
             }
         }
         return filtered;
+    }
+
+    private static Map<ResourceLocation, EffectGenerationPoolDefinition> dropInvalidEffectGenerationPools(
+            Map<ResourceLocation, EffectGenerationPoolDefinition> pools,
+            Map<ResourceLocation, ConfiguredEffectDefinition> effects,
+            WorldAwakenedValidationSummary.Builder collector) {
+        Map<ResourceLocation, EffectGenerationPoolDefinition> filtered = new LinkedHashMap<>();
+        for (EffectGenerationPoolDefinition pool : pools.values()) {
+            boolean invalid = false;
+            for (ResourceLocation effectId : pool.configuredEffects()) {
+                ConfiguredEffectDefinition effect = effects.get(effectId);
+                if (effect == null) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                            "effect_generation_pools", pool.id(), null,
+                            "Missing configured effect reference: " + effectId, "pool_disabled"));
+                    invalid = true;
+                } else if (effect.scope() != pool.scope()) {
+                    collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                            WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                            "effect_generation_pools", pool.id(), null,
+                            "Configured effect scope does not match pool scope: " + effectId, "pool_disabled"));
+                    invalid = true;
+                }
+            }
+            if (invalid) {
+                collector.incrementDisabled("effect_generation_pools");
+            } else {
+                filtered.put(pool.id(), pool);
+            }
+        }
+        return Map.copyOf(filtered);
+    }
+
+    private static Map<ResourceLocation, AscensionOfferDefinition> dropAscensionOffersMissingEffectGenerationPools(
+            Map<ResourceLocation, AscensionOfferDefinition> offers,
+            Map<ResourceLocation, EffectGenerationPoolDefinition> generationPools,
+            WorldAwakenedValidationSummary.Builder collector) {
+        Map<ResourceLocation, AscensionOfferDefinition> filtered = new LinkedHashMap<>();
+        for (AscensionOfferDefinition offer : offers.values()) {
+            Optional<ResourceLocation> reference = offer.effectGenerationPool();
+            if (reference.isEmpty()) {
+                filtered.put(offer.id(), offer);
+                continue;
+            }
+            EffectGenerationPoolDefinition pool = generationPools.get(reference.get());
+            if (pool != null && pool.scope() == WorldAwakenedEffectScope.ASCENSION) {
+                filtered.put(offer.id(), offer);
+                continue;
+            }
+            collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                    WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                    "ascension_offers", offer.id(), null,
+                    "Missing or non-ascension effect_generation_pool: " + reference.get(), "offer_disabled"));
+            collector.incrementDisabled("ascension_offers");
+        }
+        return Map.copyOf(filtered);
+    }
+
+    private static Map<ResourceLocation, MutationPoolDefinition> dropMutationPoolsMissingEffectGenerationPools(
+            Map<ResourceLocation, MutationPoolDefinition> pools,
+            Map<ResourceLocation, EffectGenerationPoolDefinition> generationPools,
+            WorldAwakenedValidationSummary.Builder collector) {
+        Map<ResourceLocation, MutationPoolDefinition> filtered = new LinkedHashMap<>();
+        for (MutationPoolDefinition pool : pools.values()) {
+            Optional<ResourceLocation> reference = pool.effectGenerationPool();
+            if (reference.isEmpty()) {
+                filtered.put(pool.id(), pool);
+                continue;
+            }
+            EffectGenerationPoolDefinition generationPool = generationPools.get(reference.get());
+            if (generationPool != null && generationPool.scope() == WorldAwakenedEffectScope.MOB_MUTATION) {
+                filtered.put(pool.id(), pool);
+                continue;
+            }
+            collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                    WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                    "mutation_pools", pool.id(), null,
+                    "effect_generation_pool must reference a mob_mutation generation pool: " + reference.get(),
+                    "pool_disabled"));
+            collector.incrementDisabled("mutation_pools");
+        }
+        return Map.copyOf(filtered);
+    }
+
+    /**
+     * Rarity filters are deliberately eligibility-only at runtime, but their IDs still need the
+     * same reload-time safety as every other cross-object reference.  A restrictive filter must
+     * never quietly degrade into an unrestricted profile because a pack typo was ignored.
+     */
+    private static Map<ResourceLocation, LootProfileDefinition> dropLootProfilesMissingRarityReferences(
+            Map<ResourceLocation, LootProfileDefinition> profiles,
+            Map<ResourceLocation, RarityDefinition> rarities,
+            WorldAwakenedValidationSummary.Builder collector) {
+        Map<ResourceLocation, LootProfileDefinition> filtered = new LinkedHashMap<>();
+        for (LootProfileDefinition profile : profiles.values()) {
+            List<ResourceLocation> references = extractRarityReferences(profile.mutationRarityFilters());
+            ResourceLocation missing = references.stream()
+                    .filter(reference -> !rarities.containsKey(reference) || !rarities.get(reference).enabled())
+                    .findFirst()
+                    .orElse(null);
+            if (missing == null) {
+                filtered.put(profile.id(), profile);
+                continue;
+            }
+            collector.addDiagnostic(new WorldAwakenedDiagnostic(
+                    WorldAwakenedDiagnosticSeverity.ERROR, WorldAwakenedDiagnosticCodes.INVALID_REFERENCE,
+                    "loot_profiles", profile.id(), null,
+                    "Missing mutation_rarity_filters rarity reference: " + missing, "profile_disabled"));
+            collector.incrementDisabled("loot_profiles");
+        }
+        return Map.copyOf(filtered);
     }
 
     private static Map<ResourceLocation, InvasionProfileDefinition> dropInvalidInvasionProfiles(
@@ -1681,6 +1998,35 @@ public final class WorldAwakenedDatapackLoader {
         List<ResourceLocation> refs = new ArrayList<>();
         collectStageReferences(element.get(), null, false, refs);
         return refs;
+    }
+
+    private static List<ResourceLocation> extractRarityReferences(Optional<JsonElement> element) {
+        if (element.isEmpty()) return List.of();
+        LinkedHashSet<ResourceLocation> references = new LinkedHashSet<>();
+        collectRarityReferences(element.get(), false, references);
+        return List.copyOf(references);
+    }
+
+    private static void collectRarityReferences(JsonElement element, boolean rarityContext, Set<ResourceLocation> references) {
+        if (element == null || element.isJsonNull()) return;
+        if (element.isJsonObject()) {
+            for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+                String key = entry.getKey().toLowerCase(Locale.ROOT);
+                boolean nextContext = rarityContext || key.equals("rarity") || key.equals("rarities")
+                        || key.equals("any_of") || key.equals("one_of") || key.equals("none_of") || key.equals("excluded")
+                        || key.equals("minimum_rarity") || key.equals("min_rarity") || key.equals("minimum");
+                collectRarityReferences(entry.getValue(), nextContext, references);
+            }
+            return;
+        }
+        if (element.isJsonArray()) {
+            for (JsonElement child : element.getAsJsonArray()) collectRarityReferences(child, rarityContext, references);
+            return;
+        }
+        if (rarityContext && element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+            ResourceLocation id = ResourceLocation.tryParse(element.getAsString());
+            if (id != null) references.add(id);
+        }
     }
 
     private static void collectStageReferences(

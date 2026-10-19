@@ -10,8 +10,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.function.DoubleConsumer;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -64,6 +67,7 @@ public final class WorldAwakenedClientConfigPayloadHandler {
     private static boolean reopenProgression;
     private static boolean reopenTracks;
     private static boolean reopenAscension;
+    private static boolean reopenLoot;
     private static String reopenPoolAfterAuthoring;
     private static String reopenTierTrackId;
     private static String reopenTierStageId;
@@ -91,6 +95,9 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         } else if (reopenAscension) {
             reopenAscension = false;
             minecraft.setScreen(new AscensionOffersScreen(model));
+        } else if (reopenLoot) {
+            reopenLoot = false;
+            minecraft.setScreen(new LootProfilesScreen(model));
         } else if (reopenProgression) {
             reopenProgression = false;
             minecraft.setScreen(new ProgressionScreen(model));
@@ -154,10 +161,21 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             JsonArray authoredTriggers = copyArray(root, "world_authored_triggers");
             JsonArray authoredPools = copyArray(root, "world_authored_pools");
             JsonArray authoredMutators = copyArray(root, "world_authored_mutators");
-            JsonArray tracks = copyArray(root, "difficulty_tracks");
+            JsonArray tracks = copyArray(root, "phase_mutation_configurations");
             JsonArray triggerRules = copyArray(root, "trigger_rules");
             JsonArray authoredOffers = copyArray(root, "world_authored_ascension_offers");
             JsonArray authoredRewards = copyArray(root, "world_authored_ascension_rewards");
+            JsonArray lootProfiles = copyArray(root, "loot_profiles");
+            JsonArray authoredLootProfiles = copyArray(root, "world_authored_loot_profiles");
+            List<ItemModel> items = new ArrayList<>();
+            if (root.has("items")) root.getAsJsonArray("items").forEach(value -> {
+                JsonObject node = value.getAsJsonObject();
+                items.add(new ItemModel(node.get("id").getAsString(), node.get("name").getAsString(),
+                        node.get("namespace").getAsString()));
+            });
+            List<String> chestLootTables = new ArrayList<>();
+            if (root.has("chest_loot_tables")) root.getAsJsonArray("chest_loot_tables")
+                    .forEach(value -> chestLootTables.add(value.getAsString()));
             List<OfferModel> offers = new ArrayList<>();
             if (root.has("ascension_offers")) root.getAsJsonArray("ascension_offers").forEach(value -> {
                 JsonObject definition = value.getAsJsonObject().deepCopy();
@@ -196,7 +214,8 @@ public final class WorldAwakenedClientConfigPayloadHandler {
                     List.copyOf(pools), List.copyOf(mutators), List.copyOf(entities), List.copyOf(dimensions),
                     List.copyOf(stages), authoredStages, authoredTriggers, authoredPools, authoredMutators, tracks, triggerRules,
                     List.copyOf(offers), authoredOffers, List.copyOf(rewards), authoredRewards,
-                    List.copyOf(advancements));
+                    List.copyOf(advancements), lootProfiles, authoredLootProfiles,
+                    List.copyOf(items), List.copyOf(chestLootTables));
         } catch (RuntimeException exception) {
             return null;
         }
@@ -248,7 +267,8 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             List<StageModel> stages, JsonArray authoredStages, JsonArray authoredTriggers, JsonArray authoredPools, JsonArray authoredMutators,
             JsonArray tracks, JsonArray triggerRules, List<OfferModel> offers, JsonArray authoredOffers,
             List<RewardModel> rewards, JsonArray authoredRewards,
-            List<AdvancementModel> advancements) {
+            List<AdvancementModel> advancements, JsonArray lootProfiles, JsonArray authoredLootProfiles,
+            List<ItemModel> items, List<String> chestLootTables) {
         PoolModel pool(String id) { return pools.stream().filter(pool -> pool.id().equals(id)).findFirst().orElse(null); }
         MutatorModel mutator(String id) { return mutators.stream().filter(mutator -> mutator.id().equals(id)).findFirst().orElse(null); }
     }
@@ -257,6 +277,7 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             int maxStackCount, Set<String> exclusiveWith, List<String> components, JsonObject definition,
             boolean worldAuthored) {}
     private record EntityModel(String id, String name, String namespace) {}
+    private record ItemModel(String id, String name, String namespace) {}
     private record AdvancementModel(String id, String name, String namespace, boolean technical) {}
     private record OfferModel(String id, String name, String description, JsonObject definition) {}
     private record RewardModel(String id, String name, JsonObject definition) {}
@@ -394,7 +415,8 @@ public final class WorldAwakenedClientConfigPayloadHandler {
                     ignored -> minecraft.setScreen(new ProgressionScreen(model)));
             tile(left + column + gap, 92, column, "Mob Mutations", "Phase, dimension and named mob configurations", true,
                     ignored -> minecraft.setScreen(new MutationPoolsScreen(model, null)));
-            tile(left, 132, column, "Abilities & Mutators", "Effects and archetypes — coming later", false, ignored -> {});
+            tile(left, 132, column, "Loot", "Mob drops, chest rewards and bonus experience", true,
+                    ignored -> minecraft.setScreen(new LootProfilesScreen(model)));
             tile(left + column + gap, 132, column, "Ascension", "Offers, availability and permanent choices", true,
                     ignored -> minecraft.setScreen(new AscensionOffersScreen(model)));
             tile(left, 172, column, "World Events", "Pressure events — coming later", false, ignored -> {});
@@ -1864,12 +1886,14 @@ public final class WorldAwakenedClientConfigPayloadHandler {
                 if (condition.type == 1) {
                     EditBox day = new EditBox(font, x + typeW + 4, y, valueW, 20, Component.literal("World day"));
                     day.setFilter(text -> text.matches("[0-9]{0,7}")); day.setValue(condition.target == null ? "3" : condition.target);
+                    day.setTooltip(Tooltip.create(Component.literal(
+                            "World day when this offer becomes available. Enter a whole number from 0 onward.")));
                     day.setResponder(value -> { condition.target = value; draft.dirty = true; }); addRenderableWidget(day);
                 } else {
                     button(x + typeW + 4, y, valueW, targetLabel(model, condition.type, condition.target), ignored -> {
                         selectedConditionIndex = conditionIndex;
                         minecraft.setScreen(new StageUnlockTargetScreen(model, this, this));
-                    }, condition.target == null ? "Choose a target." : condition.target);
+                    }, conditionTargetTooltip(condition.type, condition.target));
                 }
                 Button remove = button(x + width - removeW, y, removeW, "×", ignored -> {
                     if (draft.conditions.size() > 1) { draft.conditions.remove(conditionIndex); draft.dirty = true; rebuildWidgets(); }
@@ -2635,7 +2659,7 @@ public final class WorldAwakenedClientConfigPayloadHandler {
                                 : eventMode && draft != null && item.id().equals(draft.id);
                         PoolTierRowButton entry = new PoolTierRowButton(poolViewportX, rowY, rowWidth,
                                 POOL_ROW_HEIGHT - 2, item.primary(), item.secondary(), item.state(), selected,
-                                selected && draft != null && draft.dirty, ignored -> {
+                                selected ? () -> draft != null && draft.dirty : () -> false, ignored -> {
                                     if (item.kind() == MutationBrowserKind.PHASE) selectPhase(item.id(), compact);
                                     else selectEvent(item.id(), compact);
                                 });
@@ -3747,13 +3771,17 @@ public final class WorldAwakenedClientConfigPayloadHandler {
     }
 
     private static final class PoolTierRowButton extends AbstractButton {
-        private final String primary, secondary, state; private final boolean selected, dirty; private final Button.OnPress onPress;
+        private final String primary, secondary, state; private final boolean selected; private final BooleanSupplier dirty; private final Button.OnPress onPress;
         PoolTierRowButton(int x, int y, int width, int height, String primary, String secondary,
                 boolean selected, boolean dirty, Button.OnPress onPress) {
-            this(x, y, width, height, primary, secondary, "", selected, dirty, onPress);
+            this(x, y, width, height, primary, secondary, "", selected, () -> dirty, onPress);
         }
         PoolTierRowButton(int x, int y, int width, int height, String primary, String secondary, String state,
                 boolean selected, boolean dirty, Button.OnPress onPress) {
+            this(x, y, width, height, primary, secondary, state, selected, () -> dirty, onPress);
+        }
+        PoolTierRowButton(int x, int y, int width, int height, String primary, String secondary, String state,
+                boolean selected, BooleanSupplier dirty, Button.OnPress onPress) {
             super(x, y, width, height, Component.literal(primary)); this.primary = primary; this.secondary = secondary;
             this.state = state; this.selected = selected; this.dirty = dirty; this.onPress = onPress;
         }
@@ -3769,8 +3797,9 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             if (selected) graphics.fill(getX(), getY(), getX() + 3, getY() + getHeight(), 0xFF77AAFF);
             Font font = Minecraft.getInstance().font;
             int stateWidth = state.isBlank() ? 0 : font.width(state) + 8;
-            drawMarqueeLeft(graphics, font, Component.literal(primary + (dirty ? "  • Unsaved" : "")),
-                    getX() + 7, getY() + 5, Math.max(20, getWidth() - 14 - stateWidth), dirty ? 0xFFFFDD66 : 0xFFFFFFFF);
+            boolean localDirty = dirty.getAsBoolean();
+            drawMarqueeLeft(graphics, font, Component.literal(primary + (localDirty ? "  • Unsaved" : "")),
+                    getX() + 7, getY() + 5, Math.max(20, getWidth() - 14 - stateWidth), localDirty ? 0xFFFFDD66 : 0xFFFFFFFF);
             if (!state.isBlank()) graphics.drawString(font, state, getX() + getWidth() - stateWidth + 2, getY() + 5,
                     state.contains("disabled") || state.equals("Off") ? 0xFF999999
                             : state.equals("Mixed") ? 0xFFFFCC66 : 0xFF66FF66, false);
@@ -3960,12 +3989,19 @@ public final class WorldAwakenedClientConfigPayloadHandler {
     }
 
     private static final class SelectionRowButton extends AbstractButton {
-        private final String primary;
+        private String primary;
         private final String secondary;
         private final boolean selected;
         private final boolean checkbox;
         private final int trailingClickExclusion;
         private final Button.OnPress onPress;
+        private String trailingStatus = "";
+        private int trailingStatusColor = 0xFFFFFF;
+        private String primaryTag = "";
+        private int primaryTagColor = 0xFFFFD34A;
+        private int primaryColor = 0xFFFFFF;
+        private Supplier<String> livePrimary;
+        private BooleanSupplier liveDirty;
 
         SelectionRowButton(int x, int y, int width, int height, String primary, String secondary,
                 boolean selected, Button.OnPress onPress) {
@@ -3980,7 +4016,11 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         SelectionRowButton(int x, int y, int width, int height, String primary, String secondary,
                 boolean selected, Button.OnPress onPress, boolean checkbox, int trailingClickExclusion) {
             super(x, y, width, height, Component.literal(primary));
-            this.primary = primary;
+            if (primary.endsWith("Unsaved")) {
+                int unsavedStart = Math.max(0, primary.lastIndexOf("Unsaved") - 4);
+                this.primary = primary.substring(0, unsavedStart).stripTrailing();
+                this.primaryTag = " · Unsaved";
+            } else this.primary = primary;
             this.secondary = secondary;
             this.selected = selected;
             this.onPress = onPress;
@@ -3990,6 +4030,29 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         }
 
         @Override public void onPress() { onPress.onPress(null); }
+
+        SelectionRowButton withTrailingStatus(String status, int color) {
+            trailingStatus = status;
+            trailingStatusColor = color;
+            return this;
+        }
+
+        SelectionRowButton withPrimaryTag(String tag, int color) {
+            primaryTag = tag;
+            primaryTagColor = color;
+            return this;
+        }
+
+        SelectionRowButton withPrimaryColor(int color) {
+            primaryColor = color;
+            return this;
+        }
+
+        SelectionRowButton withLivePrimary(Supplier<String> value, BooleanSupplier dirty) {
+            livePrimary = value;
+            liveDirty = dirty;
+            return this;
+        }
 
         @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
             if (trailingClickExclusion > 0 && mouseX >= getX() + getWidth() - trailingClickExclusion) return false;
@@ -4015,10 +4078,27 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             if (checkbox) graphics.drawString(font, selected ? "[x]" : "[ ]", getX() + 7, getY() + 6,
                     unavailable ? 0x777777 : 0xFFFFFF, false);
             int textX = getX() + (checkbox ? 34 : 9);
-            drawMarqueeLeft(graphics, font, Component.literal(primary), textX, getY() + 5,
-                    Math.max(20, getWidth() - (checkbox ? 41 : 16) - trailingClickExclusion), unavailable ? 0x777777 : 0xFFFFFF);
+            int statusWidth = trailingStatus.isBlank() ? 0 : font.width(trailingStatus) + 8;
+            int textWidth = Math.max(20, getWidth() - (checkbox ? 41 : 16) - trailingClickExclusion - statusWidth);
+            String displayedPrimary = livePrimary == null ? primary : livePrimary.get();
+            boolean displayedDirty = liveDirty != null && liveDirty.getAsBoolean();
+            String displayedTag = displayedDirty ? " · Unsaved" : primaryTag;
+            int displayedPrimaryColor = displayedDirty ? 0xFFFFDD66 : primaryColor;
+            int primaryWidth = font.width(displayedPrimary);
+            int tagWidth = font.width(displayedTag);
+            if (!displayedTag.isBlank() && primaryWidth + tagWidth <= textWidth) {
+                graphics.drawString(font, displayedPrimary, textX, getY() + 5, unavailable ? 0x777777 : displayedPrimaryColor, false);
+                graphics.drawString(font, displayedTag, textX + primaryWidth, getY() + 5,
+                        unavailable ? 0x777777 : primaryTagColor, false);
+            } else {
+                drawMarqueeLeft(graphics, font, Component.literal(displayedPrimary), textX, getY() + 5, textWidth,
+                        unavailable ? 0x777777 : displayedPrimaryColor);
+            }
             drawMarqueeLeft(graphics, font, Component.literal(secondary), textX, getY() + 18,
-                    Math.max(20, getWidth() - (checkbox ? 41 : 16) - trailingClickExclusion), unavailable ? 0x696969 : 0xAAAAAA);
+                    textWidth, unavailable ? 0x696969 : 0xAAAAAA);
+            if (!trailingStatus.isBlank()) graphics.drawString(font, trailingStatus,
+                    getX() + getWidth() - 8 - font.width(trailingStatus), getY() + 5,
+                    unavailable ? 0x777777 : trailingStatusColor, false);
         }
 
         @Override protected void updateWidgetNarration(NarrationElementOutput output) {
@@ -4907,6 +4987,55 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         }
     }
 
+    private static final class LootItemWeightScreen extends EditorScreen {
+        private final LootProfilesScreen parent;
+        private final LootEntry entry;
+        private EditBox input;
+        private String error = "";
+
+        LootItemWeightScreen(ClientModel model, LootProfilesScreen parent, LootEntry entry) {
+            super("Edit Item Weight", model);
+            this.parent = parent;
+            this.entry = entry;
+        }
+
+        @Override protected void init() {
+            clearWidgets();
+            int centerX = width / 2, top = Math.max(54, height / 2 - 48);
+            input = new EditBox(font, centerX - 80, top + 34, 160, 20, Component.literal("Item weight"));
+            input.setMaxLength(10);
+            input.setFilter(value -> value.isEmpty() || value.chars().allMatch(Character::isDigit));
+            input.setValue(Integer.toString(entry.weight));
+            input.setResponder(ignored -> error = "");
+            input.setTooltip(Tooltip.create(Component.literal("Positive whole-number relative selection weight. Higher values make this item more likely when the profile awards an item.")));
+            addRenderableWidget(input);
+            input.setFocused(true);
+            button(centerX - 104, top + 62, 100, "Confirm", ignored -> confirm(),
+                    "Apply this relative item-selection weight to the local draft.");
+            button(centerX + 4, top + 62, 100, "Cancel", ignored -> minecraft.setScreen(parent),
+                    "Return without changing this item weight.");
+        }
+
+        private void confirm() {
+            try {
+                int weight = Integer.parseInt(input.getValue());
+                if (weight < 1) { error = "Weight must be at least 1."; return; }
+                if (entry.weight != weight) { entry.weight = weight; parent.draft.dirty = true; }
+                minecraft.setScreen(parent);
+            } catch (NumberFormatException exception) { error = "Enter a whole number from 1 to 2,147,483,647."; }
+        }
+
+        @Override public void onClose() { minecraft.setScreen(parent); }
+        @Override public void render(GuiGraphics graphics, int mx, int my, float tick) {
+            renderBackground(graphics, mx, my, tick);
+            int centerX = width / 2, top = Math.max(54, height / 2 - 48);
+            graphics.drawCenteredString(font, "Edit " + readableId(entry.item) + " weight", centerX, top, 0xFFFFFF);
+            graphics.drawCenteredString(font, "Relative selection weight (positive whole number)", centerX, top + 14, 0xAAAAAA);
+            if (!error.isBlank()) graphics.drawCenteredString(font, error, centerX, top + 88, 0xFF7777);
+            renderWidgets(graphics, mx, my, tick);
+        }
+    }
+
     private static final class LeaveDraftScreen extends EditorScreen {
         private final Screen returnTo; private final Runnable discard;
         LeaveDraftScreen(Screen returnTo, Runnable discard) { super("Unsaved Changes", ((EditorScreen)returnTo).model); this.returnTo = returnTo; this.discard = discard; }
@@ -4935,15 +5064,473 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         }
     }
 
+    private static final class LootProfilesScreen extends EditorScreen {
+        private static final int ROW = 40;
+        private static final int CONTENT_TOP = 52;
+        private EditBox search, name, description, itemChance, xpMinimum, xpMaximum, xpChance, xpMultiplier;
+        private String query = "", selectedId;
+        private int offset;
+        private final List<LootDraft> drafts = new ArrayList<>();
+        private LootDraft draft;
+
+        LootProfilesScreen(ClientModel model) {
+            super("Loot", model);
+            model.lootProfiles().forEach(value -> drafts.add(new LootDraft(value.getAsJsonObject())));
+            drafts.sort(Comparator.comparing(value -> value.name.toLowerCase(Locale.ROOT)));
+            if (!drafts.isEmpty()) select(drafts.getFirst().id);
+        }
+
+        private List<LootDraft> filtered() {
+            String q = query.toLowerCase(Locale.ROOT);
+            return drafts.stream().filter(value -> value.name.toLowerCase(Locale.ROOT).contains(q)
+                    || value.id.toLowerCase(Locale.ROOT).contains(q)
+                    || value.type.toLowerCase(Locale.ROOT).contains(q)).toList();
+        }
+        private void select(String id) {
+            selectedId = id;
+            draft = drafts.stream().filter(value -> value.id.equals(id)).findFirst().orElse(null);
+        }
+        @Override protected void init() {
+            clearWidgets();
+            int left = panelLeft(), panelW = panelWidth(), browserW = Math.max(205, panelW * 34 / 100);
+            int detailX = left + browserW + 10, detailW = panelW - browserW - 10;
+            search = new EditBox(font, left + 6, CONTENT_TOP + 5, browserW - 12 - 82, 20, Component.literal("Search loot profiles"));
+            search.setHint(Component.literal("Search loot profiles...").withStyle(ChatFormatting.DARK_GRAY));
+            search.setValue(query); search.setResponder(value -> { query = value; offset = 0; rebuildWidgets(); });
+            addRenderableWidget(search);
+            button(left + browserW - 82, CONTENT_TOP + 5, 76, "+ Profile", ignored -> minecraft.setScreen(new LootProfileTypeScreen(model, this)),
+                    "Create a reusable Mob Loot or Chest Loot profile.");
+            List<LootDraft> shown = filtered(); int listY = CONTENT_TOP + 29, available = Math.max(1, (height - 36 - listY) / ROW);
+            offset = listOffset(offset, shown.size(), available);
+            for (int row = 0; row < Math.min(available, shown.size() - offset); row++) {
+                LootDraft value = shown.get(offset + row); boolean selected = value.id.equals(selectedId);
+                SelectionRowButton button = new SelectionRowButton(left + 6, listY + row * ROW, browserW - 12,
+                        ROW - 2, value.name + (value.dirty ? "  · Unsaved" : ""),
+                        value.rowSummary(), selected,
+                        ignored -> { select(value.id); rebuildWidgets(); }, false);
+                button.withTrailingStatus(value.enabled ? "On" : "Off", value.enabled ? 0xFF66FF66 : 0xFF999999);
+                if (value.dirty) button.withPrimaryColor(0xFFFFDD66);
+                button.withLivePrimary(() -> value.name, () -> value.dirty);
+                button.setTooltip(Tooltip.create(Component.literal(value.description.isBlank() ? value.id : value.description)));
+                addRenderableWidget(button);
+            }
+            if (draft != null) buildDetails(detailX, detailW);
+            button(left, height - 25, 80, "Back", ignored -> minecraft.setScreen(new DashboardScreen(model)), null);
+            button(detailX, height - 25, 126, "Reset All Defaults", ignored -> minecraft.setScreen(new ConfirmActionScreen(model,
+                    "Reset all Loot profiles?", "This removes every world-authored Loot profile change and cannot be undone.",
+                    "Reset Defaults", this::resetAllLootProfiles,
+                    () -> minecraft.setScreen(this))), "Restore bundled profile content.");
+            Button apply = button(detailX + detailW - 322, height - 25, 100, "Apply", ignored -> apply(),
+                    "Validate and apply all Loot profile changes to the server.");
+            apply.active = model.editable() && drafts.stream().anyMatch(value -> value.dirty);
+            boolean sourceOverride = draft != null && containsId(model.authoredLootProfiles(), draft.id);
+            boolean worldAuthored = draft != null && draft.isWorldAuthored();
+            String restoreLabel = sourceOverride && !worldAuthored ? "Restore Source"
+                    : worldAuthored ? "Delete Profile"
+                    : draft != null && draft.id.startsWith("worldawakened:defaults/") ? "Using Built-in" : "Using Source";
+            Button restore = button(detailX + detailW - 214, height - 25, 100, restoreLabel,
+                    ignored -> restoreSelectedProfile(), sourceOverride && !worldAuthored
+                            ? "Discard this profile's world override and restore its bundled or datapack source."
+                            : worldAuthored ? "Delete this world-authored Loot profile."
+                            : "This profile already matches its bundled or datapack source.");
+            restore.active = model.editable() && (sourceOverride || worldAuthored);
+            Button discard = button(detailX + detailW - 106, height - 25, 106, "Discard Changes", ignored -> discard(),
+                    "Discard local un-applied Loot edits.");
+            discard.active = drafts.stream().anyMatch(value -> value.dirty);
+        }
+        private void buildDetails(int x, int w) {
+            int innerX = x + 10, innerW = w - 20;
+            name = new EditBox(font, innerX, CONTENT_TOP + 67, (innerW - 6) / 2, 20, Component.literal("Profile Name"));
+            name.setValue(draft.name); name.setMaxLength(PHASE_NAME_MAX_LENGTH); name.setResponder(value -> { draft.name = value; draft.dirty = true; });
+            name.setTooltip(Tooltip.create(Component.literal("Player-facing Loot profile name."))); addRenderableWidget(name);
+            description = new EditBox(font, innerX, CONTENT_TOP + 93, innerW, 20, Component.literal("Description"));
+            description.setValue(draft.description); description.setMaxLength(PHASE_DESCRIPTION_MAX_LENGTH);
+            updateLootDescriptionTooltip();
+            description.setResponder(value -> { draft.description = value; draft.dirty = true; updateLootDescriptionTooltip(); });
+            addRenderableWidget(description);
+            button(innerX, CONTENT_TOP + 119, (innerW - 6) / 2, "Profile Type: " + draft.typeLabel(),
+                    ignored -> confirmProfileTypeSwitch(),
+                    "Switch between Mob Loot and Chest Loot. This asks for confirmation before clearing incompatible settings.");
+            button(innerX + (innerW + 6) / 2, CONTENT_TOP + 119, (innerW - 6) / 2, "Enabled: " + (draft.enabled ? "On" : "Off"), ignored -> { draft.enabled = !draft.enabled; draft.dirty = true; rebuildWidgets(); },
+                    "Disabled profiles remain saved but do not affect gameplay.");
+            int generalY = CONTENT_TOP + 149; int generalH = "mob".equals(draft.type) ? 91 : 62;
+            button(innerX, generalY + 20, innerW / 2 - 3, ("mob".equals(draft.type) ? "Eligible Mobs: " : "Chest Loot Tables: ") + draft.targets.size(), ignored -> minecraft.setScreen(new LootSelectionScreen(model, this, draft, LootSelectorKind.TARGET)),
+                    "Choose the exact live targets for this profile.");
+            itemChance = new EditBox(font, innerX + innerW / 2 + 3, generalY + 20, innerW / 2 - 3, 20, Component.literal("Bonus Item Chance (%)"));
+            itemChance.setValue(formatDecimal(draft.itemChance * 100D)); itemChance.setFilter(value -> value.matches("[0-9]{0,3}(\\.[0-9]{0,2})?"));
+            itemChance.setResponder(value -> { draft.itemChance = parseBounded(value, draft.itemChance * 100D, 0D, 100D) / 100D; draft.dirty = true; });
+            itemChance.setTooltip(Tooltip.create(Component.literal("Chance to add one weighted bonus item. Enter 10 for 10%."))); addRenderableWidget(itemChance);
+            if ("mob".equals(draft.type)) {
+                button(innerX, generalY + 46, innerW, "Only mutated mobs: " + (draft.onlyMutated ? "On" : "Off"), ignored -> { draft.onlyMutated = !draft.onlyMutated; draft.dirty = true; rebuildWidgets(); },
+                        "When on, this Mob Loot profile applies only to mobs with WorldAwakened mutation provenance.");
+            }
+            int rewardY = generalY + generalH + 8;
+            buildRewards(innerX, innerW, rewardY);
+            int xpY = rewardY + rewardSectionHeight() + 12;
+            if ("mob".equals(draft.type)) buildXp(xpY, innerX, innerW);
+            int rulesY = xpY + ("mob".equals(draft.type) ? 98 : 0);
+            buildRules(innerX, innerW, rulesY);
+        }
+        private void updateLootDescriptionTooltip() {
+            String detail = draft.description == null || draft.description.isBlank()
+                    ? "No description entered."
+                    : "Full description:\n" + draft.description;
+            description.setTooltip(Tooltip.create(Component.literal(
+                    "Player-facing description. The full-width field keeps ordinary descriptions visible.\n\n" + detail)));
+        }
+        private void buildRewards(int x, int w, int y) {
+            int h = 112; // fixed height keeps the whole editor stable when entries change.
+            int listY = y + 28;
+            button(x + w - 138, y + 4, 138, "Edit Items (" + draft.entries.size() + ")", ignored ->
+                    minecraft.setScreen(new LootSelectionScreen(model, this, draft, LootSelectorKind.ITEM)),
+                    "Select items. Each selected item has a relative weight and count range.");
+            if (false) for (int index = 0; index < Math.min(3, draft.entries.size()); index++) {
+                LootEntry entry = draft.entries.get(index); final int row = index;
+                int controls = 126;
+                button(x, listY + index * 24, w - controls - 4, readableId(entry.item) + " · Weight " + entry.weight + " · " + entry.minimum + "–" + entry.maximum,
+                        ignored -> { entry.weight = entry.weight >= 99 ? 1 : entry.weight + 1; draft.dirty = true; rebuildWidgets(); },
+                        "Click to increase this item's relative selection weight. Larger weights are more likely.");
+                compactButton(x + w - controls, listY + index * 24, 20, "−", ignored -> { entry.weight = Math.max(1, entry.weight - 1); draft.dirty = true; rebuildWidgets(); }, "Lower relative item weight.");
+                compactButton(x + w - 102, listY + index * 24, 20, "+", ignored -> { entry.weight++; draft.dirty = true; rebuildWidgets(); }, "Raise relative item weight.");
+                compactButton(x + w - 78, listY + index * 24, 20, "×", ignored -> { draft.entries.remove(row); draft.dirty = true; rebuildWidgets(); }, "Remove this item reward.");
+            }
+            // Replaced by the ordered weight controls below.
+            List<LootEntry> ordered = orderedRewardEntries();
+            long totalWeight = totalRewardWeight();
+            int visible = Math.min(3, ordered.size());
+            int rowY = y + 36;
+            int weightButtonWidth = Math.max(60, Math.min(96, w / 4));
+            int labelWidth = Math.max(40, w - weightButtonWidth - 91);
+            for (int index = 0; index < visible; index++) {
+                final int entryIndex = index;
+                LootEntry entry = ordered.get(index);
+                int currentY = rowY + index * 30;
+                int controlsX = x + labelWidth + 3;
+                Button moveUp = button(controlsX, currentY + 3, 24, "↑", ignored -> swapRewardWeights(ordered, entryIndex, entryIndex - 1),
+                        "Swap this item's weight with the entry above.");
+                moveUp.active = index > 0;
+                Button moveDown = button(controlsX + 27, currentY + 3, 24, "↓", ignored -> swapRewardWeights(ordered, entryIndex, entryIndex + 1),
+                        "Swap this item's weight with the entry below.");
+                moveDown.active = index < ordered.size() - 1;
+                button(controlsX + 54, currentY + 3, weightButtonWidth, "Weight: " + entry.weight, ignored ->
+                        minecraft.setScreen(new LootItemWeightScreen(model, this, entry)),
+                        "Relative selection share: " + String.format(Locale.ROOT, "%.1f%%", rewardShare(entry.weight, totalWeight))
+                                + ". Profile chance and eligibility still affect the final result.");
+                button(x + w - 31, currentY + 3, 28, "x", ignored -> {
+                    draft.entries.remove(entry);
+                    draft.dirty = true;
+                    rebuildWidgets();
+                }, "Remove this item reward.");
+            }
+        }
+        private List<LootEntry> orderedRewardEntries() {
+            return draft.entries.stream().sorted(Comparator.comparingInt((LootEntry entry) -> entry.weight).reversed()).toList();
+        }
+        private long totalRewardWeight() {
+            return draft.entries.stream().filter(entry -> entry.weight > 0).mapToLong(entry -> entry.weight).sum();
+        }
+        private static double rewardShare(int weight, long totalWeight) {
+            return weight > 0 && totalWeight > 0 ? weight * 100.0D / totalWeight : 0.0D;
+        }
+        private void swapRewardWeights(List<LootEntry> entries, int first, int second) {
+            if (first < 0 || second < 0 || first >= entries.size() || second >= entries.size()) return;
+            LootEntry left = entries.get(first), right = entries.get(second);
+            if (left.weight == right.weight) return;
+            int weight = left.weight;
+            left.weight = right.weight;
+            right.weight = weight;
+            draft.dirty = true;
+            rebuildWidgets();
+        }
+        private int rewardSectionHeight() {
+            return Math.max(48, 42 + Math.min(3, draft.entries.size()) * 30);
+        }
+        private void resetAllLootProfiles() {
+            JsonObject root = authoringRoot(model);
+            root.add("loot_profiles", new JsonArray());
+            reopenLoot = true;
+            PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
+        }
+        private void confirmProfileTypeSwitch() {
+            if (draft == null) return;
+            String targetType = "mob".equals(draft.type) ? "chest" : "mob";
+            String targetLabel = "mob".equals(targetType) ? "Mob Loot" : "Chest Loot";
+            minecraft.setScreen(new ConfirmActionScreen(model, "Switch to " + targetLabel + "?",
+                    "This clears incompatible target selections and type-specific settings. Mob targets, the mutated-mob filter, and Bonus XP are cleared when switching to Chest Loot. Item rewards, quantities, weights, chances, World Phase filters, and dimension filters are kept.",
+                    "Switch", () -> switchProfileType(targetType), () -> minecraft.setScreen(this)));
+        }
+        private void switchProfileType(String targetType) {
+            if (draft == null || targetType.equals(draft.type)) {
+                minecraft.setScreen(this);
+                return;
+            }
+            int index = drafts.indexOf(draft);
+            LootDraft converted = new LootDraft(convertLootProfileTypeForEditor(draft.toJson(), targetType));
+            converted.dirty = true;
+            drafts.set(index, converted);
+            draft = converted;
+            minecraft.setScreen(this);
+        }
+        private void restoreSelectedProfile() {
+            if (draft == null) return;
+            boolean worldAuthored = draft.isWorldAuthored();
+            boolean sourceOverride = containsId(model.authoredLootProfiles(), draft.id);
+            if (!worldAuthored && !sourceOverride) return;
+            String action = worldAuthored ? "Delete" : "Restore";
+            String title = worldAuthored ? "Delete Loot profile?" : "Restore source profile?";
+            String message = worldAuthored
+                    ? "This removes the selected world-authored Loot profile. This cannot be undone."
+                    : "This removes the selected world override and reveals its bundled or datapack source.";
+            minecraft.setScreen(new ConfirmActionScreen(model, title, message, action, () -> {
+                JsonArray profiles = model.authoredLootProfiles().deepCopy();
+                for (int index = profiles.size() - 1; index >= 0; index--) {
+                    if (profiles.get(index).isJsonObject()
+                            && draft.id.equals(read(profiles.get(index).getAsJsonObject(), "id", ""))) profiles.remove(index);
+                }
+                if (worldAuthored && !sourceOverride) {
+                    drafts.removeIf(value -> value.id.equals(draft.id));
+                    select(drafts.isEmpty() ? null : drafts.getFirst().id);
+                    rebuildWidgets();
+                    return;
+                }
+                JsonObject root = authoringRoot(model);
+                root.add("loot_profiles", profiles);
+                reopenLoot = true;
+                PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
+            }, () -> minecraft.setScreen(this)));
+        }
+        private void buildRules(int x, int w, int y) {
+            Button phaseButton = button(x, y + 20, w / 2 - 3, "World Phases: " + phaseSelectionSummary(), ignored -> minecraft.setScreen(new LootSelectionScreen(model, this, draft, LootSelectorKind.PHASE)),
+                    draft.stageFilterEditable
+                            ? "No selection means every effective World Phase can qualify. Multiple selections use any selected active phase."
+                            : draft.stageFilterDetail);
+            phaseButton.active = draft.stageFilterEditable;
+            button(x + w / 2 + 3, y + 20, w / 2 - 3, "Dimensions: " + selectionSummary(draft.dimensions.size()), ignored -> minecraft.setScreen(new LootSelectionScreen(model, this, draft, LootSelectorKind.DIMENSION)),
+                    "No selection means every dimension can qualify. Multiple selections allow any selected dimension.");
+        }
+        private String phaseSelectionSummary() {
+            if (draft.selectedStages.isEmpty()) return draft.stageFilterEditable ? "Any" : "Custom filter";
+            return draft.selectedStages.stream().map(id -> stageName(model, id)).collect(Collectors.joining(", "));
+        }
+        private void buildXp(int y, int x, int w) {
+            button(x, y + 20, w, "Award Bonus XP: " + (draft.xpEnabled ? "On" : "Off"), ignored -> { draft.xpEnabled = !draft.xpEnabled; draft.dirty = true; rebuildWidgets(); },
+                    "Optional XP reward, independently rolled after vanilla XP is calculated. It never suppresses vanilla XP.");
+            if (!draft.xpEnabled) return;
+            xpMinimum = new EditBox(font, x, y + 60, w / 3 - 3, 20, Component.literal("Minimum Bonus XP")); xpMinimum.setValue(String.valueOf(draft.xpMinimum)); xpMinimum.setFilter(value -> value.matches("[0-9]{0,6}")); xpMinimum.setResponder(value -> { try { draft.xpMinimum = Integer.parseInt(value); draft.dirty = true; } catch (NumberFormatException ignored) {} }); xpMinimum.setTooltip(Tooltip.create(Component.literal("Lowest additional XP awarded on a successful roll. Enter a whole number, zero or higher."))); addRenderableWidget(xpMinimum);
+            xpMaximum = new EditBox(font, x + w / 3 + 3, y + 60, w / 3 - 3, 20, Component.literal("Maximum Bonus XP")); xpMaximum.setValue(String.valueOf(draft.xpMaximum)); xpMaximum.setFilter(value -> value.matches("[0-9]{0,6}")); xpMaximum.setResponder(value -> { try { draft.xpMaximum = Integer.parseInt(value); draft.dirty = true; } catch (NumberFormatException ignored) {} }); xpMaximum.setTooltip(Tooltip.create(Component.literal("Highest additional XP awarded on a successful roll. Must be at least Minimum Bonus XP."))); addRenderableWidget(xpMaximum);
+            xpChance = new EditBox(font, x + 2 * w / 3 + 6, y + 60, w / 3 - 6, 20, Component.literal("Bonus XP Chance (%)")); xpChance.setValue(formatDecimal(draft.xpChance * 100D)); xpChance.setFilter(value -> value.matches("[0-9]{0,3}(\\.[0-9]{0,2})?")); xpChance.setResponder(value -> { draft.xpChance = parseBounded(value, draft.xpChance * 100D, 0D, 100D) / 100D; draft.dirty = true; }); xpChance.setTooltip(Tooltip.create(Component.literal("Chance to award the configured bonus XP. Enter 50 for 50%."))); addRenderableWidget(xpChance);
+        }
+        private void createProfile(String type) {
+            String id = "worldawakened:world/loot_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            LootDraft value = LootDraft.create(id); value.type = type; drafts.add(value); select(id); rebuildWidgets();
+        }
+        private void discard() {
+            boolean dirty = drafts.stream().anyMatch(value -> value.dirty);
+            if (!dirty) { minecraft.setScreen(new DashboardScreen(model)); return; }
+            minecraft.setScreen(new ConfirmActionScreen(model, "Discard unsaved Loot changes?",
+                    "All local Loot profile edits since opening this editor will be lost.", "Discard",
+                    () -> minecraft.setScreen(new LootProfilesScreen(model)), () -> minecraft.setScreen(this)));
+        }
+        private void apply() {
+            if (drafts.stream().anyMatch(value -> value.name.isBlank())) { showLocalError("Each Loot profile needs a name."); return; }
+            JsonObject root = authoringRoot(model);
+            JsonArray values = new JsonArray(); drafts.forEach(value -> values.add(value.toJson())); root.add("loot_profiles", values);
+            reopenLoot = true;
+            PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
+        }
+        private String phaseLabel(String id) { return id.isBlank() ? "Any phase" : stageName(model, id); }
+        private static String selectionSummary(int count) { return count == 0 ? "Any" : count + " selected"; }
+        private String cycleStage(String current) { List<String> ids = new ArrayList<>(); ids.add(""); model.stages().forEach(stage -> ids.add(stage.id())); return ids.get((ids.indexOf(current) + 1 + ids.size()) % ids.size()); }
+        private String cycleDimension(String current) { List<String> ids = new ArrayList<>(); ids.add(""); ids.addAll(model.dimensions()); return ids.get((ids.indexOf(current) + 1 + ids.size()) % ids.size()); }
+        @Override public boolean mouseScrolled(double mx, double my, double dx, double dy) { List<LootDraft> shown = filtered(); int available = Math.max(1, (height - 36 - (CONTENT_TOP + 29)) / ROW); int before = offset; offset = listOffset(offset + (dy < 0 ? 1 : -1), shown.size(), available); if (before != offset) { rebuildWidgets(); return true; } return super.mouseScrolled(mx, my, dx, dy); }
+        @Override public void render(GuiGraphics graphics, int mx, int my, float tick) {
+            renderBackground(graphics, mx, my, tick); header(graphics, "Loot", "Profile Editor > Loot");
+            int left = panelLeft(), w = panelWidth(), browserW = Math.max(205, w * 34 / 100); panel(graphics, left, CONTENT_TOP, browserW, height - CONTENT_TOP - 31); panel(graphics, left + browserW + 10, CONTENT_TOP, w - browserW - 10, height - CONTENT_TOP - 31);
+            List<LootDraft> shown = filtered();
+            int listY = CONTENT_TOP + 29;
+            int available = Math.max(1, (height - 36 - listY) / ROW);
+            if (shown.size() > available) renderScrollbar(graphics, left + browserW - 8, listY,
+                    available * ROW - 2, shown.size(), available, offset);
+            if (draft != null) {
+                int x = left + browserW + 20, detailW = w - browserW - 30;
+                graphics.drawString(font, Component.literal(draft.name).withStyle(ChatFormatting.BOLD), x, CONTENT_TOP + 4, 0xFFFFFF, false);
+                graphics.drawString(font, draft.profileSubtitle(), x, CONTENT_TOP + 18, 0xAAAAAA, false);
+                sectionOutline(graphics, x - 4, CONTENT_TOP + 33, detailW + 8, "mob".equals(draft.type) ? 203 : 174);
+                graphics.drawString(font, "GENERAL", x, CONTENT_TOP + 37, 0xFFFFAA00, false);
+                graphics.drawString(font, "Profile Name", x, CONTENT_TOP + 55, 0xAAAAAA, false);
+                graphics.drawString(font, "Description", x, CONTENT_TOP + 81, 0xAAAAAA, false);
+                int generalY = CONTENT_TOP + 149;
+                graphics.drawString(font, "Bonus Item Chance (%)", x + detailW / 2 + 3, generalY + 12, 0xAAAAAA, false);
+                int rewardY = generalY + ("mob".equals(draft.type) ? 91 : 62) + 8;
+                int rewardHeight = rewardSectionHeight();
+                sectionOutline(graphics, x - 4, rewardY, detailW + 8, rewardHeight);
+                graphics.drawString(font, "ITEM REWARDS", x, rewardY + 5, 0xFFFFAA00, false);
+                drawMarqueeLeft(graphics, font, Component.literal("Higher entries have a larger relative selection share."),
+                        x, rewardY + 18, Math.max(30, detailW - 146), 0xAAAAAA);
+                renderRewardRows(graphics, x, detailW, rewardY + 36);
+                int xpY = rewardY + rewardHeight + 12;
+                if ("mob".equals(draft.type)) {
+                    sectionOutline(graphics, x - 4, xpY, detailW + 8, 90);
+                    graphics.drawString(font, "BONUS XP", x, xpY + 5, 0xFFFFAA00, false);
+                    if (draft.xpEnabled) {
+                        graphics.drawString(font, "Minimum Bonus XP", x, xpY + 50, 0xAAAAAA, false);
+                        graphics.drawString(font, "Maximum Bonus XP", x + detailW / 3 + 3, xpY + 50, 0xAAAAAA, false);
+                        graphics.drawString(font, "Bonus XP Chance (%)", x + 2 * detailW / 3 + 6, xpY + 50, 0xAAAAAA, false);
+                    }
+                }
+                int rulesY = xpY + ("mob".equals(draft.type) ? 98 : 0); sectionOutline(graphics, x - 4, rulesY, detailW + 8, 52); graphics.drawString(font, "AVAILABILITY", x, rulesY + 5, 0xFFFFAA00, false);
+            }
+            renderWidgets(graphics, mx, my, tick);
+        }
+        private void renderRewardRows(GuiGraphics graphics, int x, int width, int startY) {
+            List<LootEntry> entries = orderedRewardEntries();
+            long totalWeight = totalRewardWeight();
+            int rowWidth = width;
+            int weightButtonWidth = Math.max(60, Math.min(96, rowWidth / 4));
+            int labelWidth = Math.max(40, rowWidth - weightButtonWidth - 91);
+            for (int index = 0; index < Math.min(3, entries.size()); index++) {
+                LootEntry entry = entries.get(index);
+                int rowY = startY + index * 30;
+                graphics.fill(x, rowY, x + rowWidth, rowY + 28, 0xB02A2A2A);
+                graphics.fill(x, rowY, x + rowWidth, rowY + 1, 0xFF606060);
+                graphics.fill(x, rowY + 27, x + rowWidth, rowY + 28, 0xFF383838);
+                graphics.fill(x, rowY, x + 1, rowY + 28, 0xFF606060);
+                graphics.fill(x + rowWidth - 1, rowY, x + rowWidth, rowY + 28, 0xFF383838);
+                String summary = (index + 1) + ". " + readableId(entry.item) + "   "
+                        + String.format(Locale.ROOT, "%.1f%%", rewardShare(entry.weight, totalWeight))
+                        + "   " + entry.minimum + "–" + entry.maximum;
+                drawMarqueeLeft(graphics, font, Component.literal(summary), x + 7, rowY + 9,
+                        Math.max(30, labelWidth - 10), 0xFFFFFF);
+            }
+        }
+        private static String itemPreview(LootDraft value) {
+            if (value.entries.isEmpty()) return "No item rewards selected.";
+            int total = value.entries.stream().mapToInt(entry -> entry.weight).sum();
+            if (total <= 0) return "Item weights need review.";
+            LootEntry first = value.entries.getFirst();
+            double selected = value.itemChance * first.weight / total * 100D;
+            double none = (1D - value.itemChance) * 100D;
+            return "Expected: " + formatDecimal(none) + "% no item; " + readableId(first.item)
+                    + " " + formatDecimal(selected) + "% (eligible events only).";
+        }
+    }
+
+    private static final class LootProfileTypeScreen extends EditorScreen {
+        private final LootProfilesScreen parent;
+        LootProfileTypeScreen(ClientModel model, LootProfilesScreen parent) { super("Create Loot Profile", model); this.parent = parent; }
+        @Override protected void init() {
+            clearWidgets(); int w=Math.min(420,width-24), x=(width-w)/2;
+            button(x,height/2-24,w,"Mob Loot", ignored->{parent.createProfile("mob");minecraft.setScreen(parent);}, "Adds items and optional bonus XP when an eligible mob dies.");
+            button(x,height/2+2,w,"Chest Loot", ignored->{parent.createProfile("chest");minecraft.setScreen(parent);}, "Adds items when an eligible chest loot table is generated.");
+            button(width/2-50,height-25,100,"Cancel",ignored->minecraft.setScreen(parent),null);
+        }
+        @Override public void render(GuiGraphics graphics,int mx,int my,float tick){renderBackground(graphics,mx,my,tick);header(graphics,"Create Loot Profile","Loot > Choose Profile Type");panel(graphics,(width-Math.min(420,width-24))/2,height/2-54,Math.min(420,width-24),90);graphics.drawCenteredString(font,"Choose the runtime target for this profile.",width/2,height/2-44,0xBBBBBB);renderWidgets(graphics,mx,my,tick);}
+    }
+
+    private enum LootSelectorKind { TARGET, ITEM, PHASE, DIMENSION }
+
+    private static final class LootSelectionScreen extends EditorScreen {
+        private final LootProfilesScreen parent; private final LootDraft draft; private final LootSelectorKind kind;
+        private final Set<String> selected = new LinkedHashSet<>(); private final ScrollableRows list = new ScrollableRows();
+        private EditBox search; private String query = "";
+        LootSelectionScreen(ClientModel model, LootProfilesScreen parent, LootDraft draft, LootSelectorKind kind) {
+            super(kind == LootSelectorKind.ITEM ? "Select Loot Items" : "Select Loot Targets", model); this.parent = parent; this.draft = draft; this.kind = kind;
+            if (kind == LootSelectorKind.TARGET) selected.addAll(draft.targets);
+            else if (kind == LootSelectorKind.ITEM) draft.entries.forEach(entry -> selected.add(entry.item));
+            else if (kind == LootSelectorKind.PHASE) selected.addAll(draft.selectedStages);
+            else selected.addAll(draft.dimensions);
+        }
+        private List<ItemModel> itemValues() { String q=query.toLowerCase(Locale.ROOT); return model.items().stream().filter(value -> value.name().toLowerCase(Locale.ROOT).contains(q)||value.id().toLowerCase(Locale.ROOT).contains(q)).toList(); }
+        private List<EntityModel> mobValues() { String q=query.toLowerCase(Locale.ROOT); return model.entities().stream().filter(value -> value.name().toLowerCase(Locale.ROOT).contains(q)||value.id().toLowerCase(Locale.ROOT).contains(q)).toList(); }
+        private List<String> chestValues() { String q=query.toLowerCase(Locale.ROOT); return model.chestLootTables().stream().filter(value -> value.toLowerCase(Locale.ROOT).contains(q)||readableId(value).toLowerCase(Locale.ROOT).contains(q)).toList(); }
+        @Override protected void init() {
+            clearWidgets(); int left=panelLeft(), w=panelWidth(), top=39, bottom=height-45;
+            search=new EditBox(font,left+6,top+18,w-12,20,Component.literal("Search")); search.setHint(Component.literal(kind==LootSelectorKind.ITEM?"Search items...":"Search names or IDs...").withStyle(ChatFormatting.DARK_GRAY)); search.setValue(query); search.setResponder(value->{query=value;list.offset=0;rebuildWidgets();});addRenderableWidget(search);setInitialFocus(search);setFocused(search);
+            List<String> ids = ids(); list.configure(left+6,top+43,w-12,bottom-top-48,36,ids.size());
+            for(int row=0;row<Math.min(list.visible,Math.max(0,ids.size()-list.offset));row++){String id=ids.get(list.offset+row); boolean checked=selected.contains(id); String name=display(id); SelectionRowButton entry=new SelectionRowButton(list.x,list.y+row*36,list.rowWidth(),34,name,id,checked,ignored->{if(!selected.add(id))selected.remove(id);rebuildWidgets();});entry.setTooltip(Tooltip.create(Component.literal(id)));addRenderableWidget(entry);}
+            button(width/2-104,height-25,100,"Confirm",ignored->{if(kind==LootSelectorKind.TARGET){draft.targets.clear();draft.targets.addAll(selected);}else if(kind==LootSelectorKind.ITEM){Map<String,LootEntry> existing=new LinkedHashMap<>();draft.entries.forEach(value->existing.put(value.item,value));draft.entries.clear();selected.forEach(id->draft.entries.add(existing.getOrDefault(id,new LootEntry(id,1,1,1))));}else if(kind==LootSelectorKind.PHASE){draft.selectedStages.clear();draft.selectedStages.addAll(selected);draft.stagesEdited=true;}else{draft.dimensions.clear();draft.dimensions.addAll(selected);draft.dimensionsEdited=true;}draft.dirty=true;minecraft.setScreen(parent);},null);button(width/2+4,height-25,100,"Cancel",ignored->minecraft.setScreen(parent),null);
+        }
+        private List<String> ids(){if(kind==LootSelectorKind.ITEM)return itemValues().stream().map(ItemModel::id).toList();if(kind==LootSelectorKind.PHASE)return model.stages().stream().map(StageModel::id).toList();if(kind==LootSelectorKind.DIMENSION)return model.dimensions();if("mob".equals(draft.type))return mobValues().stream().map(EntityModel::id).toList();return chestValues();}
+        private String display(String id){if(kind==LootSelectorKind.ITEM)return itemValues().stream().filter(v->v.id().equals(id)).map(ItemModel::name).findFirst().orElse(readableId(id));if(kind==LootSelectorKind.PHASE)return stageName(model,id);if(kind==LootSelectorKind.DIMENSION)return readableId(id);if("mob".equals(draft.type))return mobValues().stream().filter(v->v.id().equals(id)).map(EntityModel::name).findFirst().orElse(readableId(id));return readableId(id);}
+        @Override public boolean mouseScrolled(double mx,double my,double dx,double dy){if(list.contains(mx,my)&&list.scroll(dy)){rebuildWidgets();return true;}return super.mouseScrolled(mx,my,dx,dy);}
+        @Override public boolean mouseClicked(double mx,double my,int button){if(button==0&&list.beginDrag(mx,my)){rebuildWidgets();return true;}return super.mouseClicked(mx,my,button);}
+        @Override public boolean mouseDragged(double mx,double my,int button,double dx,double dy){if(button==0&&list.dragging){if(list.drag(my))rebuildWidgets();return true;}return super.mouseDragged(mx,my,button,dx,dy);}
+        @Override public boolean mouseReleased(double mx,double my,int button){list.release();return super.mouseReleased(mx,my,button);}
+        @Override public void onClose(){minecraft.setScreen(parent);}
+        @Override public void render(GuiGraphics graphics,int mx,int my,float tick){renderBackground(graphics,mx,my,tick);String title=kind==LootSelectorKind.ITEM?"Select Loot Items":kind==LootSelectorKind.PHASE?"Select World Phases":kind==LootSelectorKind.DIMENSION?"Select Dimensions":"Select Loot Targets";header(graphics,title,"Loot > "+draft.name);panel(graphics,panelLeft(),39,panelWidth(),height-84);graphics.drawString(font,kind==LootSelectorKind.ITEM?"ITEMS":kind==LootSelectorKind.PHASE?"WORLD PHASES":kind==LootSelectorKind.DIMENSION?"DIMENSIONS":"TARGETS",panelLeft()+6,45,0xD8B84A,false);graphics.drawString(font,selected.size()+" selected",panelLeft(),height-39,0xBBBBBB,false);list.render(graphics);renderWidgets(graphics,mx,my,tick);}
+    }
+
+    private static JsonObject authoringRoot(ClientModel model) {
+        JsonObject root = new JsonObject(); root.add("stages", model.authoredStages().deepCopy()); root.add("trigger_rules", model.authoredTriggers().deepCopy()); root.add("mutation_pools", model.authoredPools().deepCopy()); root.add("phase_mutation_configurations", model.tracks().deepCopy()); root.add("ascension_offers", model.authoredOffers().deepCopy()); root.add("ascension_rewards", model.authoredRewards().deepCopy()); root.add("mob_mutators", model.authoredMutators().deepCopy()); return root;
+    }
+    static JsonObject convertLootProfileTypeForEditor(JsonObject source, String targetType) {
+        if (!"mob".equals(targetType) && !"chest".equals(targetType)) {
+            throw new IllegalArgumentException("Unsupported Loot profile type: " + targetType);
+        }
+        JsonObject result = source.deepCopy();
+        JsonObject authoring = result.has("authoring") && result.get("authoring").isJsonObject()
+                ? result.getAsJsonObject("authoring").deepCopy() : new JsonObject();
+        result.addProperty("profile_type", targetType);
+        result.remove("target_loot_tables");
+        authoring.remove("target_entities");
+        if ("chest".equals(targetType)) {
+            authoring.remove("bonus_xp");
+            if (result.has("conditions") && result.get("conditions").isJsonArray()) {
+                JsonArray retained = new JsonArray();
+                for (JsonElement condition : result.getAsJsonArray("conditions")) {
+                    if (condition.isJsonObject()
+                            && read(condition.getAsJsonObject(), "type", "").endsWith("entity_is_mutated")) continue;
+                    retained.add(condition);
+                }
+                result.add("conditions", retained);
+            }
+        }
+        result.add("authoring", authoring);
+        return result;
+    }
+    private static double parseBounded(String value, double fallback, double minimum, double maximum) { try { double parsed=Double.parseDouble(value); return Double.isFinite(parsed)?Math.max(minimum,Math.min(maximum,parsed)):fallback;}catch(NumberFormatException ignored){return fallback;} }
+    private static String formatDecimal(double value) { return String.format(Locale.ROOT, "%.3f", value).replaceAll("0+$", "").replaceAll("\\.$", ""); }
+    private static final class LootEntry { final String item; int weight, minimum, maximum; LootEntry(String item,int weight,int minimum,int maximum){this.item=item;this.weight=weight;this.minimum=minimum;this.maximum=maximum;} }
+    private static final class LootDraft {
+        final String id; String type="mob",name,description="",stageFilterDetail="Custom World Phase filter is preserved and cannot be edited by the simplified selector."; boolean enabled=true,onlyMutated=false,dirty=false,xpEnabled=false,xpMultiplier=false,stagesEdited=false,dimensionsEdited=false,stageFilterEditable=true; double itemChance=1D,xpChance=1D,xpMultiplierValue=1D; int xpMinimum=0,xpMaximum=0; final Set<String> targets=new LinkedHashSet<>(); final Set<String> selectedStages=new LinkedHashSet<>(); final Set<String> dimensions=new LinkedHashSet<>(); final List<LootEntry> entries=new ArrayList<>(); final JsonObject source;
+        LootDraft(JsonObject json){source=json.deepCopy();id=read(json,"id","");enabled=!json.has("enabled")||json.get("enabled").getAsBoolean();type=read(json,"profile_type","mob");JsonObject authoring=json.has("authoring")&&json.get("authoring").isJsonObject()?json.getAsJsonObject("authoring"):new JsonObject();name=read(authoring,"display_name",readableId(id));description=read(authoring,"description","");itemChance=authoring.has("item_chance")?authoring.get("item_chance").getAsDouble():1D;if("mob".equals(type)&&authoring.has("target_entities"))authoring.getAsJsonArray("target_entities").forEach(v->targets.add(v.getAsString()));if("chest".equals(type)&&json.has("target_loot_tables"))json.getAsJsonArray("target_loot_tables").forEach(v->targets.add(v.getAsString()));if(json.has("entries"))json.getAsJsonArray("entries").forEach(v->{JsonObject e=v.getAsJsonObject();entries.add(new LootEntry(read(e,"item","minecraft:iron_nugget"),e.has("weight")?e.get("weight").getAsInt():1,e.has("min")?e.get("min").getAsInt():1,e.has("max")?e.get("max").getAsInt():1));});if(authoring.has("bonus_xp")&&authoring.get("bonus_xp").isJsonObject()){JsonObject xp=authoring.getAsJsonObject("bonus_xp");xpEnabled=!xp.has("enabled")||xp.get("enabled").getAsBoolean();xpMultiplier="multiplier".equals(read(xp,"mode","extra"));xpMinimum=xp.has("min")?xp.get("min").getAsInt():0;xpMaximum=xp.has("max")?xp.get("max").getAsInt():xpMinimum;xpMultiplierValue=xp.has("multiplier")?xp.get("multiplier").getAsDouble():1;xpChance=xp.has("chance")?xp.get("chance").getAsDouble():1;}readConditions(json);}
+        static LootDraft create(String id){JsonObject json=new JsonObject();json.addProperty("id",id);json.addProperty("profile_type","mob");JsonObject authoring=new JsonObject();authoring.addProperty("display_name","New Loot Profile");json.add("authoring",authoring);return new LootDraft(json);}
+        void readConditions(JsonObject json){if(json.has("authoring")&&json.get("authoring").isJsonObject()){JsonObject authoring=json.getAsJsonObject("authoring");if(authoring.has("eligible_dimensions")&&authoring.get("eligible_dimensions").isJsonArray())authoring.getAsJsonArray("eligible_dimensions").forEach(value->dimensions.add(value.getAsString()));}if(json.has("conditions"))for(JsonElement raw:json.getAsJsonArray("conditions")){if(!raw.isJsonObject())continue;String type=read(raw.getAsJsonObject(),"type","");if(type.endsWith("entity_is_mutated"))onlyMutated=true;if(type.endsWith("stage_unlocked")||type.endsWith("stage_locked")){stageFilterEditable=false;stageFilterDetail="Legacy World Phase conditions are preserved and cannot be edited by the simplified selector.";}}if(json.has("stage_filters")&&json.get("stage_filters").isJsonObject())readStageFilter(json.getAsJsonObject("stage_filters"));}
+        private void readStageFilter(JsonObject filters){
+            Set<String> supported=Set.of("required_any","any_of","one_of");
+            boolean simple=filters.entrySet().stream().allMatch(entry->supported.contains(entry.getKey()));
+            Set<String> positiveStageLists=Set.of("required_any","any_of","one_of","all_of","required_all","stages","required_stages");
+            for(var entry:filters.entrySet()){
+                if(!positiveStageLists.contains(entry.getKey()))continue;
+                JsonElement value=entry.getValue();
+                if(!value.isJsonArray()){simple=false;continue;}
+                for(JsonElement phase:value.getAsJsonArray()){
+                    if(phase.isJsonPrimitive())selectedStages.add(phase.getAsString());
+                    else simple=false;
+                }
+            }
+            if(!simple){stageFilterEditable=false;stageFilterDetail="Custom World Phase filter is preserved and cannot be edited by the simplified selector.";}
+        }
+        String typeLabel(){return "chest".equals(type)?"Chest Loot":"Mob Loot";}
+        boolean isWorldAuthored(){return id.startsWith("worldawakened:world/");}
+        String rowSummary(){return typeLabel()+" · "+targets.size()+("mob".equals(type)?" mobs":" loot tables");}
+        String profileSubtitle(){
+            if (dirty) return "World override \u00b7 Unsaved changes";
+            return isWorldAuthored() ? "World-authored profile" : "Bundled or datapack source";
+        }
+        String listSummary(){return typeLabel()+" · "+targets.size()+("mob".equals(type)?" mobs":" loot tables")+(dirty?" · Unsaved":"")+(enabled?" · On":" · Off");}
+        JsonObject toJson(){JsonObject value=source.deepCopy();value.remove("target_loot_tables");value.addProperty("schema_version",1);value.addProperty("id",id);value.addProperty("enabled",enabled);value.addProperty("profile_type",type);value.addProperty("replace_mode","inject");JsonObject authoring=new JsonObject();authoring.addProperty("display_name",name);authoring.addProperty("description",description);authoring.addProperty("item_chance",itemChance);JsonArray targetArray=new JsonArray();targets.forEach(targetArray::add);if("mob".equals(type))authoring.add("target_entities",targetArray);else value.add("target_loot_tables",targetArray);JsonArray dimensionArray=new JsonArray();dimensions.forEach(dimensionArray::add);authoring.add("eligible_dimensions",dimensionArray);if("mob".equals(type)&&xpEnabled){JsonObject xp=new JsonObject();xp.addProperty("enabled",true);xp.addProperty("mode","extra");xp.addProperty("min",xpMinimum);xp.addProperty("max",xpMaximum);xp.addProperty("multiplier",1D);xp.addProperty("chance",xpChance);authoring.add("bonus_xp",xp);}value.add("authoring",authoring);JsonArray itemEntries=new JsonArray();entries.forEach(entry->{JsonObject e=new JsonObject();e.addProperty("type","item");e.addProperty("item",entry.item);e.addProperty("weight",entry.weight);e.addProperty("min",entry.minimum);e.addProperty("max",entry.maximum);itemEntries.add(e);});value.add("entries",itemEntries);if(stagesEdited){if(selectedStages.isEmpty())value.remove("stage_filters");else{JsonObject filters=new JsonObject();JsonArray any=new JsonArray();selectedStages.forEach(any::add);filters.add("required_any",any);value.add("stage_filters",filters);}}return value;}
+    }
+
     private static final class GlobalSettingsScreen extends EditorScreen {
-        private boolean defaults, mutations, multiple, events, ascension; private double difficulty, mutationFrequency, eventFrequency; private int maximum;
+        private boolean defaults, mutations, multiple, events, ascension; private double difficulty, mutationFrequency, eventFrequency; private int maximum; private net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode progressionMode;
         GlobalSettingsScreen(ClientModel model) { super("Global Settings", model); load(model.settings()); }
-        private void load(WorldAwakenedEditorSettings s) { defaults=s.defaultGameplayEnabled(); difficulty=s.difficultyIntensity(); mutations=s.mutationsEnabled(); mutationFrequency=s.mutationFrequencyMultiplier(); multiple=s.allowMultipleMutations(); maximum=s.maximumMutationsPerMob(); events=s.pressureEventsEnabled(); eventFrequency=s.eventFrequencyMultiplier(); ascension=s.ascensionEnabled(); }
+        private void load(WorldAwakenedEditorSettings s) { defaults=s.defaultGameplayEnabled(); difficulty=s.difficultyIntensity(); mutations=s.mutationsEnabled(); mutationFrequency=s.mutationFrequencyMultiplier(); multiple=s.allowMultipleMutations(); maximum=s.maximumMutationsPerMob(); events=s.pressureEventsEnabled(); eventFrequency=s.eventFrequencyMultiplier(); ascension=s.ascensionEnabled(); progressionMode=s.progressionMode(); }
         @Override protected void init() {
             clearWidgets(); int w = Math.min(520, width - 20); int left=(width-w)/2; int col=(w-8)/2; int right=left+col+8;
             button(left, 42, col, toggle("Default gameplay", defaults), b->{defaults=!defaults; rebuildWidgets();}, "Enables bundled Standard definitions; external datapacks remain active.");
             ValueSlider intensity = addRenderableWidget(new ValueSlider(left,66,col,"Difficulty intensity",difficulty,model.difficultyMin(),model.difficultyMax(),.05,v->difficulty=v,true)); intensity.active=model.editable()&&model.difficultyAvailable();
-            button(left,90,col,"Progression: "+readableMode(model.progressionMode()),b->{},model.progressionNote()).active=false;
+            button(left,90,col,"Progression: "+readableMode(progressionMode.serializedName()),b->{progressionMode=progressionMode==net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode.PER_PLAYER ? net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode.PER_SERVER : net.sprocketgames.worldawakened.progression.WorldAwakenedProgressionMode.PER_PLAYER; rebuildWidgets();},"Per Player keeps phases independent and automatically shares them with FTB Teams members when installed. Per Server shares every phase. Changing mode is blocked after phase progress exists.");
             button(right,42,col,toggle("Mutation system",mutations),b->{mutations=!mutations; rebuildWidgets();},"Pauses new mutations and WA mutation handlers while preserving state.");
             addRenderableWidget(new ValueSlider(right,66,col,"Mutation frequency",mutationFrequency,model.mutationFrequencyMin(),model.mutationFrequencyMax(),.05,v->mutationFrequency=v,true));
             button(right,90,col,toggle("Multiple mutations",multiple),b->{multiple=!multiple; rebuildWidgets();},"Caps all pools at one mutation when disabled.");
@@ -4955,7 +5542,7 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             button(width/2-50,height-25,100,"Reset Defaults",b->{load(WorldAwakenedEditorSettings.builtInDefaults()); rebuildWidgets();},"Changes the local draft; press Apply to save.");
             button(width/2+56,height-25,98,"Cancel",b->minecraft.setScreen(new DashboardScreen(model)),null);
         }
-        private void apply() { PacketDistributor.sendToServer(new WorldAwakenedApplyConfigPayload(model.settingsRevision(), new WorldAwakenedEditorSettings(defaults,difficulty,mutations,mutationFrequency,multiple,maximum,events,eventFrequency,ascension).toJson().toString())); }
+        private void apply() { PacketDistributor.sendToServer(new WorldAwakenedApplyConfigPayload(model.settingsRevision(), new WorldAwakenedEditorSettings(defaults,difficulty,mutations,mutationFrequency,multiple,maximum,events,eventFrequency,ascension,progressionMode).toJson().toString())); }
         @Override public void onClose() { minecraft.setScreen(new DashboardScreen(model)); }
         @Override public void render(GuiGraphics graphics,int mx,int my,float tick) { renderBackground(graphics,mx,my,tick); header(graphics,"Global Settings","Profile Editor > Global Settings"); drawMarqueeLeft(graphics,font,Component.literal("Runtime controls"),panelLeft(),30,panelWidth(),0xAAAAAA); renderWidgets(graphics,mx,my,tick); }
     }
@@ -5296,21 +5883,23 @@ public final class WorldAwakenedClientConfigPayloadHandler {
     private static void sendAscensionAuthoring(ClientModel model, JsonArray triggers, JsonArray offers, JsonArray rewards) {
         JsonObject root = new JsonObject(); root.add("stages", model.authoredStages().deepCopy());
         root.add("trigger_rules", triggers.deepCopy()); root.add("mutation_pools", model.authoredPools().deepCopy());
-        root.add("difficulty_tracks", model.tracks().deepCopy()); root.add("ascension_offers", offers.deepCopy());
+        root.add("phase_mutation_configurations", model.tracks().deepCopy()); root.add("ascension_offers", offers.deepCopy());
         root.add("ascension_rewards", rewards.deepCopy());
         root.add("mob_mutators", model.authoredMutators().deepCopy());
+        root.add("loot_profiles", model.authoredLootProfiles().deepCopy());
         reopenAscension = true;
         PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
     }
-    private static String readableMode(String value){return switch(value){case "per_player"->"Per Player";case "hybrid"->"Hybrid";default->"Global";};}
+    private static String readableMode(String value){return "per_player".equals(value) ? "Per Player" : "Per Server";}
     private static void sendAuthoring(ClientModel model, JsonArray stages, JsonArray triggers,
             JsonArray pools, JsonArray tracks) {
         JsonObject root = new JsonObject();
         root.add("stages", stages.deepCopy()); root.add("trigger_rules", triggers.deepCopy());
-        root.add("mutation_pools", pools.deepCopy()); root.add("difficulty_tracks", tracks.deepCopy());
+        root.add("mutation_pools", pools.deepCopy()); root.add("phase_mutation_configurations", tracks.deepCopy());
         root.add("ascension_offers", model.authoredOffers().deepCopy());
         root.add("ascension_rewards", model.authoredRewards().deepCopy());
         root.add("mob_mutators", model.authoredMutators().deepCopy());
+        root.add("loot_profiles", model.authoredLootProfiles().deepCopy());
         reopenProgression = true;
         PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
     }
@@ -5332,10 +5921,11 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         JsonArray repairedTracks = WorldAwakenedEditorTrackJson.withoutMissingPoolReferences(tracks, availablePoolIds);
         JsonObject root = new JsonObject(); root.add("stages", model.authoredStages().deepCopy());
         root.add("trigger_rules", model.authoredTriggers().deepCopy()); root.add("mutation_pools", pools.deepCopy());
-        root.add("difficulty_tracks", repairedTracks);
+        root.add("phase_mutation_configurations", repairedTracks);
         root.add("ascension_offers", model.authoredOffers().deepCopy());
         root.add("ascension_rewards", model.authoredRewards().deepCopy());
         root.add("mob_mutators", model.authoredMutators().deepCopy());
+        root.add("loot_profiles", model.authoredLootProfiles().deepCopy());
         if (reopenPool != null) reopenPoolAfterAuthoring = reopenPool; else reopenTracks = true;
         PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
     }
@@ -5481,10 +6071,11 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         root.add("stages", model.authoredStages().deepCopy());
         root.add("trigger_rules", model.authoredTriggers().deepCopy());
         root.add("mutation_pools", model.authoredPools().deepCopy());
-        root.add("difficulty_tracks", model.tracks().deepCopy());
+        root.add("phase_mutation_configurations", model.tracks().deepCopy());
         root.add("ascension_offers", model.authoredOffers().deepCopy());
         root.add("ascension_rewards", model.authoredRewards().deepCopy());
         root.add("mob_mutators", mutators.deepCopy());
+        root.add("loot_profiles", model.authoredLootProfiles().deepCopy());
         reopenPoolAfterAuthoring = reopenPool;
         PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
     }
@@ -5492,8 +6083,9 @@ public final class WorldAwakenedClientConfigPayloadHandler {
     private static void sendPoolAndMutatorAuthoring(ClientModel model, JsonArray pools, JsonArray mutators, String reopenPool) {
         JsonObject root = new JsonObject(); root.add("stages", model.authoredStages().deepCopy());
         root.add("trigger_rules", model.authoredTriggers().deepCopy()); root.add("mutation_pools", pools.deepCopy());
-        root.add("difficulty_tracks", model.tracks().deepCopy()); root.add("ascension_offers", model.authoredOffers().deepCopy());
+        root.add("phase_mutation_configurations", model.tracks().deepCopy()); root.add("ascension_offers", model.authoredOffers().deepCopy());
         root.add("ascension_rewards", model.authoredRewards().deepCopy()); root.add("mob_mutators", mutators.deepCopy());
+        root.add("loot_profiles", model.authoredLootProfiles().deepCopy());
         reopenPoolAfterAuthoring = reopenPool;
         PacketDistributor.sendToServer(new WorldAwakenedApplyAuthoringPayload(model.profileRevision(), root.toString()));
     }
@@ -5608,13 +6200,15 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             case "knockback_resistance_bonus" -> "Adds raw knockback resistance. 1.0 means complete resistance.";
             case "pursuit_speed_boost" -> "Adds raw movement-speed attribute units; this is not a percentage. 0.018 means a zombie with 0.23 base speed becomes about 0.248 (roughly 8% faster).";
             case "temporary_shield" -> "Adds this many absorption-health points. 2 points = one absorption heart.";
-            case "projectile_resistance" -> "Uses the component's raw resistance value; check the component documentation before using large values.";
-            case "burst_movement" -> "Uses the component's raw movement value; check the component documentation before using large values.";
-            case "damage_aura", "retaliation_thorns" -> "Uses the component's raw damage amount.";
+            case "debuff_resistance" -> "Numeric debuff-resistance value. This component is not available in live gameplay yet.";
+            case "projectile_resistance" -> "Numeric projectile-resistance value. This component is not available in live gameplay yet.";
+            case "burst_movement" -> "Numeric burst-movement value. This component is not available in live gameplay yet.";
+            case "damage_aura" -> "Raw damage dealt by the aura. This component is not available in live gameplay yet.";
+            case "retaliation_thorns" -> "Raw damage returned to an attacker. This component is not available in live gameplay yet.";
             case "life_steal" -> "Fraction of post-mitigation damage healed. 0.25 heals 25% of damage dealt. Valid range: greater than 0 to 1.";
             case "death_explosion" -> "Explosion power, not a percentage. Valid range: greater than 0 to 8; block damage remains disabled.";
             case "max_health_multiplier", "attack_damage_multiplier", "armor_multiplier", "movement_speed_multiplier" -> "Multiplier of the original attribute. 1.0 is unchanged; 1.08 means 8% more. Must be greater than 0.";
-            default -> "Numeric component value. The server validates the final value when you apply changes.";
+            default -> "Enter a number for this component. The server validates it when you apply changes.";
         };
     }
 
@@ -5630,25 +6224,34 @@ public final class WorldAwakenedClientConfigPayloadHandler {
             return "Chance that this equipped item drops when the mob dies. 0 = never, 0.5 = 50%, 1 = always.";
         }
         return switch (parameter.key()) {
-            case "effect", "effect_type" -> "Choose the registered status effect used by this component.";
-            case "particle" -> "Choose the supported raw particle type emitted by this component.";
-            case "entity" -> "Choose the registered entity type used by this component.";
+            case "damage_type" -> "Enter a damage-type ID, for example minecraft:generic. This component is not available in live gameplay yet.";
+            case "entity_tag" -> "Optional entity tag ID, for example minecraft:undead. Leave blank to use the chosen entity instead.";
+            case "effect", "effect_type" -> "Choose the status effect. Effect particles use its colour only; they do not apply the effect.";
+            case "particle" -> "Choose the particle to emit. Only particle types supported by the live visual emitter are listed.";
+            case "entity" -> "Choose the entity type to summon or spawn. This component is not available in live gameplay yet.";
             case "duration_ticks" -> "Duration in game ticks. 20 ticks = one second. Valid range: 1 to 12,000.";
             case "amplifier" -> "Potion amplifier: 0 is level I, 1 is level II. Valid range: 0 to 255.";
             case "chance" -> "Chance per eligible hit. 0 = never, 0.5 = 50%, 1 = always.";
-            case "seconds" -> "Time in seconds before this action can occur again.";
-            case "max" -> "Maximum number of active summoned reinforcements.";
-            case "brightness" -> "Glow brightness from 0 (dim) to 1 (bright).";
-            case "pulse_speed" -> "Pulse cycles per second. Higher values pulse faster.";
-            case "pulse_strength" -> "How strongly the glow brightness changes during its pulse. 0 disables the visible change.";
-            case "count" -> "Particles emitted each time this visual runs. Higher values cost more client rendering work.";
-            case "interval_ticks" -> "Ticks between visual emissions. 20 ticks = one second; higher values emit less often.";
-            case "offset_x", "offset_y", "offset_z" -> "Spread from the mob's centre on this axis, measured in blocks.";
-            case "speed" -> "Particle motion speed. 0 keeps particles still apart from their normal behaviour.";
-            case "size" -> "Dust-particle size. Used only when the selected particle is minecraft:dust.";
+            case "seconds" -> "Seconds between summon attempts. Must be greater than 0. This component is not available in live gameplay yet.";
+            case "max" -> "Maximum simultaneous summoned reinforcements. Enter a whole number of at least 1. This component is not available in live gameplay yet.";
+            case "color" -> type.equals("effect_particles")
+                    ? "Optional #RRGGBB particle-colour override. Leave blank to use the selected effect's normal colour."
+                    : type.equals("ambient_particles")
+                    ? "Optional #RRGGBB dust colour. Used only with minecraft:dust; leave blank for its default red."
+                    : "Glow colour in #RRGGBB format, for example #66ff66.";
+            case "brightness" -> "Glow brightness from 0 (dim) to 1 (bright). Values outside this range are clamped.";
+            case "see_through_walls" -> "Enter true to show this glow through walls, or false to hide it behind walls.";
+            case "pulse" -> "Enter true to make the glow pulse, or false to keep it steady.";
+            case "pulse_speed" -> "Pulse cycles per second. Valid range: 0.25 to 3.0.";
+            case "pulse_strength" -> "How much glow brightness changes during a pulse. Valid range: 0.05 to 0.35.";
+            case "count" -> "Particles emitted each time. Enter a whole number from 1 to 32; higher counts cost more client rendering work.";
+            case "interval_ticks" -> "Ticks between emissions. 20 ticks = one second. Enter a whole number from 1 to 200; higher values emit less often.";
+            case "offset_x", "offset_y", "offset_z" -> "Particle spread from the mob centre on this axis, in blocks. Valid range: 0 to 4.";
+            case "speed" -> "Particle motion speed. 0 keeps particles still; valid range: 0 to 4.";
+            case "size" -> "Dust-particle size. Used only with minecraft:dust; valid range: 0.01 to 4.";
             default -> parameter.kind() == ParameterKind.NUMBER
-                    ? "Numeric value for this component. The server validates it when changes are applied."
-                    : parameter.label();
+                    ? "Enter the numeric value used by this component. The server validates it when you apply changes."
+                    : "Enter the value used by this component.";
         };
     }
 
@@ -5973,6 +6576,16 @@ public final class WorldAwakenedClientConfigPayloadHandler {
         if (unlockType == 4) return model.entities().stream().filter(entity -> entity.id().equals(id))
                 .map(EntityModel::name).findFirst().orElseGet(() -> readableId(id));
         return readableId(id);
+    }
+
+    private static String conditionTargetTooltip(int unlockType, String id) {
+        String action = switch (unlockType) {
+            case 2 -> "Choose the dimension a player must enter.";
+            case 3 -> "Choose the advancement a player must complete.";
+            case 4 -> "Choose the mob a player must defeat.";
+            default -> "Choose this condition's target.";
+        };
+        return id == null || id.isBlank() ? action : action + "\nCurrent ID: " + id;
     }
 
     private static String targetSecondary(ClientModel model, int unlockType, String id) {

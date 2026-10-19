@@ -65,7 +65,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         WorldAwakenedProfileOverrideSavedData data = new WorldAwakenedProfileOverrideSavedData();
 
         data.replaceAuthoring(Map.of(stageId, stage(stageId, 10)), Map.of(), Map.of(), Map.of(),
-                Map.of(reward.id(), reward), Map.of(offer.id(), offer), Map.of());
+                Map.of(reward.id(), reward), Map.of(offer.id(), offer), Map.of(), Map.of());
         WorldAwakenedProfileOverrideSavedData restored = WorldAwakenedProfileOverrideSavedData.fromTag(
                 data.save(new CompoundTag(), null));
 
@@ -79,7 +79,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         MobMutatorDefinition mutator = mutator("worldawakened:world/mutators/test");
         WorldAwakenedProfileOverrideSavedData data = new WorldAwakenedProfileOverrideSavedData();
 
-        data.replaceAuthoring(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(mutator.id(), mutator));
+        data.replaceAuthoring(Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(mutator.id(), mutator), Map.of());
         WorldAwakenedProfileOverrideSavedData restored = WorldAwakenedProfileOverrideSavedData.fromTag(
                 data.save(new CompoundTag(), null));
 
@@ -97,7 +97,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         AscensionOfferDefinition offer = ascensionOffer("worldawakened:world/first_choice", stageId, reward.id());
         WorldAwakenedDatapackSnapshot source = ascensionSnapshot(stage(stageId, 10), reward);
 
-        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(), Map.of(),
+        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(),
                 Map.of(), Map.of(offer.id(), offer), source);
 
         assertTrue(result.accepted(), result.message());
@@ -111,7 +111,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         when(level.getDataStorage()).thenReturn(null);
         AscensionRewardDefinition reward = ascensionReward("worldawakened:world/ascension_reward_unsafe", 100);
 
-        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(), Map.of(),
+        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(),
                 Map.of(reward.id(), reward), Map.of(), snapshotWithoutPool());
 
         assertFalse(result.accepted());
@@ -126,7 +126,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         AscensionRewardDefinition reward = multiEffectAscensionReward(
                 "worldawakened:world/ascension_reward_three", 3);
 
-        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(), Map.of(),
+        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(),
                 Map.of(reward.id(), reward), Map.of(), snapshotWithoutPool());
 
         assertTrue(result.accepted(), result.message());
@@ -141,7 +141,7 @@ class WorldAwakenedProfileOverrideServiceTest {
         AscensionRewardDefinition reward = multiEffectAscensionReward(
                 "worldawakened:world/ascension_reward_four", 4);
 
-        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(), Map.of(),
+        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(),
                 Map.of(reward.id(), reward), Map.of(), snapshotWithoutPool());
 
         assertFalse(result.accepted());
@@ -275,6 +275,80 @@ class WorldAwakenedProfileOverrideServiceTest {
     }
 
     @Test
+    void directPhaseMutationConfigurationsRetainOrderedPoolGates() {
+        ResourceLocation first = ResourceLocation.parse("test:first");
+        ResourceLocation second = ResourceLocation.parse("test:second");
+        ResourceLocation firstPool = ResourceLocation.parse("test:first_pool");
+        ResourceLocation secondPool = ResourceLocation.parse("test:second_pool");
+        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
+        pools.put(firstPool, pool(firstPool));
+        pools.put(secondPool, pool(secondPool));
+        var configuration = new WorldAwakenedPhaseMutationConfigurationDefinition(ResourceLocation.parse("test:ordered"),
+                "Ordered phases", "", true, List.of(), List.of(
+                        new WorldAwakenedPhaseMutationConfigurationDefinition.Tier(second, secondPool),
+                        new WorldAwakenedPhaseMutationConfigurationDefinition.Tier(first, firstPool)));
+
+        WorldAwakenedProfileOverrideService.compilePhaseMutationConfigurations(pools,
+                Map.of(configuration.id(), configuration), Map.of(first, stage(first, 10), second, stage(second, 20)));
+
+        assertEquals(List.of("stage_unlocked:test:first", "stage_locked:test:second"), gates(pools.get(firstPool)));
+        assertEquals(List.of("stage_unlocked:test:second"), gates(pools.get(secondPool)));
+    }
+
+    @Test
+    void phaseConfigurationKeepsSpecialisedMobsAheadOfDefaultMobs() {
+        ResourceLocation stageId = ResourceLocation.parse("test:gathering_storm");
+        ResourceLocation laterStage = ResourceLocation.parse("test:fracture");
+        ResourceLocation defaultPool = ResourceLocation.parse("test:default_mobs");
+        ResourceLocation specialisedPool = ResourceLocation.parse("test:skeletons");
+        ResourceLocation laterPool = ResourceLocation.parse("test:later_default");
+        ResourceLocation zombie = ResourceLocation.parse("minecraft:zombie");
+        ResourceLocation skeleton = ResourceLocation.parse("minecraft:skeleton");
+        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
+        pools.put(defaultPool, pool(defaultPool, List.of(zombie, skeleton)));
+        pools.put(specialisedPool, pool(specialisedPool, List.of(skeleton)));
+        pools.put(laterPool, pool(laterPool, List.of(zombie, skeleton)));
+        var configuration = new WorldAwakenedPhaseMutationConfigurationDefinition(
+                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase configs", "", true, List.of(), List.of(
+                        phaseAssignment(stageId, defaultPool, "Default Mobs", true),
+                        phaseAssignment(stageId, specialisedPool, "Skeletons", false),
+                        phaseAssignment(laterStage, laterPool, "Default Mobs", true)));
+
+        WorldAwakenedProfileOverrideService.compilePhaseMutationConfigurations(pools,
+                Map.of(configuration.id(), configuration), Map.of(stageId, stage(stageId, 10), laterStage, stage(laterStage, 20)));
+
+        assertEquals(List.of(zombie), pools.get(defaultPool).eligibleEntities());
+        assertEquals(List.of(skeleton), pools.get(specialisedPool).eligibleEntities());
+        assertEquals(List.of("stage_unlocked:test:gathering_storm", "stage_locked:test:fracture"),
+                gates(pools.get(defaultPool)));
+    }
+
+    @Test
+    void phaseMutationConfigurationsPersistAndOverlayAfterAuthoringApply() {
+        ServerLevel level = mock(ServerLevel.class); MinecraftServer server = mock(MinecraftServer.class);
+        when(level.getServer()).thenReturn(server); when(server.overworld()).thenReturn(level);
+        when(level.getDataStorage()).thenReturn(null); when(server.levelKeys()).thenReturn(java.util.Set.of());
+        ResourceLocation stageId = ResourceLocation.parse("test:phase");
+        ResourceLocation poolId = ResourceLocation.parse("test:phase_pool");
+        StageDefinition stage = stage(stageId, 10);
+        MutationPoolDefinition pool = pool(poolId);
+        var configuration = new WorldAwakenedPhaseMutationConfigurationDefinition(
+                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase configs", "", true, List.of(),
+                List.of(phaseAssignment(stageId, poolId, "Default Mobs", true)));
+        WorldAwakenedDatapackSnapshot source = snapshot(Map.of(stageId, stage), Map.of(poolId, pool));
+
+        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(),
+                Map.of(configuration.id(), configuration), Map.of(), Map.of(), Map.of(), Map.of(), source);
+        CompoundTag saved = WorldAwakenedProfileOverrideSavedData.get(level).save(new CompoundTag(), null);
+        WorldAwakenedProfileOverrideSavedData reloaded = WorldAwakenedProfileOverrideSavedData.fromTag(saved);
+
+        assertTrue(result.accepted(), result.message());
+        assertTrue(reloaded.phaseMutationConfigurations().containsKey(configuration.id()));
+        assertEquals(List.of("stage_unlocked:test:phase"),
+                gates(WorldAwakenedProfileOverrideService.overlay(source).data().mutationPools().get(poolId)));
+    }
+
+    @Test
     void worldOwnedPoolCanBeCreatedWithoutDatapackSource() {
         ServerLevel level = mock(ServerLevel.class);
         MinecraftServer server = mock(MinecraftServer.class);
@@ -288,253 +362,6 @@ class WorldAwakenedProfileOverrideServiceTest {
         assertTrue(result.accepted());
         assertEquals(0.2D, WorldAwakenedProfileOverrideService.overlay(source).data().mutationPools()
                 .get(POOL_ID).mutationChance());
-    }
-
-    @Test
-    void trackCompilationActivatesOnlyHighestUnlockedTierAndLeavesPressurePoolsIndependent() {
-        ResourceLocation firstStage = ResourceLocation.parse("test:first");
-        ResourceLocation secondStage = ResourceLocation.parse("test:second");
-        ResourceLocation thirdStage = ResourceLocation.parse("test:third");
-        ResourceLocation firstPool = ResourceLocation.parse("test:first_pool");
-        ResourceLocation secondPool = ResourceLocation.parse("test:second_pool");
-        ResourceLocation thirdPool = ResourceLocation.parse("test:third_pool");
-        ResourceLocation pressurePool = ResourceLocation.parse("test:pressure");
-        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
-        pools.put(firstPool, pool(firstPool)); pools.put(secondPool, pool(secondPool));
-        pools.put(thirdPool, pool(thirdPool)); pools.put(pressurePool, pool(pressurePool));
-        var track = new WorldAwakenedDifficultyTrackDefinition(ResourceLocation.parse("test:track"), "Test", "", true,
-                List.of(), List.of(new WorldAwakenedDifficultyTrackDefinition.Tier(thirdStage, thirdPool),
-                        new WorldAwakenedDifficultyTrackDefinition.Tier(firstStage, firstPool),
-                        new WorldAwakenedDifficultyTrackDefinition.Tier(secondStage, secondPool)));
-
-        WorldAwakenedProfileOverrideService.compileDifficultyTracks(pools, Map.of(track.id(), track), Map.of(
-                firstStage, stage(firstStage, 10), secondStage, stage(secondStage, 20), thirdStage, stage(thirdStage, 30)));
-
-        assertEquals(List.of("stage_unlocked:test:first", "stage_locked:test:second", "stage_locked:test:third"),
-                gates(pools.get(firstPool)));
-        assertEquals(List.of("stage_unlocked:test:second", "stage_locked:test:third"), gates(pools.get(secondPool)));
-        assertEquals(List.of("stage_unlocked:test:third"), gates(pools.get(thirdPool)));
-        assertTrue(pools.get(pressurePool).conditions().isEmpty());
-    }
-
-    @Test
-    void phaseConfigurationsPreferSpecialisedMobsAndStillCompileOneSharedPhaseGate() {
-        ResourceLocation stageId = ResourceLocation.parse("test:gathering_storm");
-        ResourceLocation laterStageId = ResourceLocation.parse("test:fracture");
-        ResourceLocation defaultPoolId = ResourceLocation.parse("test:default_mobs");
-        ResourceLocation skeletonPoolId = ResourceLocation.parse("test:dangerous_skeletons");
-        ResourceLocation laterPoolId = ResourceLocation.parse("test:later_default");
-        ResourceLocation zombie = ResourceLocation.parse("minecraft:zombie");
-        ResourceLocation skeleton = ResourceLocation.parse("minecraft:skeleton");
-        ResourceLocation stray = ResourceLocation.parse("minecraft:stray");
-        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
-        pools.put(defaultPoolId, pool(defaultPoolId, List.of(zombie, skeleton, stray)));
-        pools.put(skeletonPoolId, pool(skeletonPoolId, List.of(skeleton, stray)));
-        pools.put(laterPoolId, pool(laterPoolId, List.of(zombie, skeleton, stray)));
-        var track = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(
-                        phaseTier(stageId, defaultPoolId, "minecraft:overworld", "Default Mobs", true),
-                        phaseTier(stageId, skeletonPoolId, "minecraft:overworld", "Dangerous Skeletons", false),
-                        phaseTier(laterStageId, laterPoolId, "minecraft:overworld", "Default Mobs", true)));
-
-        WorldAwakenedProfileOverrideService.compileDifficultyTracks(pools, Map.of(track.id(), track), Map.of(
-                stageId, stage(stageId, 30), laterStageId, stage(laterStageId, 40)));
-
-        assertEquals(List.of(zombie), pools.get(defaultPoolId).eligibleEntities());
-        assertEquals(List.of(skeleton, stray), pools.get(skeletonPoolId).eligibleEntities());
-        assertEquals(List.of("stage_unlocked:test:gathering_storm", "stage_locked:test:fracture"),
-                gates(pools.get(defaultPoolId)));
-        assertEquals(List.of("stage_unlocked:test:gathering_storm", "stage_locked:test:fracture"),
-                gates(pools.get(skeletonPoolId)));
-        assertEquals(List.of(ResourceLocation.parse("minecraft:overworld")), pools.get(skeletonPoolId).eligibleDimensions());
-    }
-
-    @Test
-    void phaseDefaultIsDisabledWhenSpecialisedConfigurationConsumesEveryMob() {
-        ResourceLocation stageId = ResourceLocation.parse("test:fracture");
-        ResourceLocation defaultPoolId = ResourceLocation.parse("test:default_mobs");
-        ResourceLocation specialisedPoolId = ResourceLocation.parse("test:all_skeletons");
-        ResourceLocation skeleton = ResourceLocation.parse("minecraft:skeleton");
-        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
-        pools.put(defaultPoolId, pool(defaultPoolId, List.of(skeleton)));
-        pools.put(specialisedPoolId, pool(specialisedPoolId, List.of(skeleton)));
-        var track = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(
-                        phaseTier(stageId, defaultPoolId, "minecraft:overworld", "Default Mobs", true),
-                        phaseTier(stageId, specialisedPoolId, "minecraft:overworld", "Skeletons", false)));
-
-        WorldAwakenedProfileOverrideService.compileDifficultyTracks(pools, Map.of(track.id(), track),
-                Map.of(stageId, stage(stageId, 30)));
-
-        assertTrue(pools.get(defaultPoolId).eligibleEntities().isEmpty());
-        assertFalse(pools.get(defaultPoolId).enabled());
-        assertTrue(pools.get(specialisedPoolId).enabled());
-    }
-
-    @Test
-    void disabledSpecialisedConfigurationDoesNotRemoveMobsFromDefaultConfiguration() {
-        ResourceLocation stageId = ResourceLocation.parse("test:unease");
-        ResourceLocation defaultPoolId = ResourceLocation.parse("test:default_mobs");
-        ResourceLocation specialisedPoolId = ResourceLocation.parse("test:disabled_skeletons");
-        ResourceLocation zombie = ResourceLocation.parse("minecraft:zombie");
-        ResourceLocation skeleton = ResourceLocation.parse("minecraft:skeleton");
-        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
-        pools.put(defaultPoolId, pool(defaultPoolId, List.of(zombie, skeleton)));
-        MutationPoolDefinition specialised = pool(specialisedPoolId, List.of(skeleton));
-        pools.put(specialisedPoolId, withEnabled(specialised, false));
-        var track = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(
-                        phaseTier(stageId, defaultPoolId, "minecraft:overworld", "Default Mobs", true),
-                        phaseTier(stageId, specialisedPoolId, "minecraft:overworld", "Skeletons", false)));
-
-        WorldAwakenedProfileOverrideService.compileDifficultyTracks(pools, Map.of(track.id(), track),
-                Map.of(stageId, stage(stageId, 20)));
-
-        assertEquals(List.of(zombie, skeleton), pools.get(defaultPoolId).eligibleEntities());
-        assertTrue(pools.get(defaultPoolId).enabled());
-        assertFalse(pools.get(specialisedPoolId).enabled());
-    }
-
-    @Test
-    void unrestrictedDefaultMaterializesTheRemainingEligibleMobsAtRuntime() {
-        ResourceLocation zombie = ResourceLocation.parse("minecraft:zombie");
-        ResourceLocation skeleton = ResourceLocation.parse("minecraft:skeleton");
-        ResourceLocation creeper = ResourceLocation.parse("minecraft:creeper");
-
-        List<ResourceLocation> remaining = WorldAwakenedProfileOverrideService.defaultEntitiesForRuntime(
-                List.of(), java.util.Set.of(skeleton), java.util.Set.of(skeleton, zombie, creeper));
-
-        assertEquals(List.of(creeper, zombie), remaining);
-        assertTrue(WorldAwakenedProfileOverrideService.defaultEntitiesForRuntime(
-                List.of(), java.util.Set.of(), java.util.Set.of(skeleton, zombie)).isEmpty(),
-                "Without a specialised config the authored empty list must retain wildcard semantics");
-    }
-
-    @Test
-    void removedSourceBackedConfigurationRestoresOriginalDefinitionAndKeepsCustomConfig() {
-        ServerLevel level = mock(ServerLevel.class); MinecraftServer server = mock(MinecraftServer.class);
-        when(level.getServer()).thenReturn(server); when(server.overworld()).thenReturn(level);
-        when(level.getDataStorage()).thenReturn(null); when(server.levelKeys()).thenReturn(java.util.Set.of());
-        ResourceLocation stageId = ResourceLocation.parse("test:unease");
-        ResourceLocation customId = ResourceLocation.parse("test:custom_zombies");
-        ResourceLocation zombie = ResourceLocation.parse("minecraft:zombie");
-        MutationPoolDefinition original = new MutationPoolDefinition(1, POOL_ID, true,
-                new MutationPoolDefinition.MutationSelection(1, .04D, .01D, 2,
-                        MutationPoolDefinition.CombinationMode.ANY_COMPATIBLE, List.of()), false, false,
-                List.of(), Optional.empty(), Optional.empty(), List.of(ResourceLocation.parse("minecraft:overworld")),
-                List.of(), List.of(zombie), pool(POOL_ID).mutators());
-        MutationPoolDefinition removedOverride = withEnabled(new MutationPoolDefinition(1, POOL_ID, true,
-                new MutationPoolDefinition.MutationSelection(1, .40D, 0D, 1,
-                        MutationPoolDefinition.CombinationMode.ANY_COMPATIBLE, List.of()), false, false,
-                original.conditions(), Optional.empty(), Optional.empty(), List.of(), List.of(),
-                List.of(), original.mutators()), false);
-        MutationPoolDefinition custom = withEnabled(pool(customId), false);
-        StageDefinition stage = stage(stageId, 20);
-        WorldAwakenedDatapackSnapshot source = snapshot(Map.of(stageId, stage), Map.of(POOL_ID, original));
-        var removedTier = new WorldAwakenedDifficultyTrackDefinition.Tier(stageId, POOL_ID,
-                Optional.of(ResourceLocation.parse("minecraft:overworld")), "Default Mobs", true, false);
-        var customTier = phaseTier(stageId, customId, "minecraft:overworld", "Custom Zombies", false);
-        var removedTrack = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(removedTier, customTier));
-
-        var removed = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(),
-                Map.of(POOL_ID, removedOverride, customId, custom), Map.of(removedTrack.id(), removedTrack), source);
-        CompoundTag persisted = WorldAwakenedProfileOverrideSavedData.get(level).save(new CompoundTag(), null);
-        var restoredSavedData = WorldAwakenedProfileOverrideSavedData.fromTag(persisted);
-        var restoredTrack = new WorldAwakenedDifficultyTrackDefinition(removedTrack.id(), removedTrack.displayName(),
-                removedTrack.description(), true, List.of(), List.of(
-                        phaseTier(stageId, POOL_ID, "minecraft:overworld", "Default Mobs", true), customTier));
-        var restored = WorldAwakenedProfileOverrideService.applyAuthoring(level, 1L, Map.of(), Map.of(),
-                Map.of(customId, custom), Map.of(restoredTrack.id(), restoredTrack), source);
-        WorldAwakenedDatapackSnapshot compiled = WorldAwakenedProfileOverrideService.overlay(source);
-
-        assertTrue(removed.accepted(), removed.message());
-        assertFalse(WorldAwakenedProfileOverrideService.overlay(source).data().mutationPools().get(customId).enabled());
-        assertEquals(1, restoredSavedData.difficultyTracks().size(), "Removal tombstone survives restart persistence");
-        assertTrue(restored.accepted(), restored.message());
-        assertEquals(.04D, compiled.data().mutationPools().get(POOL_ID).mutationChance());
-        assertEquals(.01D, compiled.data().mutationPools().get(POOL_ID).additionalMutationChance());
-        assertEquals(List.of(zombie), compiled.data().mutationPools().get(POOL_ID).eligibleEntities());
-        assertTrue(compiled.data().mutationPools().get(POOL_ID).enabled());
-        assertTrue(WorldAwakenedProfileOverrideService.state().mutationPools().containsKey(customId));
-        assertFalse(WorldAwakenedProfileOverrideService.state().mutationPools().containsKey(POOL_ID));
-    }
-
-    @Test
-    void preExistingValidationIssueDoesNotBlockUnrelatedRecoveryEdit() {
-        ServerLevel level = mock(ServerLevel.class); MinecraftServer server = mock(MinecraftServer.class);
-        when(level.getServer()).thenReturn(server); when(server.overworld()).thenReturn(level);
-        when(level.getDataStorage()).thenReturn(null); when(server.levelKeys()).thenReturn(java.util.Set.of());
-        ResourceLocation stageId = ResourceLocation.parse("test:unease");
-        ResourceLocation specialisedId = ResourceLocation.parse("test:skeletons");
-        ResourceLocation newDisabledId = ResourceLocation.parse("test:new_disabled");
-        StageDefinition stage = stage(stageId, 20);
-        MutationPoolDefinition unrestrictedDefault = pool(POOL_ID);
-        MutationPoolDefinition specialised = pool(specialisedId, List.of(ResourceLocation.parse("minecraft:skeleton")));
-        var existingTrack = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(
-                        phaseTier(stageId, POOL_ID, "minecraft:overworld", "Default Mobs", true),
-                        phaseTier(stageId, specialisedId, "minecraft:overworld", "Skeletons", false)));
-        WorldAwakenedProfileOverrideSavedData.get(level).replaceAll(Map.of(), Map.of(),
-                Map.of(specialisedId, specialised), Map.of(existingTrack.id(), existingTrack));
-        WorldAwakenedDatapackSnapshot source = snapshot(Map.of(stageId, stage), Map.of(POOL_ID, unrestrictedDefault));
-
-        MutationPoolDefinition newDisabled = withEnabled(pool(newDisabledId), false);
-        var candidateTrack = new WorldAwakenedDifficultyTrackDefinition(existingTrack.id(), existingTrack.displayName(),
-                existingTrack.description(), true, List.of(), List.of(
-                        phaseTier(stageId, POOL_ID, "minecraft:overworld", "Default Mobs", true),
-                        phaseTier(stageId, specialisedId, "minecraft:overworld", "Skeletons", false),
-                        phaseTier(stageId, newDisabledId, "minecraft:overworld", "New Disabled", false)));
-        var result = WorldAwakenedProfileOverrideService.applyAuthoring(level, 1L, Map.of(), Map.of(),
-                Map.of(specialisedId, specialised, newDisabledId, newDisabled),
-                Map.of(candidateTrack.id(), candidateTrack), source);
-
-        assertTrue(result.accepted(), result.message());
-        assertTrue(result.message().contains("older configuration"));
-        assertTrue(WorldAwakenedProfileOverrideService.state().mutationPools().containsKey(newDisabledId));
-    }
-
-    @Test
-    void isolatedEditedPhaseStillLocksAgainstLaterSharedTimelineStages() {
-        ResourceLocation stageId = ResourceLocation.parse("test:stirring");
-        ResourceLocation laterStageId = ResourceLocation.parse("test:unease");
-        ResourceLocation poolId = ResourceLocation.parse("test:stirring_overworld");
-        Map<ResourceLocation, MutationPoolDefinition> pools = new java.util.LinkedHashMap<>();
-        pools.put(poolId, pool(poolId, List.of(ResourceLocation.parse("minecraft:zombie"))));
-        var track = new WorldAwakenedDifficultyTrackDefinition(
-                ResourceLocation.parse("worldawakened:world/phase_mutations"), "Phase mob configurations", "", true,
-                List.of(), List.of(phaseTier(stageId, poolId, "minecraft:overworld", "Default Mobs", true)));
-
-        WorldAwakenedProfileOverrideService.compileDifficultyTracks(pools, Map.of(track.id(), track), Map.of(
-                stageId, stage(stageId, 10), laterStageId, stage(laterStageId, 20)));
-
-        assertEquals(List.of("stage_unlocked:test:stirring", "stage_locked:test:unease"), gates(pools.get(poolId)));
-    }
-
-    @Test
-    void authoredStageTrackAndPoolRoundTripTogether() {
-        ResourceLocation stageId = ResourceLocation.parse("worldawakened:world/awakening");
-        StageDefinition stage = new StageDefinition(1, stageId, List.of(), JsonParser.parseString("\"The Awakening\""),
-                Optional.empty(), Optional.empty(), Optional.empty(), 10, true, true, List.of(), Optional.empty(),
-                Optional.of("custom"), StageUnlockPolicy.CUMULATIVE, false);
-        var track = new WorldAwakenedDifficultyTrackDefinition(ResourceLocation.parse("worldawakened:world/tracks/nether"),
-                "Nether Difficulty", "", true, List.of(ResourceLocation.parse("minecraft:the_nether")),
-                List.of(new WorldAwakenedDifficultyTrackDefinition.Tier(stageId, POOL_ID)));
-        WorldAwakenedProfileOverrideSavedData data = new WorldAwakenedProfileOverrideSavedData();
-        data.replaceAll(Map.of(stageId, stage), Map.of(), Map.of(POOL_ID, pool(0.1D)), Map.of(track.id(), track));
-
-        WorldAwakenedProfileOverrideSavedData restored = WorldAwakenedProfileOverrideSavedData.fromTag(
-                data.save(new CompoundTag(), null));
-
-        assertEquals("The Awakening", restored.stages().get(stageId).displayName().getAsString());
-        assertEquals(stageId, restored.difficultyTracks().get(track.id()).tiers().getFirst().stageId());
-        assertEquals(ResourceLocation.parse("minecraft:the_nether"),
-                restored.difficultyTracks().get(track.id()).eligibleDimensions().getFirst());
     }
 
     @Test
@@ -554,37 +381,14 @@ class WorldAwakenedProfileOverrideServiceTest {
                 TriggerRuleDefinition::id, value -> value));
 
         List<String> validErrors = WorldAwakenedProfileOverrideService.validateAuthoring(server, Map.of(stageId, stage),
-                triggers, Map.of(), Map.of(), snapshotWithoutPool());
+                triggers, Map.of(), Map.of(), Map.of(), snapshotWithoutPool());
         TriggerRuleDefinition invalid = trigger("bad", "player_enter_dimension", SourceScope.WORLD,
                 condition("current_dimension", "dimension", "minecraft:the_nether"), stageId);
         List<String> invalidErrors = WorldAwakenedProfileOverrideService.validateAuthoring(server, Map.of(stageId, stage),
-                Map.of(invalid.id(), invalid), Map.of(), Map.of(), snapshotWithoutPool());
+                Map.of(invalid.id(), invalid), Map.of(), Map.of(), Map.of(), snapshotWithoutPool());
 
         assertTrue(validErrors.isEmpty(), () -> String.join(" | ", validErrors));
         assertTrue(invalidErrors.stream().anyMatch(error -> error.contains("player progression context")));
-    }
-
-    @Test
-    void linkedStageTriggerTrackAndPoolApplyAtomicallyWithOneRevision() {
-        ServerLevel level = mock(ServerLevel.class); MinecraftServer server = mock(MinecraftServer.class);
-        when(level.getServer()).thenReturn(server); when(server.overworld()).thenReturn(level); when(level.getDataStorage()).thenReturn(null);
-        ResourceLocation stageId = ResourceLocation.parse("test:awakening"); StageDefinition stage = stage(stageId, 10);
-        TriggerRuleDefinition trigger = trigger("enter_nether", "player_enter_dimension", SourceScope.PLAYER,
-                condition("current_dimension", "dimension", "minecraft:the_nether"), stageId);
-        var track = new WorldAwakenedDifficultyTrackDefinition(ResourceLocation.parse("test:nether_track"), "Nether", "", true,
-                List.of(), List.of(new WorldAwakenedDifficultyTrackDefinition.Tier(stageId, POOL_ID)));
-        WorldAwakenedDatapackSnapshot source = snapshotWithoutPool();
-
-        var accepted = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(stageId, stage),
-                Map.of(trigger.id(), trigger), Map.of(POOL_ID, pool(0.1D)), Map.of(track.id(), track), source);
-        var stale = WorldAwakenedProfileOverrideService.applyAuthoring(level, 0L, Map.of(), Map.of(), Map.of(), Map.of(), source);
-        WorldAwakenedDatapackSnapshot overlaid = WorldAwakenedProfileOverrideService.overlay(source);
-
-        assertTrue(accepted.accepted()); assertFalse(stale.accepted());
-        assertEquals(1L, WorldAwakenedProfileOverrideService.state().revision());
-        assertTrue(overlaid.data().stages().containsKey(stageId));
-        assertTrue(overlaid.data().triggerRules().containsKey(trigger.id()));
-        assertTrue(overlaid.data().mutationPools().containsKey(POOL_ID));
     }
 
     @Test
@@ -647,10 +451,10 @@ class WorldAwakenedProfileOverrideServiceTest {
                 source.eligibleEntities(), source.mutators());
     }
 
-    private static WorldAwakenedDifficultyTrackDefinition.Tier phaseTier(ResourceLocation stageId,
-            ResourceLocation poolId, String dimension, String name, boolean isDefault) {
-        return new WorldAwakenedDifficultyTrackDefinition.Tier(stageId, poolId,
-                Optional.of(ResourceLocation.parse(dimension)), name, isDefault, true);
+    private static WorldAwakenedPhaseMutationConfigurationDefinition.Tier phaseAssignment(ResourceLocation stageId,
+            ResourceLocation poolId, String name, boolean defaultConfiguration) {
+        return new WorldAwakenedPhaseMutationConfigurationDefinition.Tier(stageId, poolId,
+                Optional.of(ResourceLocation.parse("minecraft:overworld")), name, defaultConfiguration, true);
     }
 
     private static List<String> gates(MutationPoolDefinition pool) {

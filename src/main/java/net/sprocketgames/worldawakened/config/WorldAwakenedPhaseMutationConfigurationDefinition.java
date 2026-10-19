@@ -11,26 +11,26 @@ import net.sprocketgames.worldawakened.data.codec.WorldAwakenedJsonCodecs;
 
 /**
  * World-authoring metadata which groups ordinary mutation pools into an ordered
- * difficulty track. It deliberately has no runtime state of its own.
+ * phase mutation configuration. It deliberately has no runtime state of its own.
  */
-public record WorldAwakenedDifficultyTrackDefinition(
+public record WorldAwakenedPhaseMutationConfigurationDefinition(
         ResourceLocation id,
         String displayName,
         String description,
         boolean enabled,
         List<ResourceLocation> eligibleDimensions,
         List<Tier> tiers) {
-    public static final Codec<WorldAwakenedDifficultyTrackDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            WorldAwakenedJsonCodecs.RESOURCE_LOCATION.fieldOf("id").forGetter(WorldAwakenedDifficultyTrackDefinition::id),
-            Codec.STRING.fieldOf("display_name").forGetter(WorldAwakenedDifficultyTrackDefinition::displayName),
-            Codec.STRING.optionalFieldOf("description", "").forGetter(WorldAwakenedDifficultyTrackDefinition::description),
-            Codec.BOOL.optionalFieldOf("enabled", true).forGetter(WorldAwakenedDifficultyTrackDefinition::enabled),
+    public static final Codec<WorldAwakenedPhaseMutationConfigurationDefinition> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            WorldAwakenedJsonCodecs.RESOURCE_LOCATION.fieldOf("id").forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::id),
+            Codec.STRING.fieldOf("display_name").forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::displayName),
+            Codec.STRING.optionalFieldOf("description", "").forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::description),
+            Codec.BOOL.optionalFieldOf("enabled", true).forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::enabled),
             WorldAwakenedJsonCodecs.RESOURCE_LOCATION_LIST.optionalFieldOf("eligible_dimensions", List.of())
-                    .forGetter(WorldAwakenedDifficultyTrackDefinition::eligibleDimensions),
-            Tier.CODEC.listOf().optionalFieldOf("tiers", List.of()).forGetter(WorldAwakenedDifficultyTrackDefinition::tiers))
-            .apply(instance, WorldAwakenedDifficultyTrackDefinition::new));
+                    .forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::eligibleDimensions),
+            Tier.CODEC.listOf().optionalFieldOf("tiers", List.of()).forGetter(WorldAwakenedPhaseMutationConfigurationDefinition::tiers))
+            .apply(instance, WorldAwakenedPhaseMutationConfigurationDefinition::new));
 
-    public WorldAwakenedDifficultyTrackDefinition {
+    public WorldAwakenedPhaseMutationConfigurationDefinition {
         eligibleDimensions = List.copyOf(eligibleDimensions);
         tiers = List.copyOf(tiers);
     }
